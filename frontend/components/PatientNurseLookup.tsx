@@ -15,13 +15,15 @@ interface Patient {
 
 export default function PatientManagement() {
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
+  const [patientsInRooms, setPatientsInRooms] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'monitoring'>('all');
 
-  // Fetch all patients on mount
+  // Fetch all patients and room assignments on mount
   useEffect(() => {
     fetchPatients();
+    fetchRoomAssignments();
   }, []);
 
   const fetchPatients = async () => {
@@ -47,13 +49,41 @@ export default function PatientManagement() {
     }
   };
 
+  const fetchRoomAssignments = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/rooms`);
+      const data = await response.json();
+      console.log('🏠 Fetched rooms response:', data);
+      
+      // Extract patient IDs that are assigned to rooms
+      const assignedIds = new Set<string>();
+      
+      // Backend returns array directly (not nested in 'rooms')
+      const roomsList = Array.isArray(data) ? data : (data.rooms || []);
+      console.log('🏠 Rooms list:', roomsList);
+      
+      roomsList.forEach((room: any) => {
+        // Check for patient_id at top level (backend format)
+        if (room.patient_id) {
+          assignedIds.add(room.patient_id);
+          console.log(`  ✓ Room ${room.room_name} has patient ${room.patient_id}`);
+        }
+      });
+      
+      console.log(`✅ Found ${assignedIds.size} patients in rooms:`, Array.from(assignedIds));
+      setPatientsInRooms(assignedIds);
+    } catch (error) {
+      console.error('❌ Error fetching room assignments:', error);
+    }
+  };
+
   // Filter patients based on current filter
   const getFilteredPatients = () => {
     if (filterStatus === 'active') {
       return allPatients.filter((p: Patient) => p.enrollment_status === 'active');
     } else if (filterStatus === 'monitoring') {
-      // For now, return all (room assignment filtering would need async call)
-      return allPatients;
+      // Show only patients currently assigned to rooms
+      return allPatients.filter((p: Patient) => patientsInRooms.has(p.patient_id));
     }
     return allPatients; // 'all'
   };

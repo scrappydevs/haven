@@ -94,19 +94,27 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, ava
           {room.assignedPatient ? (
             <div className="border border-neutral-200 p-4">
               <div className="flex items-start gap-3 mb-4">
-                {room.assignedPatient.photo_url ? (
+                {room.assignedPatient.photo_url && room.assignedPatient.photo_url.trim() !== '' ? (
                   <img
                     src={room.assignedPatient.photo_url}
                     alt={room.assignedPatient.name}
                     className="w-16 h-16 object-cover border border-neutral-950"
+                    onError={(e) => {
+                      // Hide broken image and show initials instead
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
                   />
-                ) : (
-                  <div className="w-16 h-16 border border-neutral-950 bg-primary-100 flex items-center justify-center">
-                    <span className="text-xl font-light text-primary-700">
-                      {room.assignedPatient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </span>
-                  </div>
-                )}
+                ) : null}
+                <div 
+                  className="w-16 h-16 border border-neutral-950 bg-primary-100 flex items-center justify-center"
+                  style={{ display: (room.assignedPatient.photo_url && room.assignedPatient.photo_url.trim() !== '') ? 'none' : 'flex' }}
+                >
+                  <span className="text-xl font-light text-primary-700">
+                    {room.assignedPatient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </span>
+                </div>
                 <div className="flex-1">
                   <h5 className="font-light text-neutral-950 mb-1">
                     {room.assignedPatient.name}
@@ -114,9 +122,11 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, ava
                   <p className="label-uppercase text-primary-700 mb-2">
                     {room.assignedPatient.patient_id}
                   </p>
-                  <p className="text-xs text-neutral-500">
-                    {room.assignedPatient.age}y/o
-                  </p>
+                  {room.assignedPatient.age > 0 && (
+                    <p className="text-xs text-neutral-500">
+                      {room.assignedPatient.age}y/o
+                    </p>
+                  )}
                 </div>
               </div>
 

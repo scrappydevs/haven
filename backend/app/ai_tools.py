@@ -143,6 +143,92 @@ HAVEN_TOOLS = [
             },
             "required": []
         }
+    },
+    {
+        "name": "remove_patient_from_room",
+        "description": "Remove a patient from a room. Can use either patient_id OR room_id - will auto-detect patient if only room is provided.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "string",
+                    "description": "Patient ID to remove (e.g., 'P-001'). Optional if room_id is provided."
+                },
+                "room_id": {
+                    "type": "string",
+                    "description": "Room to empty (e.g., 'room-1' or 'Room 1'). AI will find who's in this room."
+                },
+                "generate_report": {
+                    "type": "boolean",
+                    "description": "Whether to generate discharge report PDF (default: true)"
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "get_patient_in_room",
+        "description": "Find out which patient is currently assigned to a specific room.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "room_id": {
+                    "type": "string",
+                    "description": "Room identifier (e.g., 'room-1' or 'Room 1')"
+                }
+            },
+            "required": ["room_id"]
+        }
+    },
+    {
+        "name": "transfer_patient",
+        "description": "Transfer a patient from one room to another. Use when staff requests to move a patient to a different room.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "string",
+                    "description": "Patient ID to transfer"
+                },
+                "from_room_id": {
+                    "type": "string",
+                    "description": "Current room ID (optional - will auto-detect if not provided)"
+                },
+                "to_room_id": {
+                    "type": "string",
+                    "description": "Destination room ID"
+                }
+            },
+            "required": ["patient_id", "to_room_id"]
+        }
+    },
+    {
+        "name": "get_patient_current_room",
+        "description": "Get the current room assignment for a specific patient.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "string",
+                    "description": "Patient ID to look up"
+                }
+            },
+            "required": ["patient_id"]
+        }
+    },
+    {
+        "name": "suggest_optimal_room",
+        "description": "Suggest the best available room for a patient based on their condition and current room availability.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "string",
+                    "description": "Patient ID needing room assignment"
+                }
+            },
+            "required": ["patient_id"]
+        }
     }
 ]
 
@@ -188,6 +274,29 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         
         elif tool_name == "get_crs_monitoring_protocol":
             return await get_crs_monitoring_protocol(tool_input.get("grade"))
+        
+        elif tool_name == "remove_patient_from_room":
+            return await remove_patient_from_room_tool(
+                tool_input.get("patient_id"),
+                tool_input.get("room_id"),
+                tool_input.get("generate_report", True)
+            )
+        
+        elif tool_name == "get_patient_in_room":
+            return await get_patient_in_room_tool(tool_input.get("room_id", ""))
+        
+        elif tool_name == "transfer_patient":
+            return await transfer_patient_tool(
+                tool_input.get("patient_id", ""),
+                tool_input.get("to_room_id", ""),
+                tool_input.get("from_room_id")
+            )
+        
+        elif tool_name == "get_patient_current_room":
+            return await get_patient_room_tool(tool_input.get("patient_id", ""))
+        
+        elif tool_name == "suggest_optimal_room":
+            return await suggest_optimal_room_tool(tool_input.get("patient_id", ""))
         
         else:
             return {"error": f"Unknown tool: {tool_name}"}
@@ -524,4 +633,248 @@ async def get_crs_monitoring_protocol(grade: Optional[str] = None) -> Dict[str, 
             return {"grade": "3-4", "protocol": protocol["grades"]["3-4"], "triggers": protocol["key_triggers"]}
     
     return protocol
+
+
+async def remove_patient_from_room_tool(patient_id: Optional[str] = None, room_id: Optional[str] = None, generate_report: bool = True) -> Dict[str, Any]:
+    """Remove patient from room - accepts either patient_id OR room_id"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # If room_id provided, find patient in that room
+        if room_id and not patient_id:
+            # Search by room_name or room_id
+            room_search = supabase.table("rooms").select("room_id").or_(f"room_id.eq.{room_id},room_name.ilike.%{room_id}%").execute()
+            
+            if room_search.data:
+                actual_room_id = room_search.data[0]['room_id']
+                assignment = supabase.table("patients_room").select("patient_id").eq("room_id", actual_room_id).execute()
+                
+                if not assignment.data:
+                    room_name_data = supabase.table("rooms").select("room_name").eq("room_id", actual_room_id).execute()
+                    room_name = room_name_data.data[0]['room_name'] if room_name_data.data else room_id
+                    return {"error": f"{room_name} is already empty — no patient currently assigned"}
+                
+                patient_id = assignment.data[0]['patient_id']
+                room_id = actual_room_id
+            else:
+                return {"error": f"Room '{room_id}' not found"}
+        
+        # If patient_id provided, find their current room
+        elif patient_id and not room_id:
+            assignment = supabase.table("patients_room").select("room_id").eq("patient_id", patient_id).execute()
+            
+            if not assignment.data:
+                return {"error": f"Patient {patient_id} is not currently in any room"}
+            
+            room_id = assignment.data[0]['room_id']
+        
+        elif not patient_id and not room_id:
+            return {"error": "Must provide either patient_id or room_id"}
+        
+        # Get patient and room names for response
+        patient_data = supabase.table("patients").select("name").eq("patient_id", patient_id).execute()
+        patient_name = patient_data.data[0]['name'] if patient_data.data else patient_id
+        
+        room_data = supabase.table("rooms").select("room_name").eq("room_id", room_id).execute()
+        room_name = room_data.data[0]['room_name'] if room_data.data else room_id
+        
+        # Remove assignment
+        supabase.table("patients_room").delete().eq("patient_id", patient_id).execute()
+        
+        result = {
+            "success": True,
+            "message": f"Removed {patient_name} ({patient_id}) from {room_name}",
+            "patient_id": patient_id,
+            "patient_name": patient_name,
+            "room_id": room_id,
+            "room_name": room_name
+        }
+        
+        if generate_report:
+            result["report_available"] = True
+            result["report_url"] = f"/reports/discharge/{patient_id}/{room_id}"
+            result["report_message"] = "Discharge report generated and ready for download"
+        
+        return result
+    
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def transfer_patient_tool(patient_id: str, to_room_id: str, from_room_id: Optional[str] = None) -> Dict[str, Any]:
+    """Transfer patient from one room to another"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Auto-detect current room if not provided
+        if not from_room_id:
+            assignment = supabase.table("patients_room").select("room_id").eq("patient_id", patient_id).execute()
+            if assignment.data:
+                from_room_id = assignment.data[0]['room_id']
+            else:
+                return {"error": f"Patient {patient_id} is not currently in any room"}
+        
+        # Check if destination room is available
+        dest_check = supabase.table("patients_room").select("*").eq("room_id", to_room_id).execute()
+        if dest_check.data:
+            return {"error": f"Destination room {to_room_id} is already occupied"}
+        
+        # Get room names
+        from_room_data = supabase.table("rooms").select("room_name").eq("room_id", from_room_id).execute()
+        to_room_data = supabase.table("rooms").select("room_name").eq("room_id", to_room_id).execute()
+        
+        from_room_name = from_room_data.data[0]['room_name'] if from_room_data.data else from_room_id
+        to_room_name = to_room_data.data[0]['room_name'] if to_room_data.data else to_room_id
+        
+        # Remove from old room
+        supabase.table("patients_room").delete().eq("patient_id", patient_id).execute()
+        
+        # Add to new room
+        supabase.table("patients_room").insert({
+            "room_id": to_room_id,
+            "patient_id": patient_id,
+            "assigned_by": "Haven AI"
+        }).execute()
+        
+        return {
+            "success": True,
+            "message": f"Transferred patient {patient_id} from {from_room_name} to {to_room_name}",
+            "patient_id": patient_id,
+            "from_room": from_room_name,
+            "to_room": to_room_name
+        }
+    
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_patient_room_tool(patient_id: str) -> Dict[str, Any]:
+    """Get patient's current room"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        assignment = supabase.table("patients_room").select("room_id, assigned_at").eq("patient_id", patient_id).execute()
+        
+        if not assignment.data:
+            return {
+                "patient_id": patient_id,
+                "in_room": False,
+                "message": f"Patient {patient_id} is not currently assigned to any room"
+            }
+        
+        room_id = assignment.data[0]['room_id']
+        room_data = supabase.table("rooms").select("*").eq("room_id", room_id).execute()
+        
+        if room_data.data:
+            return {
+                "patient_id": patient_id,
+                "in_room": True,
+                "room_id": room_id,
+                "room_name": room_data.data[0]['room_name'],
+                "room_type": room_data.data[0]['room_type'],
+                "assigned_at": assignment.data[0]['assigned_at']
+            }
+        
+        return {"error": "Room data not found"}
+    
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_patient_in_room_tool(room_id: str) -> Dict[str, Any]:
+    """Find which patient is in a specific room"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Search for room by name or ID
+        room_search = supabase.table("rooms").select("room_id, room_name").or_(f"room_id.eq.{room_id},room_name.ilike.%{room_id}%").execute()
+        
+        if not room_search.data:
+            return {"error": f"Room '{room_id}' not found"}
+        
+        actual_room_id = room_search.data[0]['room_id']
+        room_name = room_search.data[0]['room_name']
+        
+        # Check for patient assignment
+        assignment = supabase.table("patients_room").select("patient_id, assigned_at").eq("room_id", actual_room_id).execute()
+        
+        if not assignment.data:
+            return {
+                "room_id": actual_room_id,
+                "room_name": room_name,
+                "occupied": False,
+                "message": f"{room_name} is currently empty"
+            }
+        
+        patient_id = assignment.data[0]['patient_id']
+        
+        # Get patient details
+        patient = supabase.table("patients").select("name, age, condition").eq("patient_id", patient_id).execute()
+        
+        if patient.data:
+            return {
+                "room_id": actual_room_id,
+                "room_name": room_name,
+                "occupied": True,
+                "patient_id": patient_id,
+                "patient_name": patient.data[0]['name'],
+                "patient_age": patient.data[0]['age'],
+                "patient_condition": patient.data[0]['condition'],
+                "assigned_at": assignment.data[0]['assigned_at']
+            }
+        
+        return {"error": "Patient data not found"}
+    
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def suggest_optimal_room_tool(patient_id: str) -> Dict[str, Any]:
+    """Suggest best available room for patient"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Get patient info
+        patient = supabase.table("patients").select("condition").eq("patient_id", patient_id).execute()
+        if not patient.data:
+            return {"error": f"Patient {patient_id} not found"}
+        
+        condition = patient.data[0].get('condition', '').lower()
+        
+        # Get all patient rooms
+        all_rooms = supabase.table("rooms").select("room_id, room_name, room_type").eq("room_type", "patient").execute()
+        
+        # Get occupied room IDs
+        assignments = supabase.table("patients_room").select("room_id").execute()
+        occupied_ids = set(a["room_id"] for a in (assignments.data or []))
+        
+        # Filter to available rooms
+        available_rooms = [
+            room for room in (all_rooms.data or [])
+            if room["room_id"] not in occupied_ids
+        ]
+        
+        if not available_rooms:
+            return {"error": "No available rooms", "suggestion": "All patient rooms are currently occupied"}
+        
+        # Simple suggestion logic - could be enhanced with more criteria
+        suggested_room = available_rooms[0]  # For now, just suggest first available
+        
+        return {
+            "patient_id": patient_id,
+            "patient_condition": patient.data[0].get('condition'),
+            "suggested_room": suggested_room['room_name'],
+            "suggested_room_id": suggested_room['room_id'],
+            "reason": "Next available patient room",
+            "total_available": len(available_rooms),
+            "other_options": [r['room_name'] for r in available_rooms[1:3]]  # Show 2 alternatives
+        }
+    
+    except Exception as e:
+        return {"error": str(e)}
 
