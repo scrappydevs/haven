@@ -1,29 +1,81 @@
-# Dependencies
-node_modules/
-*/node_modules/
-
-# Build outputs
-.next/
-*/.next/
-dist/
-build/
-*.pyc
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+ENV/
+env/
 
-# Environment variables
+# Node
+node_modules/
+.next/
+out/
+build/
+.npm
+.eslintcache
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment
 .env
 .env.local
-.env*.local
-
-# OS
-.DS_Store
-*.swp
-*.swo
+.env.production
+.env.development
+*.key
+*.pem
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Videos (large files - don't commit to git)
+videos/*.mp4
+videos/*.mov
+videos/*.avi
+
+# Data
+backend/data/*.json
+!backend/data/.gitkeep
+
+# Models
+backend/models/*.pt
+backend/models/*.onnx
+backend/models/*.h5
+!backend/models/.gitkeep
 
 # Logs
 *.log
-npm-debug.log*
+logs/
+
+# Testing
+.pytest_cache/
+coverage/
+*.cover
+
+# Deployment
+.vercel
+.railway
+
+# OS
+Thumbs.db
