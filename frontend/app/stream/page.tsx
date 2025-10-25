@@ -35,6 +35,12 @@ export default function StreamPage() {
   const [fps, setFps] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Haven voice agent state
+  const [isListeningForWakeWord, setIsListeningForWakeWord] = useState(false);
+  const [havenActive, setHavenActive] = useState(false);
+  const [havenTranscript, setHavenTranscript] = useState<string>('');
+  const recognitionRef = useRef<any>(null);
+
   useEffect(() => {
     return () => {
       // Cleanup on TRUE unmount (page navigation away)
@@ -406,6 +412,158 @@ export default function StreamPage() {
     console.log('✅ Stream stopped');
   };
 
+  // Wake word detection and Haven voice agent functions
+  const startWakeWordListening = () => {
+    if (!selectedPatient) {
+      console.warn('⚠️ Cannot start wake word listening without selected patient');
+      return;
+    }
+
+    // Check for Web Speech API support
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.error('❌ Speech Recognition not supported in this browser');
+      setError('Wake word detection not supported in your browser. Please use Chrome or Edge.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      console.log('🎤 Wake word listening started');
+      setIsListeningForWakeWord(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('')
+        .toLowerCase();
+
+      console.log('🎤 Heard:', transcript);
+
+      // Check for wake word "hey haven"
+      if (transcript.includes('hey haven') || transcript.includes('hey heaven')) {
+        console.log('🛡️ Wake word detected!');
+        recognition.stop();
+        startHavenSession();
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('❌ Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        setError('Microphone permission denied. Please allow microphone access for wake word detection.');
+      }
+    };
+
+    recognition.onend = () => {
+      // Restart listening if not in Haven session
+      if (!havenActive && isStreaming && selectedPatient) {
+        console.log('🔄 Restarting wake word listening...');
+        try {
+          recognition.start();
+        } catch (err) {
+          console.warn('Could not restart wake word listening:', err);
+        }
+      } else {
+        console.log('🛑 Wake word listening stopped');
+        setIsListeningForWakeWord(false);
+      }
+    };
+
+    try {
+      recognition.start();
+      recognitionRef.current = recognition;
+    } catch (err) {
+      console.error('❌ Failed to start wake word listening:', err);
+      setError('Failed to start microphone for wake word detection');
+    }
+  };
+
+  const stopWakeWordListening = () => {
+    if (recognitionRef.current) {
+      console.log('🛑 Stopping wake word listening');
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+      setIsListeningForWakeWord(false);
+    }
+  };
+
+  const startHavenSession = async () => {
+    if (!selectedPatient) return;
+
+    try {
+      console.log('🛡️ Starting Haven voice session...');
+      setHavenActive(true);
+      setHavenTranscript('Connecting to Haven AI...');
+
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/haven/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_id: selectedPatient.patient_id })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      console.log('✅ Haven session created:', data.room_name);
+      setHavenTranscript('Haven AI is listening...');
+
+      // TODO: Connect to LiveKit voice room
+      // For now, show placeholder
+      setTimeout(() => {
+        setHavenTranscript('Haven agent connected. Speak your concern.');
+      }, 1000);
+
+      // Simulate conversation end after 30 seconds (for demo)
+      setTimeout(() => {
+        endHavenSession();
+      }, 30000);
+
+    } catch (err: any) {
+      console.error('❌ Failed to start Haven session:', err);
+      setError('Failed to start voice assistant: ' + err.message);
+      setHavenActive(false);
+      setHavenTranscript('');
+      // Restart wake word listening
+      startWakeWordListening();
+    }
+  };
+
+  const endHavenSession = () => {
+    console.log('🛡️ Ending Haven session');
+    setHavenActive(false);
+    setHavenTranscript('');
+
+    // Restart wake word listening
+    if (isStreaming && selectedPatient) {
+      startWakeWordListening();
+    }
+  };
+
+  // Wake word listening effect
+  useEffect(() => {
+    if (isStreaming && selectedPatient && !havenActive) {
+      // Start wake word listening when streaming starts
+      startWakeWordListening();
+    } else if (!isStreaming || !selectedPatient) {
+      // Stop wake word listening when streaming stops
+      stopWakeWordListening();
+    }
+
+    return () => {
+      stopWakeWordListening();
+    };
+  }, [isStreaming, selectedPatient, havenActive]);
+
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Header with Navigation */}
@@ -558,6 +716,54 @@ export default function StreamPage() {
                 <span className="label-uppercase text-primary-400">
                   {fps} FPS
                 </span>
+              </div>
+            )}
+
+            {/* Wake Word Listening Indicator */}
+            {isListeningForWakeWord && !havenActive && (
+              <div className="absolute bottom-4 left-4 px-4 py-2 bg-neutral-950/90 border border-primary-700">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-primary-400 rounded-full animate-pulse" />
+                  <span className="label-uppercase text-primary-400 text-xs">
+                    Listening for "Hey Haven"
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Haven Voice Agent Conversation Overlay */}
+            {havenActive && (
+              <div className="absolute inset-0 bg-primary-900/95 flex flex-col items-center justify-center p-8">
+                <div className="max-w-md w-full bg-white/10 backdrop-blur-sm border-2 border-primary-400 p-8 rounded-lg">
+                  <div className="flex items-center justify-center gap-3 mb-6">
+                    <div className="w-4 h-4 bg-primary-400 rounded-full animate-pulse" />
+                    <h3 className="heading-section text-white">Haven AI Active</h3>
+                  </div>
+
+                  <div className="mb-6">
+                    <div className="bg-white/5 border border-white/20 p-4 rounded-lg min-h-[100px]">
+                      <p className="body-default text-white/90">
+                        {havenTranscript || 'Listening...'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2 text-white/60 text-xs">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                      <span className="label-uppercase">Speak naturally about your concern</span>
+                    </div>
+
+                    <button
+                      onClick={endHavenSession}
+                      className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white label-uppercase text-xs transition-colors"
+                    >
+                      End Conversation
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
