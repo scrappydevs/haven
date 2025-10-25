@@ -3,6 +3,21 @@ WebSocket manager for live video streaming
 Handles connections from streamers (webcam computers) and viewers (dashboards)
 """
 
+from app.patient_guardian_agent import patient_guardian
+from app.monitoring_control import monitoring_manager
+from app.cv_metrics import (
+    HeartRateMonitor,
+    RespiratoryRateMonitor,
+    FaceTouchingDetector,
+    MovementVolumeTracker,
+    TremorDetector,
+    UpperBodyPostureTracker
+)
+import time
+import queue
+import threading
+import json
+import mediapipe as mp
 from fastapi import WebSocket
 from typing import List, Dict, Optional
 import base64
@@ -12,31 +27,18 @@ import os
 import logging
 
 # ✅ SUPPRESS MEDIAPIPE VERBOSE LOGGING - Must be set BEFORE importing mediapipe
-os.environ['GLOG_minloglevel'] = '2'  # Suppress INFO and WARNING logs from Google's glog
+# Suppress INFO and WARNING logs from Google's glog
+os.environ['GLOG_minloglevel'] = '2'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs (if used)
 
 # Suppress MediaPipe's Python logging
 logging.getLogger('mediapipe').setLevel(logging.ERROR)
 
-import mediapipe as mp
-import json
-import threading
-import queue
-import time
-from app.cv_metrics import (
-    HeartRateMonitor,
-    RespiratoryRateMonitor,
-    FaceTouchingDetector,
-    MovementVolumeTracker,
-    TremorDetector,
-    UpperBodyPostureTracker
-)
-from app.monitoring_control import monitoring_manager
-from app.patient_guardian_agent import patient_guardian
 
 # MediaPipe models - lazy initialized per worker to avoid fork issues
 _face_mesh = None
 _pose = None
+
 
 def get_face_mesh():
     """Lazy-load face mesh (thread-safe after fork)"""
@@ -51,12 +53,14 @@ def get_face_mesh():
         )
     return _face_mesh
 
+
 def get_pose():
     """Lazy-load pose model (thread-safe after fork)"""
     global _pose
     if _pose is None:
         _pose = mp.solutions.pose.Pose(
-            static_image_mode=False,  # Video mode - tracks between frames (much faster)
+            # Video mode - tracks between frames (much faster)
+            static_image_mode=False,
             model_complexity=0,  # 0 = lite model (faster)
             smooth_landmarks=True,  # Smooth tracking for better visual quality
             min_detection_confidence=0.5,
@@ -64,8 +68,10 @@ def get_pose():
         )
     return _pose
 
+
 class PatientMetricTrackers:
     """Container for per-patient metric tracking instances"""
+
     def __init__(self):
         self.heart_rate = HeartRateMonitor()
         self.respiratory_rate = RespiratoryRateMonitor()
@@ -73,31 +79,37 @@ class PatientMetricTrackers:
         self.movement = MovementVolumeTracker()
         self.tremor = TremorDetector()
         self.upper_body = UpperBodyPostureTracker()
-        self.monitoring_conditions: List[str] = []  # e.g., ['CRS', 'SEIZURE']
+        self.analysis_mode: str = "normal"  # "normal" or "enhanced"
+
 
 class ConnectionManager:
     def __init__(self):
         self.streamers: Dict[str, WebSocket] = {}  # {patient_id: websocket}
         self.viewers: List[WebSocket] = []
-        self.patient_trackers: Dict[str, PatientMetricTrackers] = {}  # {patient_id: trackers}
+        # {patient_id: trackers}
+        self.patient_trackers: Dict[str, PatientMetricTrackers] = {}
 
         # Queue-based processing (one queue per patient)
-        self.processing_queues: Dict[str, queue.Queue] = {}  # {patient_id: queue}
-        self.worker_threads: Dict[str, threading.Thread] = {}  # {patient_id: thread}
-        self.worker_stop_flags: Dict[str, threading.Event] = {}  # {patient_id: stop_event}
+        # {patient_id: queue}
+        self.processing_queues: Dict[str, queue.Queue] = {}
+        # {patient_id: thread}
+        self.worker_threads: Dict[str, threading.Thread] = {}
+        # {patient_id: stop_event}
+        self.worker_stop_flags: Dict[str, threading.Event] = {}
 
-    def register_streamer(self, patient_id: str, websocket: WebSocket, monitoring_conditions: Optional[List[str]] = None):
+    def register_streamer(self, patient_id: str, websocket: WebSocket, analysis_mode: Optional[str] = "normal"):
         """Register a streamer for a specific patient"""
         self.streamers[patient_id] = websocket
 
         # Initialize metric trackers for this patient
         trackers = PatientMetricTrackers()
-        if monitoring_conditions:
-            trackers.monitoring_conditions = monitoring_conditions
+        trackers.analysis_mode = analysis_mode if analysis_mode in [
+            "normal", "enhanced"] else "normal"
         self.patient_trackers[patient_id] = trackers
 
         # Start dedicated processing worker for this patient
-        self.processing_queues[patient_id] = queue.Queue(maxsize=2)  # Small queue, discard old frames
+        self.processing_queues[patient_id] = queue.Queue(
+            maxsize=2)  # Small queue, discard old frames
         self.worker_stop_flags[patient_id] = threading.Event()
 
         worker = threading.Thread(
@@ -109,7 +121,8 @@ class ConnectionManager:
         worker.start()
         self.worker_threads[patient_id] = worker
 
-        print(f"✅ Registered streamer for patient {patient_id}. Monitoring: {monitoring_conditions}. Worker started. Total streamers: {len(self.streamers)}")
+        print(
+            f"✅ Registered streamer for patient {patient_id}. Analysis mode: {analysis_mode}. Worker started. Total streamers: {len(self.streamers)}")
 
     def unregister_streamer(self, patient_id: str):
         """Unregister a streamer for a specific patient"""
@@ -134,7 +147,8 @@ class ConnectionManager:
         if patient_id in self.patient_trackers:
             del self.patient_trackers[patient_id]
 
-        print(f"❌ Unregistered streamer for patient {patient_id}. Worker stopped. Total streamers: {len(self.streamers)}")
+        print(
+            f"❌ Unregistered streamer for patient {patient_id}. Worker stopped. Total streamers: {len(self.streamers)}")
 
     def get_trackers(self, patient_id: str) -> Optional[PatientMetricTrackers]:
         """Get metric trackers for a patient"""
@@ -184,14 +198,39 @@ class ConnectionManager:
 
         while not self.worker_stop_flags[patient_id].is_set():
             try:
-                # Get monitoring config for this patient
-                monitoring_config = monitoring_manager.get_config(patient_id)
+                # Get trackers to check analysis mode
+                trackers = self.get_trackers(patient_id)
+                analysis_mode = trackers.analysis_mode if trackers else "normal"
 
                 # Get frame from queue (blocking with timeout)
-                frame_task = self.processing_queues[patient_id].get(timeout=0.5)
+                frame_task = self.processing_queues[patient_id].get(
+                    timeout=0.5)
                 frame_data = frame_task["frame_data"]
                 frame_num = frame_task["frame_num"]
                 frame_count += 1
+
+                # Check analysis mode
+                if analysis_mode == "normal":
+                    # NORMAL MODE: No AI/CV processing, just send empty overlay
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.broadcast_frame({
+                        "type": "overlay_data",
+                        "patient_id": patient_id,
+                        "frame_num": frame_num,
+                        "data": {
+                            "landmarks": [],
+                            "connections": [],
+                            "head_pose_axes": None,
+                            "metrics": None
+                        }
+                    }))
+                    loop.close()
+                    continue
+
+                # ENHANCED MODE: Full AI/CV analysis
+                # Get monitoring config for this patient
+                monitoring_config = monitoring_manager.get_config(patient_id)
 
                 # FAST: Process overlay every frame (pose only, ~50ms)
                 start_time = time.time()
@@ -203,10 +242,12 @@ class ConnectionManager:
                 frames_per_interval = monitoring_config.frequency_seconds * 30  # Assume 30 FPS
                 if frame_num - last_slow_frame >= frames_per_interval:
                     slow_start = time.time()
-                    slow_result = process_frame_metrics(frame_data, patient_id, monitoring_config)
+                    slow_result = process_frame_metrics(
+                        frame_data, patient_id, monitoring_config)
                     slow_time = time.time() - slow_start
                     last_slow_frame = frame_num
-                    print(f"📊 Patient {patient_id} - Frame #{frame_num} [{monitoring_config.level}] CRS: {slow_result['metrics'].get('crs_score', 0)}, HR: {slow_result['metrics'].get('heart_rate', 0)} (took {slow_time*1000:.0f}ms)")
+                    print(
+                        f"📊 Patient {patient_id} - Frame #{frame_num} [{monitoring_config.level}] CRS: {slow_result['metrics'].get('crs_score', 0)}, HR: {slow_result['metrics'].get('heart_rate', 0)} (took {slow_time*1000:.0f}ms)")
 
                 # Merge fast overlays with slow metrics
                 overlay_data = {
@@ -238,12 +279,14 @@ class ConnectionManager:
                         }))
 
                         # Analyze metrics with Patient Guardian Agent
-                        decision = patient_guardian.analyze_metrics(patient_id, slow_result["metrics"])
+                        decision = patient_guardian.analyze_metrics(
+                            patient_id, slow_result["metrics"])
 
                         # Execute decision if action needed (not MAINTAIN)
                         if decision["action"] != "MAINTAIN":
                             loop.run_until_complete(
-                                patient_guardian.execute_decision(patient_id, decision, self)
+                                patient_guardian.execute_decision(
+                                    patient_id, decision, self)
                             )
                     except Exception as e:
                         print(f"⚠️ Agent analysis error: {e}")
@@ -251,7 +294,8 @@ class ConnectionManager:
                 loop.close()
 
                 if fast_time > 0.1:
-                    print(f"⚠️ Fast processing slow: {fast_time*1000:.0f}ms (frame {frame_num})")
+                    print(
+                        f"⚠️ Fast processing slow: {fast_time*1000:.0f}ms (frame {frame_num})")
 
             except queue.Empty:
                 # No frames to process, continue waiting
@@ -282,11 +326,14 @@ class ConnectionManager:
         results = await asyncio.gather(*[send_to_viewer(v) for v in self.viewers], return_exceptions=True)
 
         # Clean up dead connections
-        dead = [r for r in results if r is not None and not isinstance(r, Exception)]
+        dead = [
+            r for r in results if r is not None and not isinstance(r, Exception)]
         for viewer in dead:
             self.disconnect(viewer)
 
+
 manager = ConnectionManager()
+
 
 def process_frame_fast(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
     """
@@ -375,7 +422,8 @@ def process_frame_fast(frame_base64: str, patient_id: Optional[str] = None) -> D
 
         total_time = time.time() - start
         if total_time > 0.1:  # Log if >100ms
-            print(f"⚠️ Fast processing slow: {total_time*1000:.0f}ms (decode: {decode_time*1000:.0f}ms, resize: {resize_time*1000:.0f}ms, MediaPipe: {mediapipe_time*1000:.0f}ms)")
+            print(
+                f"⚠️ Fast processing slow: {total_time*1000:.0f}ms (decode: {decode_time*1000:.0f}ms, resize: {resize_time*1000:.0f}ms, MediaPipe: {mediapipe_time*1000:.0f}ms)")
 
         return {
             "landmarks": landmark_data,
@@ -461,7 +509,8 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
             landmarks = face_results.multi_face_landmarks[0]
 
             # === HEAD POSE ESTIMATION === (only if attention or head pose metrics enabled)
-            needs_head_pose = any(m in enabled_metrics for m in ["head_pitch", "head_yaw", "head_roll", "attention_score"])
+            needs_head_pose = any(m in enabled_metrics for m in [
+                                  "head_pitch", "head_yaw", "head_roll", "attention_score"])
             if needs_head_pose:
                 model_points = np.array([
                     (0.0, 0.0, 0.0),
@@ -473,12 +522,18 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                 ], dtype=np.float64)
 
                 image_points = np.array([
-                    (int(landmarks.landmark[1].x * w), int(landmarks.landmark[1].y * h)),
-                    (int(landmarks.landmark[152].x * w), int(landmarks.landmark[152].y * h)),
-                    (int(landmarks.landmark[263].x * w), int(landmarks.landmark[263].y * h)),
-                    (int(landmarks.landmark[33].x * w), int(landmarks.landmark[33].y * h)),
-                    (int(landmarks.landmark[287].x * w), int(landmarks.landmark[287].y * h)),
-                    (int(landmarks.landmark[57].x * w), int(landmarks.landmark[57].y * h))
+                    (int(landmarks.landmark[1].x * w),
+                     int(landmarks.landmark[1].y * h)),
+                    (int(landmarks.landmark[152].x * w),
+                     int(landmarks.landmark[152].y * h)),
+                    (int(landmarks.landmark[263].x * w),
+                     int(landmarks.landmark[263].y * h)),
+                    (int(landmarks.landmark[33].x * w),
+                     int(landmarks.landmark[33].y * h)),
+                    (int(landmarks.landmark[287].x * w),
+                     int(landmarks.landmark[287].y * h)),
+                    (int(landmarks.landmark[57].x * w),
+                     int(landmarks.landmark[57].y * h))
                 ], dtype=np.float64)
 
                 focal_length = w
@@ -498,13 +553,15 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                 if success:
                     rotation_mat, _ = cv2.Rodrigues(rotation_vec)
                     pose_mat = cv2.hconcat((rotation_mat, translation_vec))
-                    _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(pose_mat)
+                    _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(
+                        pose_mat)
                     head_pitch = float(euler_angles[0][0])
                     head_yaw = float(euler_angles[1][0])
                     head_roll = float(euler_angles[2][0])
 
             # === EYE OPENNESS === (only if eye_openness or attention_score enabled)
-            needs_eye = any(m in enabled_metrics for m in ["eye_openness", "attention_score"])
+            needs_eye = any(m in enabled_metrics for m in [
+                            "eye_openness", "attention_score"])
             if needs_eye:
                 left_eye_top = landmarks.landmark[159]
                 left_eye_bottom = landmarks.landmark[145]
@@ -520,7 +577,8 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                 yaw_factor = max(0, 1 - abs(head_yaw) / 45.0)
                 pitch_factor = max(0, 1 - abs(head_pitch) / 30.0)
                 eye_factor = min(1.0, eye_openness / 2.0)
-                attention_score = (yaw_factor * 0.4 + pitch_factor * 0.3 + eye_factor * 0.3)
+                attention_score = (yaw_factor * 0.4 +
+                                   pitch_factor * 0.3 + eye_factor * 0.3)
 
             # === FACIAL FLUSHING (CRS INDICATOR) === (only if crs_score enabled)
             if "crs_score" in enabled_metrics:
@@ -528,7 +586,8 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                 for idx in [205, 425]:
                     lm = landmarks.landmark[idx]
                     x, y = int(lm.x * w), int(lm.y * h)
-                    roi = frame[max(0, y-10):min(h, y+10), max(0, x-10):min(w, x+10)]
+                    roi = frame[max(0, y-10):min(h, y+10),
+                                max(0, x-10):min(w, x+10)]
 
                     if roi.size > 0:
                         r = np.mean(roi[:, :, 2])
@@ -545,34 +604,44 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                 if "heart_rate" in enabled_metrics:
                     forehead_lm = landmarks.landmark[10]
                     fx, fy = int(forehead_lm.x * w), int(forehead_lm.y * h)
-                    forehead_roi = frame[max(0, fy-30):min(h, fy+10), max(0, fx-40):min(w, fx+40)]
-                    print(f"❤️ HR Debug: Calling tracker with forehead_roi shape={forehead_roi.shape if forehead_roi.size > 0 else 'EMPTY'}")
-                    heart_rate = trackers.heart_rate.process_frame(frame, forehead_roi)
+                    forehead_roi = frame[max(
+                        0, fy-30):min(h, fy+10), max(0, fx-40):min(w, fx+40)]
+                    print(
+                        f"❤️ HR Debug: Calling tracker with forehead_roi shape={forehead_roi.shape if forehead_roi.size > 0 else 'EMPTY'}")
+                    heart_rate = trackers.heart_rate.process_frame(
+                        frame, forehead_roi)
                     print(f"❤️ HR Result: {heart_rate}")
 
                 # Respiratory rate (FFT on nose movement)
                 if "respiratory_rate" in enabled_metrics:
                     nose_y = landmarks.landmark[1].y
-                    print(f"🫁 RR Debug: Calling tracker with nose_y={nose_y:.4f}")
-                    respiratory_rate = trackers.respiratory_rate.process_frame(nose_y)
+                    print(
+                        f"🫁 RR Debug: Calling tracker with nose_y={nose_y:.4f}")
+                    respiratory_rate = trackers.respiratory_rate.process_frame(
+                        nose_y)
                     print(f"🫁 RR Result: {respiratory_rate}")
 
                 # Face touching detection
                 if "face_touching_frequency" in enabled_metrics:
-                    face_touching_freq, is_touching = trackers.face_touching.process_frame(landmarks)
+                    face_touching_freq, is_touching = trackers.face_touching.process_frame(
+                        landmarks)
 
                 # Movement and restlessness
                 if any(m in enabled_metrics for m in ["restlessness_index", "movement_vigor"]):
-                    restlessness_index, movement_vigor = trackers.movement.process_frame(landmarks)
+                    restlessness_index, movement_vigor = trackers.movement.process_frame(
+                        landmarks)
 
                 # Tremor detection (FFT on hand positions) - very expensive!
                 if any(m in enabled_metrics for m in ["tremor_magnitude", "tremor_detected"]):
-                    tremor_magnitude, tremor_detected = trackers.tremor.process_frame(landmarks)
+                    tremor_magnitude, tremor_detected = trackers.tremor.process_frame(
+                        landmarks)
 
                 # Upper body posture tracking
-                needs_upper_body = any(m in enabled_metrics for m in ["shoulder_angle", "posture_score", "upper_body_movement", "lean_forward", "arm_asymmetry"])
+                needs_upper_body = any(m in enabled_metrics for m in [
+                                       "shoulder_angle", "posture_score", "upper_body_movement", "lean_forward", "arm_asymmetry"])
                 if needs_upper_body and pose_results.pose_landmarks:
-                    upper_body_metrics = trackers.upper_body.process_frame(pose_results.pose_landmarks)
+                    upper_body_metrics = trackers.upper_body.process_frame(
+                        pose_results.pose_landmarks)
             else:
                 # Fallback if no trackers - only calculate if enabled
                 if "heart_rate" in enabled_metrics:
@@ -645,4 +714,3 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                 "arm_asymmetry": 0.0
             }
         }
-

@@ -79,8 +79,11 @@ export default function DashboardPage() {
     null  // Start with one empty box
   ]);
 
-  // Monitoring conditions for each box
+  // Monitoring conditions for each box (legacy)
   const [boxMonitoringConditions, setBoxMonitoringConditions] = useState<Record<number, string[]>>({});
+  
+  // Analysis modes for each box ('normal' or 'enhanced')
+  const [boxAnalysisModes, setBoxAnalysisModes] = useState<Record<number, 'normal' | 'enhanced'>>({});
 
   // Monitoring levels for each box (BASELINE, ENHANCED, CRITICAL)
   const [boxMonitoringLevels, setBoxMonitoringLevels] = useState<Record<number, 'BASELINE' | 'ENHANCED' | 'CRITICAL'>>({});
@@ -133,11 +136,15 @@ export default function DashboardPage() {
     setShowPatientModal(true);
   };
 
-  // Assign patient to box (reads monitoring config from localStorage set by Stream page)
+  // Assign patient to box (reads analysis mode from localStorage set by Stream page)
   const assignPatientToBox = (patient: SupabasePatient) => {
     if (selectedBoxIndex === null) return;
 
-    // Read monitoring config from localStorage (set by Stream page)
+    // Read analysis mode from localStorage (set by Stream/Patient-View page)
+    const savedMode = localStorage.getItem(`analysis-mode-${patient.patient_id}`);
+    const mode = (savedMode === 'normal' || savedMode === 'enhanced') ? savedMode : 'enhanced';
+
+    // Read legacy monitoring config if exists
     const savedConditions = localStorage.getItem(`monitoring-${patient.patient_id}`);
     const conditions = savedConditions ? JSON.parse(savedConditions) : [];
 
@@ -150,7 +157,13 @@ export default function DashboardPage() {
       return newAssignments;
     });
 
-    // Store monitoring conditions for this box
+    // Store analysis mode for this box
+    setBoxAnalysisModes(prev => ({
+      ...prev,
+      [selectedBoxIndex]: mode
+    }));
+
+    // Store monitoring conditions for this box (legacy)
     setBoxMonitoringConditions(prev => ({
       ...prev,
       [selectedBoxIndex]: conditions
@@ -160,19 +173,19 @@ export default function DashboardPage() {
     setSelectedPatientId(selectedBoxIndex);  // Auto-select the newly assigned box
 
     // Add initial monitoring event
-    const protocolsText = conditions.length > 0
-      ? `Monitoring: ${conditions.join(', ')}`
-      : 'No protocols configured (configure in Stream page)';
+    const protocolsText = mode === 'enhanced'
+      ? 'Enhanced AI Analysis Active'
+      : 'Normal Monitoring (No AI/CV analysis)';
 
     addPatientEvent(selectedBoxIndex, {
       timestamp: new Date().toISOString(),
       type: 'system',
-      severity: conditions.length > 0 ? 'info' : 'warning',
+      severity: mode === 'enhanced' ? 'info' : 'warning',
       message: 'Monitoring Started',
       details: `Assigned ${patient.name} - ${protocolsText}`
     });
 
-    console.log(`✅ Assigned ${patient.patient_id} to box ${selectedBoxIndex} with conditions: ${conditions.length > 0 ? conditions.join(', ') : 'none'}`);
+    console.log(`✅ Assigned ${patient.patient_id} to box ${selectedBoxIndex} with analysis mode: ${mode}`);
   };
 
   // Add event to patient's log
@@ -772,6 +785,7 @@ export default function DashboardPage() {
                   cvData={selectedCvData}
                   isLive={true}
                   monitoringConditions={selectedPatientId !== null ? (boxMonitoringConditions[selectedPatientId] || []) : []}
+                  analysisMode={selectedPatientId !== null ? (boxAnalysisModes[selectedPatientId] || 'enhanced') : 'enhanced'}
                   events={selectedPatientId !== null ? (patientEvents[selectedPatientId] || []) : []}
                   monitoringLevel={selectedPatientId !== null ? (boxMonitoringLevels[selectedPatientId] || 'BASELINE') : 'BASELINE'}
                   monitoringExpiresAt={selectedPatientId !== null ? (boxMonitoringExpires[selectedPatientId] || null) : null}
