@@ -575,7 +575,6 @@ export default function DashboardPage() {
               <h1 className="text-3xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent leading-tight">
                 Haven
               </h1>
-              <p className="text-[10px] label-uppercase text-neutral-500 mt-0.5">Linvoseltamab Phase III - NCT04649359</p>
             </div>
 
             {/* Center: Navigation */}

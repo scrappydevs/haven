@@ -99,8 +99,8 @@ export default function ManualAlertsPanel() {
             disabled={isSending}
           >
             <option value="">Choose a nurse...</option>
-            {NURSES.map((nurse) => (
-              <option key={nurse.phone} value={nurse.phone}>
+            {NURSES.map((nurse, index) => (
+              <option key={`${nurse.name}-${index}`} value={nurse.phone}>
                 {nurse.name} ({nurse.phone})
               </option>
             ))}
