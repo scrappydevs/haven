@@ -299,6 +299,143 @@ async def trigger_voice_alert(request: SMSAlertRequest):
         }
 
 
+class MessengerAlertRequest(BaseModel):
+    phone_number: str
+    message: str
+    channel: str = "whatsapp"  # whatsapp, messenger, viber, or mms
+
+
+@app.post("/alerts/messenger")
+async def trigger_messenger_alert(request: MessengerAlertRequest):
+    """
+    Send alert via WhatsApp, Facebook Messenger, Viber, or MMS
+    
+    NO 10DLC REGISTRATION REQUIRED FOR:
+    - WhatsApp Business API
+    - Facebook Messenger
+    - Viber Business Messages
+    - International MMS
+    
+    These channels work immediately and bypass U.S. SMS carrier restrictions!
+    """
+    try:
+        # Get Vonage credentials from secrets
+        VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
+        VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
+        
+        if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
+            # Mock mode for demos without credentials
+            print(f"⚠️  Vonage not configured - mock sending {request.channel} to {request.phone_number}")
+            print(f"   Message: {request.message}")
+            return {
+                "status": "success",
+                "message": f"{request.channel.title()} message sent (mock mode - Vonage not configured)",
+                "mock_sent": True,
+                "to": request.phone_number,
+                "channel": request.channel
+            }
+        
+        # Import Vonage Messages API (v4+ API)
+        from vonage import Auth, Vonage
+        from vonage_messages import MessagesClient
+        
+        # Create auth and client
+        auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
+        client = Vonage(auth=auth)
+        
+        # Format phone number (remove + and spaces)
+        to_number = request.phone_number.replace("+", "").replace("-", "").replace(" ", "")
+        
+        # Build message based on channel
+        message_data = {
+            "to": to_number,
+            "message_type": "text",
+            "text": f"🚨 Haven Alert: {request.message}"
+        }
+        
+        # Channel-specific configuration
+        if request.channel == "whatsapp":
+            message_data["from"] = "14157386102"  # WhatsApp Business number (Vonage sandbox)
+            message_data["channel"] = "whatsapp"
+        elif request.channel == "messenger":
+            message_data["from"] = "107083064136738"  # Facebook Page ID (get from Vonage dashboard)
+            message_data["channel"] = "messenger"
+        elif request.channel == "viber":
+            message_data["from"] = "HavenAI"  # Viber Service ID
+            message_data["channel"] = "viber_service"
+        elif request.channel == "mms":
+            message_data["from"] = "12178020876"  # Your Vonage number
+            message_data["channel"] = "mms"
+        else:
+            return {
+                "status": "error",
+                "message": f"Unsupported channel: {request.channel}"
+            }
+        
+        # Send message via Vonage Messages API
+        response = client.messages.send_message(message_data)
+        
+        print(f"✅ {request.channel.title()} message sent to {request.phone_number}: {response.get('message_uuid')}")
+        
+        return {
+            "status": "success",
+            "message": f"{request.channel.title()} message sent successfully",
+            "message_uuid": response.get("message_uuid"),
+            "to": request.phone_number,
+            "channel": request.channel
+        }
+        
+    except ImportError:
+        # Vonage not installed - return mock success
+        print(f"⚠️  Vonage Messages API not installed - mock sending {request.channel} to {request.phone_number}")
+        return {
+            "status": "success",
+            "message": f"{request.channel.title()} message sent (mock mode - Vonage not installed)",
+            "mock_sent": True,
+            "to": request.phone_number,
+            "channel": request.channel
+        }
+    except Exception as e:
+        print(f"❌ Failed to send {request.channel} message: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to send {request.channel} message: {str(e)}"
+        }
+
+
+# Webhook endpoints for Vonage Messages API (inbound messages and status updates)
+@app.post("/vonage/inbound")
+async def vonage_inbound_messages(request: dict):
+    """
+    Receive inbound messages from WhatsApp/Messenger/Viber
+    Nurses can reply to alerts directly!
+    """
+    print(f"📩 Inbound message from {request.get('from')}: {request.get('message', {}).get('content', {}).get('text')}")
+    
+    # TODO: Process inbound replies from nurses
+    # - Store in database
+    # - Notify dashboard
+    # - Update alert status
+    
+    return {"status": "received"}
+
+
+@app.post("/vonage/status")
+async def vonage_message_status(request: dict):
+    """
+    Receive delivery status updates for sent messages
+    Track if nurse received/read the alert
+    """
+    print(f"📊 Message status update: {request.get('status')} for message {request.get('message_uuid')}")
+    
+    # TODO: Update alert delivery status in database
+    # - delivered
+    # - read
+    # - failed
+    
+    return {"status": "received"}
+
+
 @app.get("/smplrspace/config")
 async def get_smplrspace_config():
     """
