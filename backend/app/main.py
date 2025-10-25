@@ -219,6 +219,86 @@ async def trigger_sms_alert(request: SMSAlertRequest):
         }
 
 
+@app.post("/alerts/call")
+async def trigger_voice_alert(request: SMSAlertRequest):
+    """
+    Make voice call with TTS alert via Vonage
+    No 10DLC registration required - works immediately!
+    
+    Voice calls bypass SMS carrier restrictions
+    """
+    try:
+        # Get Vonage credentials from secrets
+        VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
+        VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
+        VONAGE_APPLICATION_ID = get_secret("VONAGE_APPLICATION_ID")
+        
+        if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
+            # Mock mode for demos without credentials
+            print(f"⚠️  Vonage not configured - mock calling {request.phone_number}")
+            print(f"   Message: {request.message}")
+            return {
+                "status": "success",
+                "message": "Voice call placed (mock mode - Vonage Voice not configured)",
+                "mock_sent": True,
+                "to": request.phone_number,
+                "note": "Voice API requires Vonage Application setup - see dashboard"
+            }
+        
+        # Import Vonage client (v4+ API)
+        from vonage import Auth, Vonage
+        
+        # Create auth and client
+        auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
+        client = Vonage(auth=auth)
+        
+        # Create voice call with TTS
+        # NCCO = Nexmo Call Control Objects
+        ncco = [
+            {
+                "action": "talk",
+                "text": f"This is an urgent alert from Haven AI. {request.message}. I repeat: {request.message}. Please check the dashboard immediately.",
+                "voiceName": "Amy",  # US English female voice
+                "bargeIn": False  # Don't allow user to interrupt
+            }
+        ]
+        
+        # Remove '+' from phone numbers for Voice API
+        to_number = request.phone_number.replace("+", "").replace("-", "").replace(" ", "")
+        
+        response = client.voice.create_call({
+            "to": [{"type": "phone", "number": to_number}],
+            "from_": {"type": "phone", "number": "12178020876"},  # Your Vonage number
+            "ncco": ncco
+        })
+        
+        print(f"✅ Voice call placed to {request.phone_number}: {response.get('uuid')}")
+        
+        return {
+            "status": "success",
+            "message": "Voice call placed successfully",
+            "call_uuid": response.get("uuid"),
+            "to": request.phone_number,
+            "type": "voice"
+        }
+        
+    except ImportError:
+        # Vonage not installed - return mock success
+        print(f"⚠️  Vonage library not installed - mock calling {request.phone_number}")
+        return {
+            "status": "success",
+            "message": "Voice call placed (mock mode - Vonage not installed)",
+            "mock_sent": True,
+            "to": request.phone_number
+        }
+    except Exception as e:
+        print(f"❌ Failed to place voice call: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to place call: {str(e)}"
+        }
+
+
 @app.get("/smplrspace/config")
 async def get_smplrspace_config():
     """
