@@ -223,14 +223,33 @@ export default function DashboardPage() {
         }
       }));
 
-      // Add event to patient log
+      // Add monitoring action event to patient log
       addPatientEvent(boxIndex, {
         timestamp: new Date().toISOString(),
-        type: 'agent',
-        severity: message.level === 'CRITICAL' ? 'high' : message.level === 'ENHANCED' ? 'moderate' : 'info',
-        message: `🤖 Monitoring: ${message.level}`,
+        type: 'agent_action',  // Preserve specific type for green highlighting
+        severity: message.level === 'CRITICAL' ? 'critical' : message.level === 'ENHANCED' ? 'warning' : 'normal',
+        message: `⚡ ACTION: ${message.level} MONITORING ACTIVATED`,
         details: message.reason
       });
+
+      // Add metric changes
+      if (message.enabled_metrics && message.enabled_metrics.length > 0) {
+        const metricsAdded = message.enabled_metrics.filter((m: string) =>
+          !['heart_rate', 'respiratory_rate', 'crs_score'].includes(m)
+        );
+
+        if (metricsAdded.length > 0) {
+          metricsAdded.forEach((metric: string) => {
+            addPatientEvent(boxIndex, {
+              timestamp: new Date().toISOString(),
+              type: 'monitoring',
+              severity: 'normal',
+              message: `📊 Enabled: ${metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`,
+              details: undefined
+            });
+          });
+        }
+      }
 
       // Add to global feed
       const patient = boxAssignments[boxIndex];
@@ -254,13 +273,13 @@ export default function DashboardPage() {
         [boxIndex]: true
       }));
 
-      // Add to activity log
+      // Add to activity log with specific type
       addPatientEvent(boxIndex, {
         timestamp: new Date().toISOString(),
-        type: 'agent',
+        type: 'agent_thinking',  // Preserve specific type
         severity: 'info',
         message: '🤖 Analyzing metrics...',
-        details: 'AI agent evaluating patient condition'
+        details: message.message || 'AI agent evaluating patient condition'
       });
 
       // Clear after 3 seconds
@@ -273,25 +292,16 @@ export default function DashboardPage() {
     }
 
     if (message.type === 'agent_reasoning') {
-      // Add reasoning to activity log
+      // Add reasoning to activity log with rich metadata
       addPatientEvent(boxIndex, {
         timestamp: new Date().toISOString(),
-        type: 'agent',
+        type: 'agent_reasoning',  // Preserve specific type
         severity: 'info',
-        message: '🤖 Agent Reasoning',
-        details: `"${message.reasoning}" (Confidence: ${(message.confidence * 100).toFixed(0)}%)`
+        message: `🧠 REASONING: "${message.reasoning}"`,
+        details: message.concerns && message.concerns.length > 0 ? `Concerns: [${message.concerns.join(', ')}]` : undefined,
+        confidence: message.confidence,
+        concerns: message.concerns || []
       });
-
-      // Add concerns if present
-      if (message.concerns && message.concerns.length > 0) {
-        addPatientEvent(boxIndex, {
-          timestamp: new Date().toISOString(),
-          type: 'agent',
-          severity: 'moderate',
-          message: '⚠️ Concerns Identified',
-          details: message.concerns.join(', ')
-        });
-      }
     }
 
     if (message.type === 'agent_alert') {
@@ -733,11 +743,13 @@ export default function DashboardPage() {
         mode="assign-stream"
       />
 
-      {/* Agent Alert Toasts */}
-      <AgentAlertToast
-        alerts={agentAlerts}
-        onDismiss={(id) => setAgentAlerts(prev => prev.filter(a => a.id !== id))}
-      />
+      {/* Agent Alert Toasts - Only show in overview mode */}
+      {viewMode === 'overview' && (
+        <AgentAlertToast
+          alerts={agentAlerts}
+          onDismiss={(id) => setAgentAlerts(prev => prev.filter(a => a.id !== id))}
+        />
+      )}
     </div>
   );
 }

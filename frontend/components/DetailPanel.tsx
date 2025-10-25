@@ -88,17 +88,30 @@ export default function DetailPanel({
     if (!events || events.length === 0) return;
 
     const latestEvent = events[0]; // Get most recent event
+
+    // Map event types to terminal log types
+    let terminalType: 'vital' | 'agent_thinking' | 'agent_action' | 'agent_reasoning' | 'monitoring' | 'alert' = 'monitoring';
+
+    if (latestEvent.type === 'agent_thinking') terminalType = 'agent_thinking';
+    else if (latestEvent.type === 'agent_reasoning') terminalType = 'agent_reasoning';
+    else if (latestEvent.type === 'agent_action') terminalType = 'agent_action';
+    else if (latestEvent.type === 'alert') terminalType = 'alert';
+    else if (latestEvent.type === 'vital') terminalType = 'vital';
+    else if (latestEvent.type === 'monitoring') terminalType = 'monitoring';
+
     const newEntry: TerminalLogEntry = {
       id: logIdCounter,
       timestamp: new Date(latestEvent.timestamp),
-      type: latestEvent.type === 'agent' ? 'agent_action' :
-            latestEvent.type === 'alert' ? 'alert' :
-            latestEvent.type === 'vital' ? 'vital' : 'monitoring',
-      severity: latestEvent.severity === 'high' ? 'critical' :
-                latestEvent.severity === 'moderate' ? 'warning' : 'normal',
+      type: terminalType,
+      severity: latestEvent.severity === 'high' || latestEvent.severity === 'critical' ? 'critical' :
+                latestEvent.severity === 'moderate' || latestEvent.severity === 'warning' ? 'warning' : 'normal',
       message: latestEvent.message,
       details: latestEvent.details,
-      highlight: latestEvent.type === 'agent' || latestEvent.type === 'alert'
+      highlight: terminalType.startsWith('agent_') || terminalType === 'alert',
+      metadata: {
+        confidence: latestEvent.confidence,
+        concerns: latestEvent.concerns
+      }
     };
 
     setTerminalEntries(prev => [...prev, newEntry]);
@@ -113,23 +126,59 @@ export default function DetailPanel({
     const rr = getValue('respiratory_rate');
     const crs = getValue('crs_score');
 
-    // Only log significant changes (throttle)
-    const shouldLog = Math.random() < 0.2; // 20% chance to log (reduces spam)
+    // Only log significant changes (throttle) - but always log concerning values
+    const hrConcerning = hr > 90;
+    const rrConcerning = rr > 18;
+    const crsConcerning = crs > 0.5;
+    const shouldLog = hrConcerning || rrConcerning || crsConcerning || Math.random() < 0.15; // 15% chance + always log concerning
+
     if (!shouldLog) return;
 
-    if (hr) {
+    // Log HR if concerning or random
+    if (hr && (hrConcerning || Math.random() < 0.3)) {
+      const status = hr > 100 ? '⚠️ [ELEVATED]' : hr > 90 ? '↑ [HIGH]' : '✓ [NORMAL]';
       const entry: TerminalLogEntry = {
         id: logIdCounter,
         timestamp: new Date(),
         type: 'vital',
         severity: hr > 100 ? 'critical' : hr > 90 ? 'warning' : 'normal',
-        message: `HR → ${hr} bpm`,
+        message: `HR  → ${hr} bpm ${status}`,
         metadata: { value: hr }
       };
       setTerminalEntries(prev => [...prev, entry].slice(-100)); // Keep last 100
       setLogIdCounter(prev => prev + 1);
     }
-  }, [cvData?.metrics?.heart_rate]);
+
+    // Log RR if concerning
+    if (rr && (rrConcerning || Math.random() < 0.3)) {
+      const status = rr > 22 ? '⚠️ [ELEVATED]' : rr > 18 ? '↑ [HIGH]' : '✓ [NORMAL]';
+      const entry: TerminalLogEntry = {
+        id: logIdCounter + 1,
+        timestamp: new Date(),
+        type: 'vital',
+        severity: rr > 22 ? 'critical' : rr > 18 ? 'warning' : 'normal',
+        message: `RR  → ${rr} /min ${status}`,
+        metadata: { value: rr }
+      };
+      setTerminalEntries(prev => [...prev, entry].slice(-100));
+      setLogIdCounter(prev => prev + 1);
+    }
+
+    // Log CRS if concerning
+    if (crs !== undefined && (crsConcerning || Math.random() < 0.3)) {
+      const status = crs > 0.7 ? '🚨 [CRITICAL]' : crs > 0.5 ? '⚠️ [CONCERNING]' : '✓ [STABLE]';
+      const entry: TerminalLogEntry = {
+        id: logIdCounter + 2,
+        timestamp: new Date(),
+        type: 'vital',
+        severity: crs > 0.7 ? 'critical' : crs > 0.5 ? 'warning' : 'normal',
+        message: `CRS → ${crs.toFixed(2)} ${status}`,
+        metadata: { value: crs }
+      };
+      setTerminalEntries(prev => [...prev, entry].slice(-100));
+      setLogIdCounter(prev => prev + 1);
+    }
+  }, [cvData?.metrics?.heart_rate, cvData?.metrics?.respiratory_rate, cvData?.metrics?.crs_score]);
 
   // Basic vitals
   const heartRate = getValue('heart_rate');
@@ -151,148 +200,128 @@ export default function DetailPanel({
     );
   }
 
+  // Calculate time remaining for display
+  const timeRemaining = monitoringExpiresAt ? calculateTimeRemaining(monitoringExpiresAt) : null;
+
+  // Get monitoring level badge styling
+  const getMonitoringBadge = () => {
+    const baseClasses = "px-2 py-0.5 text-xs font-semibold border transition-all duration-300";
+
+    if (monitoringLevel === 'CRITICAL') {
+      return {
+        className: `${baseClasses} border-red-600 bg-red-600/20 text-red-600 shadow-lg shadow-red-500/50`,
+        icon: '🚨',
+        label: 'CRITICAL'
+      };
+    } else if (monitoringLevel === 'ENHANCED') {
+      return {
+        className: `${baseClasses} border-yellow-600 bg-yellow-600/20 text-yellow-600 shadow-lg shadow-yellow-500/30`,
+        icon: '⚡',
+        label: 'ENHANCED'
+      };
+    } else {
+      return {
+        className: `${baseClasses} border-neutral-400 bg-neutral-100 text-neutral-600`,
+        icon: '📊',
+        label: 'BASELINE'
+      };
+    }
+  };
+
+  const badge = getMonitoringBadge();
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       className="bg-surface border border-neutral-200 overflow-hidden h-full flex flex-col"
     >
-      {/* ========== PATIENT HEADER ========== */}
-      <div className="border-b-2 border-neutral-950 bg-neutral-50 px-6 py-4 flex-shrink-0">
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="text-xl font-light text-neutral-950 mb-1">
+      {/* ========== COMPACT PATIENT HEADER ========== */}
+      <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-light text-neutral-950">
               {patient.name}
             </h3>
-            <div className="flex items-center gap-3 text-xs text-neutral-500">
-              <span>Patient #{patient.id}</span>
-              {patient.age && <span>• {patient.age}y/o</span>}
-              {isLive && (
-                <span className="flex items-center gap-1 text-primary-700">
-                  <motion.div
-                    animate={{ opacity: [1, 0.3, 1] }}
-                    transition={{ repeat: Infinity, duration: 2 }}
-                    className="w-2 h-2 bg-primary-700 rounded-full"
-                  />
-                  LIVE
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className={`px-3 py-1 text-xs font-semibold border ${
-              alert ? 'border-accent-terra bg-accent-terra/10 text-accent-terra' :
-                     'border-green-600 bg-green-600/10 text-green-600'
-            }`}>
-              {alert ? '⚠️ Alert' : '✓ Stable'}
-            </div>
-            {alert && alertTriggers.length > 0 && (
-              <p className="text-xs text-accent-terra mt-1">
-                {alertTriggers.join(' • ')}
-              </p>
+            <span className="text-xs text-neutral-500">• {patient.age}y/o</span>
+            {patient.condition && (
+              <span className="text-xs text-neutral-500">• {patient.condition}</span>
             )}
           </div>
-        </div>
-        {patient.condition && (
-          <p className="text-sm font-light text-neutral-700 mt-2">
-            {patient.condition}
-          </p>
-        )}
-      </div>
-
-      {/* ========== SCROLLABLE CONTENT ========== */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
-          {/* ========== AI AGENT STATUS (PROMINENT) ========== */}
-          <AIAgentStatus
-            isActive={true}
-            isAnalyzing={isAgentAnalyzing}
-            monitoringLevel={monitoringLevel}
-            expiresAt={monitoringExpiresAt}
-            lastDecision={lastAgentDecision}
-            decisionsToday={agentStats.decisionsToday}
-            escalationsToday={agentStats.escalationsToday}
-          />
-
-          {/* ========== TERMINAL LOG (MAIN FEATURE) ========== */}
-          <div>
-            <h3 className="label-uppercase text-neutral-950 text-sm mb-3 flex items-center gap-2">
-              <span>AI Agent Activity Log</span>
-              <motion.div
-                animate={{ opacity: [1, 0.3, 1] }}
-                transition={{ repeat: Infinity, duration: 2 }}
-                className="w-2 h-2 bg-green-500 rounded-full"
-              />
-            </h3>
-            <TerminalLog entries={terminalEntries} maxHeight="400px" />
-          </div>
-
-          {/* ========== ACTIVE PROTOCOLS ========== */}
-          <ActiveProtocols
-            monitoringLevel={monitoringLevel}
-            enabledMetrics={enabledMetrics}
-            timeRemaining={monitoringExpiresAt ? calculateTimeRemaining(monitoringExpiresAt) : null}
-          />
-
-          {/* ========== CURRENT VITALS SUMMARY ========== */}
-          <div className="bg-neutral-50 border border-neutral-200 p-4">
-            <h3 className="label-uppercase text-neutral-700 text-xs mb-3">
-              Current Vitals Summary
-            </h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="text-center">
-                <p className="text-xs text-neutral-500 mb-1">Heart Rate</p>
-                <p className={`text-2xl font-light ${
-                  heartRate > 100 ? 'text-red-600' :
-                  heartRate > 90 ? 'text-yellow-600' :
-                  'text-green-600'
-                }`}>
-                  {heartRate ?? '--'}
-                </p>
-                <p className="text-xs text-neutral-400">bpm</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-neutral-500 mb-1">Resp. Rate</p>
-                <p className={`text-2xl font-light ${
-                  respiratoryRate > 22 ? 'text-red-600' :
-                  respiratoryRate > 18 ? 'text-yellow-600' :
-                  'text-green-600'
-                }`}>
-                  {respiratoryRate ?? '--'}
-                </p>
-                <p className="text-xs text-neutral-400">/min</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-neutral-500 mb-1">CRS Score</p>
-                <p className={`text-2xl font-light ${
-                  crsScore > 0.7 ? 'text-red-600' :
-                  crsScore > 0.4 ? 'text-yellow-600' :
-                  'text-green-600'
-                }`}>
-                  {crsScore ? `${(crsScore * 100).toFixed(0)}%` : '--'}
-                </p>
-                <p className="text-xs text-neutral-400">risk</p>
-              </div>
-            </div>
+          <div className={`px-2 py-0.5 text-xs font-semibold border ${
+            alert ? 'border-accent-terra bg-accent-terra/10 text-accent-terra' :
+                   'border-green-600 bg-green-600/10 text-green-600'
+          }`}>
+            {alert ? '⚠️ Alert' : '✓ Stable'}
           </div>
         </div>
       </div>
 
-      {/* ========== FOOTER ========== */}
-      <div className="border-t border-neutral-200 bg-neutral-50 px-6 py-3 flex-shrink-0">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
+      {/* ========== COMPACT AGENT STATUS LINE ========== */}
+      <div className="border-b border-neutral-200 bg-neutral-900 px-3 py-1.5 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {isAgentAnalyzing ? (
+              <motion.span
+                animate={{ opacity: [1, 0.5, 1] }}
+                transition={{ repeat: Infinity, duration: 1.5 }}
+                className="text-sm text-cyan-400 font-mono"
+              >
+                🤖 Analyzing...
+              </motion.span>
+            ) : (
+              <span className="text-sm text-green-400 font-mono flex items-center gap-2">
+                👁️ Watching
+              </span>
+            )}
+            <span className="text-neutral-600">│</span>
             <motion.div
-              animate={{ scale: [1, 1.5, 1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="w-2 h-2 bg-green-500 rounded-full"
-            />
-            <span className="text-neutral-700 font-light">
-              AI Agent Active • Claude 3.5 Sonnet
+              className={badge.className}
+              animate={isAgentAnalyzing ? { scale: [1, 1.05, 1] } : {}}
+              transition={{ repeat: isAgentAnalyzing ? Infinity : 0, duration: 2 }}
+            >
+              {badge.icon} {badge.label}
+            </motion.div>
+            {timeRemaining && monitoringLevel !== 'BASELINE' && (
+              <>
+                <span className="text-neutral-600">│</span>
+                <span className="text-xs text-neutral-400 font-mono">⏱️ {timeRemaining}</span>
+              </>
+            )}
+          </div>
+          <div className="text-xs text-neutral-500 font-mono">
+            {agentStats.decisionsToday} decisions
+          </div>
+        </div>
+      </div>
+
+      {/* ========== TERMINAL LOG (MAIN FEATURE - 80% OF SPACE) ========== */}
+      <div className="flex-1 overflow-hidden">
+        <TerminalLog entries={terminalEntries} maxHeight="100%" />
+      </div>
+
+      {/* ========== MINIMAL FOOTER WITH QUICK VITALS ========== */}
+      <div className="border-t border-neutral-200 bg-neutral-900 px-3 py-1.5 flex-shrink-0">
+        <div className="flex items-center justify-between text-xs font-mono">
+          <div className="flex items-center gap-3 text-neutral-400">
+            <span className={heartRate > 100 ? 'text-red-400' : heartRate > 90 ? 'text-yellow-400' : 'text-green-400'}>
+              ❤️ {heartRate ?? '--'}
+            </span>
+            <span className="text-neutral-600">│</span>
+            <span className={respiratoryRate > 22 ? 'text-red-400' : respiratoryRate > 18 ? 'text-yellow-400' : 'text-green-400'}>
+              💨 {respiratoryRate ?? '--'}
+            </span>
+            <span className="text-neutral-600">│</span>
+            <span className={crsScore > 0.7 ? 'text-red-400' : crsScore > 0.4 ? 'text-yellow-400' : 'text-green-400'}>
+              🌡️ {crsScore ? `${(crsScore * 100).toFixed(0)}%` : '--'}
+            </span>
+            <span className="text-neutral-600">│</span>
+            <span className="text-neutral-500">
+              👁️ {enabledMetrics.length} metrics
             </span>
           </div>
-          <span className="text-neutral-500">
-            {terminalEntries.length} log entries
+          <span className="text-neutral-500 text-xs">
+            AI: Claude 3.5 Sonnet
           </span>
         </div>
       </div>
