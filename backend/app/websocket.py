@@ -21,12 +21,32 @@ face_mesh = mp.solutions.face_mesh.FaceMesh(
 
 class ConnectionManager:
     def __init__(self):
-        self.streamers: List[WebSocket] = []
+        self.streamers: Dict[str, WebSocket] = {}  # {patient_id: websocket}
         self.viewers: List[WebSocket] = []
 
+    def register_streamer(self, patient_id: str, websocket: WebSocket):
+        """Register a streamer for a specific patient"""
+        self.streamers[patient_id] = websocket
+        print(f"✅ Registered streamer for patient {patient_id}. Total streamers: {len(self.streamers)}")
+
+    def unregister_streamer(self, patient_id: str):
+        """Unregister a streamer for a specific patient"""
+        if patient_id in self.streamers:
+            del self.streamers[patient_id]
+            print(f"❌ Unregistered streamer for patient {patient_id}. Total streamers: {len(self.streamers)}")
+
     def disconnect(self, websocket: WebSocket):
-        if websocket in self.streamers:
-            self.streamers.remove(websocket)
+        """Disconnect a websocket (legacy method)"""
+        # Remove from streamers (find by value)
+        patient_id_to_remove = None
+        for patient_id, ws in self.streamers.items():
+            if ws == websocket:
+                patient_id_to_remove = patient_id
+                break
+        if patient_id_to_remove:
+            self.unregister_streamer(patient_id_to_remove)
+
+        # Remove from viewers
         if websocket in self.viewers:
             self.viewers.remove(websocket)
 

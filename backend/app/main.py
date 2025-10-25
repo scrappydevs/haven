@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 from pathlib import Path
 from app.websocket import manager, process_frame
+from app.supabase_client import supabase
 
 app = FastAPI(
     title="TrialSentinel AI",
@@ -82,17 +83,82 @@ async def health_check():
 
 @app.get("/patients")
 async def get_patients():
-    """Get list of all patients (first 47)"""
+    """Get list of all patients (first 47) - LEGACY"""
     return patients[:47]
 
 
 @app.get("/patient/{patient_id}")
 async def get_patient(patient_id: int):
-    """Get single patient details"""
+    """Get single patient details - LEGACY"""
     for patient in patients:
         if patient["id"] == patient_id:
             return patient
     return {"error": "Patient not found"}
+
+
+@app.get("/patients/search")
+async def search_patients(q: str = ""):
+    """
+    Search patients by name from Supabase
+
+    Args:
+        q: Search query string
+
+    Returns:
+        List of patients matching the search query
+    """
+    if not supabase:
+        return {"error": "Supabase not configured", "patients": []}
+
+    try:
+        if q:
+            # Search by name (case-insensitive)
+            response = supabase.table("patients") \
+                .select("*") \
+                .ilike("name", f"%{q}%") \
+                .eq("enrollment_status", "active") \
+                .order("name") \
+                .execute()
+        else:
+            # Return all active patients if no search query
+            response = supabase.table("patients") \
+                .select("*") \
+                .eq("enrollment_status", "active") \
+                .order("name") \
+                .limit(50) \
+                .execute()
+
+        return response.data
+    except Exception as e:
+        print(f"❌ Error searching patients: {e}")
+        return {"error": str(e), "patients": []}
+
+
+@app.get("/patients/by-id/{patient_id}")
+async def get_patient_by_id(patient_id: str):
+    """
+    Get single patient by patient_id (e.g., P-001)
+
+    Args:
+        patient_id: Patient ID string (e.g., "P-001")
+
+    Returns:
+        Patient details
+    """
+    if not supabase:
+        return {"error": "Supabase not configured"}
+
+    try:
+        response = supabase.table("patients") \
+            .select("*") \
+            .eq("patient_id", patient_id) \
+            .single() \
+            .execute()
+
+        return response.data
+    except Exception as e:
+        print(f"❌ Error fetching patient {patient_id}: {e}")
+        return {"error": str(e)}
 
 
 @app.get("/cv-data/{patient_id}/{timestamp}")
@@ -214,6 +280,24 @@ async def get_stats():
         "crs_events_detected": len([a for a in alerts if "CRS" in a.get("message", "")]),
         "time_savings_percent": 75,
         "lives_saved": 2  # Based on early detection
+    }
+
+
+@app.get("/streams/active")
+async def get_active_streams():
+    """
+    Get list of patient IDs currently streaming
+
+    Returns:
+        {
+            "active_streams": ["P-001", "P-003"],
+            "count": 2
+        }
+    """
+    active_patient_ids = list(manager.streamers.keys())
+    return {
+        "active_streams": active_patient_ids,
+        "count": len(active_patient_ids)
     }
 
 
