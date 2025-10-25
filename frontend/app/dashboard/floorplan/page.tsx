@@ -818,22 +818,22 @@ export default function FloorPlanPage() {
       <link href="https://app.smplrspace.com/lib/smplr.css" rel="stylesheet" />
       
       {/* Main Content */}
-      <div className="grid grid-cols-12 gap-4 p-4">
+      <div className="grid grid-cols-12 gap-6 p-6 h-[calc(100vh-4rem)]">
         {/* Floor Plan Viewer (Left - 8 columns) */}
-        <div className="col-span-8 space-y-4">
-          <div className="bg-surface border border-neutral-200">
-            <div className="px-4 py-3 border-b border-neutral-200">
-              <p className="text-xs font-light text-neutral-500">
+        <div className="col-span-8 flex flex-col">
+          <div className="bg-surface border border-neutral-200 flex-1 flex flex-col">
+            <div className="px-5 py-4 border-b border-neutral-200">
+              <p className="text-sm font-light text-neutral-600">
                 Hospital View
               </p>
             </div>
 
-            <div className="p-4">
+            <div className="p-6 flex-1 flex flex-col">
 
             {/* Error Message */}
             {viewerError && (
-              <div className="bg-yellow-50 border border-yellow-200 p-2 mb-3">
-                <p className="text-[10px] font-light text-neutral-600">
+              <div className="bg-yellow-50 border border-yellow-200 p-3 mb-4">
+                <p className="text-xs font-light text-neutral-600">
                   {viewerError}
                 </p>
               </div>
@@ -842,7 +842,7 @@ export default function FloorPlanPage() {
             {/* Smplrspace Container or Demo Grid */}
             {useDemoMode ? (
               // Demo Mode: Simple 2D Grid
-              <div className="w-full h-[600px] bg-neutral-50 p-6">
+              <div className="w-full flex-1 bg-neutral-50 p-6">
                 <div className="grid grid-cols-3 gap-4 h-full">
                   {rooms.filter(r => r.type === 'patient').map((room: Room) => (
                     <button
@@ -895,7 +895,7 @@ export default function FloorPlanPage() {
               <div
                 id="smplr-container"
                 ref={containerRef}
-                className="w-full h-[600px] bg-neutral-50 relative z-0"
+                className="w-full flex-1 bg-neutral-50 relative z-0"
               />
             )}
           </div>
@@ -903,7 +903,7 @@ export default function FloorPlanPage() {
         </div>
 
         {/* Right Panel - Legend & Room List (4 columns) */}
-        <div className="col-span-4 space-y-4">
+        <div className="col-span-4 flex flex-col space-y-4 overflow-hidden">
           {selectedRoom ? (
             <RoomDetailsPanel
               room={selectedRoom}
@@ -920,7 +920,7 @@ export default function FloorPlanPage() {
           ) : (
             <>
               {/* Legend - Always Visible */}
-              <div className="bg-surface border-b border-neutral-200 px-4 py-3">
+              <div className="bg-surface border-b border-neutral-200 px-5 py-4">
                 <FloorPlanLegend
                   totalRooms={rooms.filter(r => r.type === 'patient').length}
                   occupiedRooms={rooms.filter(r => r.assignedPatient).length}
@@ -930,19 +930,19 @@ export default function FloorPlanPage() {
               </div>
 
               {/* Available Patients - Collapsible */}
-              <div className="bg-surface">
+              <div className="bg-surface flex-shrink-0">
                 <button
                   onClick={() => setPatientsListCollapsed(!patientsListCollapsed)}
-                  className="w-full px-4 py-3 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors"
+                  className="w-full px-5 py-4 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <p className="text-xs font-light text-neutral-500">Available Patients</p>
-                    <span className="text-[10px] font-light text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded">
+                    <p className="text-sm font-light text-neutral-600">Available Patients</p>
+                    <span className="text-xs font-light text-primary-700 bg-primary-100 px-2 py-0.5 rounded">
                       {filteredPatients.length}
                     </span>
                   </div>
                   <svg 
-                    className={`w-4 h-4 text-neutral-400 transition-transform ${patientsListCollapsed ? '' : 'rotate-180'}`}
+                    className={`w-5 h-5 text-neutral-400 transition-transform ${patientsListCollapsed ? '' : 'rotate-180'}`}
                     fill="none" 
                     stroke="currentColor" 
                     viewBox="0 0 24 24"
@@ -953,13 +953,13 @@ export default function FloorPlanPage() {
                 </button>
 
                 {!patientsListCollapsed && (
-                  <div className="overflow-y-auto max-h-[300px]">
+                  <div className="overflow-y-auto max-h-[350px]">
                     {filteredPatients.length === 0 ? (
-                      <div className="p-4 text-center">
-                        <p className="text-xs font-light text-neutral-400">
+                      <div className="p-5 text-center">
+                        <p className="text-sm font-light text-neutral-400">
                           No available patients
                         </p>
-                        </div>
+                      </div>
                     ) : (
                       filteredPatients.map((patient) => (
                         <div
@@ -967,30 +967,30 @@ export default function FloorPlanPage() {
                           draggable
                           onDragStart={() => handleDragStart(patient)}
                           onDragEnd={handleDragEnd}
-                          className={`border-b border-neutral-200 p-3 cursor-move hover:bg-neutral-50 transition-colors ${
+                          className={`border-b border-neutral-200 p-4 cursor-move hover:bg-neutral-50 transition-colors ${
                             draggedPatient?.id === patient.id ? 'opacity-50' : ''
                           }`}
                         >
-                          <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <div className="flex items-center gap-3">
+                            <svg className="w-5 h-5 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                             </svg>
                             {patient.photo_url ? (
                               <img
                                 src={patient.photo_url}
                                 alt={patient.name}
-                                className="w-8 h-8 object-cover border border-neutral-300 flex-shrink-0"
+                                className="w-10 h-10 object-cover border border-neutral-300 flex-shrink-0"
                               />
                             ) : (
-                              <div className="w-8 h-8 border border-neutral-300 bg-primary-100 flex items-center justify-center flex-shrink-0">
-                                <span className="text-xs font-light text-primary-700">
+                              <div className="w-10 h-10 border border-neutral-300 bg-primary-100 flex items-center justify-center flex-shrink-0">
+                                <span className="text-sm font-light text-primary-700">
                                   {patient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                       </span>
                     </div>
                             )}
                             <div className="flex-1 min-w-0">
-                              <p className="font-light text-neutral-950 text-xs truncate">{patient.name}</p>
-                              <p className="text-[10px] font-light text-neutral-500">
+                              <p className="font-light text-neutral-950 text-sm truncate">{patient.name}</p>
+                              <p className="text-xs font-light text-neutral-500">
                                 {patient.age}y/o • {patient.patient_id}
                               </p>
                   </div>
@@ -1000,22 +1000,22 @@ export default function FloorPlanPage() {
           )}
         </div>
                 )}
-      </div>
+              </div>
 
               {/* All Rooms - Collapsible */}
-              <div className="bg-surface">
+              <div className="bg-surface flex-1 flex flex-col overflow-hidden">
                 <button
                   onClick={() => setRoomsListCollapsed(!roomsListCollapsed)}
-                  className="w-full px-4 py-3 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors"
+                  className="w-full px-5 py-4 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors flex-shrink-0"
                 >
                   <div className="flex items-center gap-2">
-                    <p className="text-xs font-light text-neutral-500">All Rooms</p>
-                    <span className="text-[10px] font-light text-neutral-400">
+                    <p className="text-sm font-light text-neutral-600">All Rooms</p>
+                    <span className="text-xs font-light text-neutral-400">
                       {filteredAndSortedRooms.length}
                     </span>
                   </div>
                   <svg 
-                    className={`w-4 h-4 text-neutral-400 transition-transform ${roomsListCollapsed ? '' : 'rotate-180'}`}
+                    className={`w-5 h-5 text-neutral-400 transition-transform ${roomsListCollapsed ? '' : 'rotate-180'}`}
                     fill="none" 
                     stroke="currentColor" 
                     viewBox="0 0 24 24"
@@ -1028,10 +1028,10 @@ export default function FloorPlanPage() {
                 {!roomsListCollapsed && (
                   <>
                     {/* Filter Controls */}
-                    <div className="px-4 py-2 border-b border-neutral-200 flex gap-3">
+                    <div className="px-5 py-3 border-b border-neutral-200 flex gap-4 flex-shrink-0">
                 <button
                         onClick={() => setRoomFilter('all')}
-                        className={`px-2 py-1 text-[10px] font-light transition-colors ${
+                        className={`px-3 py-1.5 text-xs font-light transition-colors ${
                           roomFilter === 'all'
                             ? 'text-neutral-950 border-b-2 border-primary-700'
                             : 'text-neutral-500 hover:text-neutral-950'
@@ -1041,7 +1041,7 @@ export default function FloorPlanPage() {
                       </button>
                       <button
                         onClick={() => setRoomFilter('empty')}
-                        className={`px-2 py-1 text-[10px] font-light transition-colors ${
+                        className={`px-3 py-1.5 text-xs font-light transition-colors ${
                           roomFilter === 'empty'
                             ? 'text-neutral-950 border-b-2 border-primary-700'
                             : 'text-neutral-500 hover:text-neutral-950'
@@ -1051,7 +1051,7 @@ export default function FloorPlanPage() {
                       </button>
                       <button
                         onClick={() => setRoomFilter('occupied')}
-                        className={`px-2 py-1 text-[10px] font-light transition-colors ${
+                        className={`px-3 py-1.5 text-xs font-light transition-colors ${
                           roomFilter === 'occupied'
                             ? 'text-neutral-950 border-b-2 border-primary-700'
                             : 'text-neutral-500 hover:text-neutral-950'
@@ -1061,44 +1061,44 @@ export default function FloorPlanPage() {
                       </button>
                     </div>
 
-                    <div className="overflow-y-auto max-h-[calc(100vh-500px)]">
+                    <div className="overflow-y-auto flex-1">
                       {filteredAndSortedRooms.map((room: Room) => {
                         // Handle both patient rooms and nurse stations
                         if (room.type === 'nurse_station') {
                           const nurseCount = room.assignedNurses?.length || 0;
                           return (
-                            <div
-                              key={room.id}
-                              className={`border-b border-neutral-200 p-3 hover:bg-neutral-50 transition-colors cursor-pointer ${
+                  <div
+                    key={room.id}
+                    className={`border-b border-neutral-200 p-4 hover:bg-neutral-50 transition-colors cursor-pointer ${
                                 selectedRoom?.id === room.id ? 'bg-primary-50' : ''
-                              }`}
-                  onClick={() => {
-                                setSelectedRoom(room);
+                    }`}
+                    onClick={() => {
+                      setSelectedRoom(room);
                                 navigateToRoom(room);
-                              }}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2">
-                                      <p className="font-light text-neutral-950 text-xs">{room.name}</p>
-                                      <span className="text-[9px] font-light text-neutral-500">
-                                        STATION
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
+                          <p className="font-light text-neutral-950 text-sm">{room.name}</p>
+                                      <span className="text-[10px] font-light text-neutral-500 uppercase tracking-wider">
+                                        Station
+                      </span>
+                    </div>
+                  </div>
+              </div>
                                 <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-light text-neutral-400">
+                                  <span className="text-xs font-light text-neutral-400">
                                     {nurseCount} Staff
                                   </span>
-                                  <svg className="w-3 h-3 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                  <svg className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-              </div>
+                                  </svg>
             </div>
-                            </div>
+        </div>
+      </div>
                           );
                         } else {
                           // Patient room
@@ -1109,7 +1109,7 @@ export default function FloorPlanPage() {
                           return (
                             <div
                               key={room.id}
-                              className={`border-b border-neutral-200 p-3 transition-colors cursor-pointer ${
+                              className={`border-b border-neutral-200 p-4 transition-colors cursor-pointer ${
                                 selectedRoom?.id === room.id ? 'bg-primary-50' : ''
                               } ${canDrop ? 'hover:bg-green-50 hover:border-green-300' : 'hover:bg-neutral-50'}`}
                               onClick={() => {
@@ -1120,27 +1120,27 @@ export default function FloorPlanPage() {
                               onDrop={canDrop ? (e) => handleDrop(e, room) : undefined}
                             >
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <div className={`w-2 h-2 rounded-full ${statusColor}`} />
-                                  <div className="flex-1">
-                                    <p className="font-light text-neutral-950 text-xs">{room.name}</p>
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-2.5 h-2.5 rounded-full ${statusColor}`} />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-light text-neutral-950 text-sm">{room.name}</p>
                                     {room.assignedPatient && (
-                                      <p className="text-[10px] font-light text-neutral-500 mt-0.5">
+                                      <p className="text-xs font-light text-neutral-500 mt-1 truncate">
                                         {room.assignedPatient.name}
                                       </p>
                                     )}
-                </div>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-light text-neutral-400">
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="text-xs font-light text-neutral-400">
                                     {statusText}
-                          </span>
-                                  <svg className="w-3 h-3 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                  </span>
+                                  <svg className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                   </svg>
-                        </div>
-                      </div>
-                </div>
+                                </div>
+                              </div>
+                            </div>
                           );
                         }
                       })}

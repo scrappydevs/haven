@@ -36,10 +36,31 @@ interface RoomDetailsPanelProps {
   onUnassignPatient: () => void;
   availablePatients: AvailablePatient[];
   onAssignPatient: (patient: AvailablePatient) => void;
+  onGenerateReport?: (patientId: string, roomId: string) => void;
 }
 
-export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, availablePatients, onAssignPatient }: RoomDetailsPanelProps) {
+export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, availablePatients, onAssignPatient, onGenerateReport }: RoomDetailsPanelProps) {
   if (!room) return null;
+
+  const handleDownloadReport = async () => {
+    if (!room.assignedPatient) return;
+    
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/reports/discharge/${room.assignedPatient.patient_id}/${room.id}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `discharge-report-${room.assignedPatient.patient_id}-${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      alert('Failed to generate report. Please try again.');
+    }
+  };
 
   return (
     <motion.div
@@ -106,12 +127,23 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, ava
                 </p>
               </div>
 
-              <button
-                onClick={onUnassignPatient}
-                className="w-full border border-accent-terra px-4 py-2 font-light text-xs uppercase tracking-wider text-accent-terra hover:bg-accent-terra hover:text-white transition-all"
-              >
-                Remove from Room
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={handleDownloadReport}
+                  className="w-full border border-primary-700 px-4 py-2 font-light text-xs uppercase tracking-wider text-primary-700 hover:bg-primary-700 hover:text-white transition-all flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                  Generate Discharge Report
+                </button>
+                <button
+                  onClick={onUnassignPatient}
+                  className="w-full border border-accent-terra px-4 py-2 font-light text-xs uppercase tracking-wider text-accent-terra hover:bg-accent-terra hover:text-white transition-all"
+                >
+                  Remove from Room
+                </button>
+              </div>
             </div>
           ) : (
             <div>

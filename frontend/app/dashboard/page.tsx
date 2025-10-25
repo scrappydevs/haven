@@ -8,6 +8,7 @@ import StatsBar from '@/components/StatsBar';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import GlobalActivityFeed from '@/components/GlobalActivityFeed';
 import ManualAlertsPanel from '@/components/ManualAlertsPanel';
+import PatientManagement from '@/components/PatientNurseLookup';
 import { getApiUrl } from '@/lib/api';
 import AgentAlertToast from '@/components/AgentAlertToast';
 
@@ -22,11 +23,16 @@ interface Patient {
 }
 
 interface Alert {
-  patient_id: number;
-  message: string;
-  crs_score: number;
-  heart_rate: number;
-  timestamp: string;
+  id?: string;
+  alert_type: string;
+  severity: string;
+  patient_id?: string;
+  room_id?: string;
+  title: string;
+  description?: string;
+  status: string;
+  triggered_at: string;
+  metadata?: any;
 }
 
 interface SupabasePatient {
@@ -52,6 +58,7 @@ interface GlobalEvent {
 export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(true);
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
   const [selectedCvData, setSelectedCvData] = useState<any>(null);
   const [patientEvents, setPatientEvents] = useState<Record<number, any[]>>({});  // Events per box
@@ -545,13 +552,26 @@ export default function DashboardPage() {
       })
       .catch(err => console.error('Error fetching patients:', err));
 
-    // Poll for alerts every 2 seconds
-    const alertInterval = setInterval(() => {
-      fetch(`${apiUrl}/alerts`)
+    // Fetch initial alerts
+    const fetchAlerts = () => {
+      fetch(`${apiUrl}/alerts?status=active&limit=10`)
         .then(res => res.json())
-        .then(data => setAlerts(data))
-        .catch(err => console.error('Error fetching alerts:', err));
-    }, 2000);
+        .then(data => {
+          // Handle both array response and object with alerts property
+          const alertsArray = Array.isArray(data) ? data : (data.alerts || []);
+          setAlerts(alertsArray);
+          setIsLoadingAlerts(false);
+        })
+        .catch(err => {
+          console.error('Error fetching alerts:', err);
+          setIsLoadingAlerts(false);
+        });
+    };
+
+    fetchAlerts();
+
+    // Poll for alerts every 5 seconds
+    const alertInterval = setInterval(fetchAlerts, 5000);
 
     // Fetch stats
     fetch(`${apiUrl}/stats`)
@@ -561,6 +581,12 @@ export default function DashboardPage() {
 
     return () => clearInterval(alertInterval);
   }, []);
+
+  // Update stats when alerts change
+  useEffect(() => {
+    const activeCount = alerts.filter(a => a.status === 'active').length;
+    setStats(prev => ({ ...prev, active_alerts: activeCount }));
+  }, [alerts]);
 
   // No longer need displayedPatients - we use boxAssignments instead
 
@@ -572,7 +598,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             {/* Left: Logo */}
             <div>
-              <h1 className="text-3xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent leading-tight">
+              <h1 className="text-lg font-light text-neutral-950 uppercase tracking-wider">
                 Haven
               </h1>
             </div>
@@ -626,17 +652,23 @@ export default function DashboardPage() {
         </div> */}
 
         {viewMode === 'overview' ? (
-          // OVERVIEW MODE: 6-box grid + global activity feed
+          // OVERVIEW MODE: Stacked management and monitoring + activity feed
           <div className="grid grid-cols-12 gap-6">
-            {/* Video Grid (Left - 8 columns) */}
-            <div className="col-span-8">
-              <div className="mb-6">
-                <h2 className="text-lg font-normal uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">PATIENT MONITORING</h2>
-                {/* <p className="text-sm font-light text-neutral-500 mt-3">Click any feed to view detailed analysis</p> */}
+            {/* Left Panel - Patient Management & Monitoring (8 columns) */}
+            <div className="col-span-8 space-y-6">
+              {/* Patient Management */}
+              <div className="h-[400px]">
+                <PatientManagement />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-              {boxAssignments.map((patient, boxIndex) => {
+              {/* Patient Monitoring */}
+              <div>
+                <div className="mb-4">
+                  <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">Patient Monitoring</h2>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  {boxAssignments.map((patient, boxIndex) => {
                 // Empty box - show + button (only show if it's the last empty box)
                 if (!patient) {
                   // Check if this is the last empty box (should be the only one)
@@ -691,16 +723,18 @@ export default function DashboardPage() {
                       monitoringLevel={boxMonitoringLevels[boxIndex] || 'BASELINE'}
                     />
                   </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+            </div>
 
-            {/* Global Activity Feed + Manual Alerts (Right - 4 columns) */}
+            {/* Right Column - Activity Feed & Manual Alerts (4 columns) */}
             <div className="col-span-4 space-y-6">
               <GlobalActivityFeed
                 events={globalEventFeed}
                 alerts={alerts}
+                isLoading={isLoadingAlerts}
                 onPatientClick={onPatientClicked}
               />
               
