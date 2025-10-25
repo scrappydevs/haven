@@ -9,7 +9,7 @@ from pydantic import BaseModel
 import json
 from pathlib import Path
 import os
-from app.websocket import manager, process_frame
+from app.websocket import manager, process_frame_fast, process_frame_metrics
 from app.supabase_client import supabase
 from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
 
@@ -465,32 +465,64 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
     try:
         import asyncio
         frame_count = 0
-        last_cv_data = None
+        last_metrics = None  # Store latest metrics from slow processing
+        last_overlay_frame = 0  # Track last overlay frame
+        last_metrics_frame = 0  # Track last metrics frame
 
-        async def process_cv_async(frame_data: str, frame_num: int):
-            """Process CV in background and broadcast results"""
-            nonlocal last_cv_data
+        async def process_overlays_fast(frame_data: str, frame_num: int):
+            """FAST: Process overlays (pose only) at 15 FPS"""
+            nonlocal last_overlay_frame
             try:
-                result = await asyncio.to_thread(process_frame, frame_data, patient_id)
-                last_cv_data = result
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(process_frame_fast, frame_data, patient_id),
+                    timeout=0.3  # Ultra-fast pose-only should be <50ms, 300ms is very generous
+                )
 
-                # Broadcast CV data separately
-                await manager.broadcast_frame({
-                    "type": "cv_data",
-                    "patient_id": patient_id,
-                    "data": {
-                        "landmarks": result["landmarks"],
-                        "head_pose_axes": result["head_pose_axes"],
-                        "metrics": result["metrics"]
-                    }
-                })
+                # Only update if this frame is newer than last processed
+                if frame_num > last_overlay_frame:
+                    last_overlay_frame = frame_num
 
-                if frame_num % 30 == 0:
+                    # Broadcast overlay data with current metrics (if available)
+                    await manager.broadcast_frame({
+                        "type": "overlay_data",
+                        "patient_id": patient_id,
+                        "frame_num": frame_num,
+                        "data": {
+                            "landmarks": result["landmarks"],
+                            "connections": result["connections"],
+                            "head_pose_axes": result["head_pose_axes"],
+                            "metrics": last_metrics  # Use cached metrics from slow processing
+                        }
+                    })
+
+            except asyncio.TimeoutError:
+                print(f"⏱️ Fast overlay timeout (frame {frame_num})")
+            except Exception as e:
+                print(f"❌ Fast overlay error (frame {frame_num}): {e}")
+
+        async def process_metrics_slow(frame_data: str, frame_num: int):
+            """SLOW: Process all metrics (rPPG, FFT, trackers) every 5 seconds"""
+            nonlocal last_metrics, last_metrics_frame
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(process_frame_metrics, frame_data, patient_id),
+                    timeout=3.0  # Generous timeout for expensive operations
+                )
+
+                # Only update if this frame is newer
+                if frame_num > last_metrics_frame:
+                    last_metrics = result["metrics"]
+                    last_metrics_frame = frame_num
+
+                    # Log metrics update
                     crs = result.get('metrics', {}).get('crs_score', 0)
                     hr = result.get('metrics', {}).get('heart_rate', 0)
-                    print(f"📦 Patient {patient_id} - Frame #{frame_num} [CV PROCESSED], CRS: {crs}, HR: {hr}")
+                    print(f"📊 Patient {patient_id} - Frame #{frame_num} [METRICS UPDATED], CRS: {crs}, HR: {hr}")
+
+            except asyncio.TimeoutError:
+                print(f"⏱️ Metrics processing timeout (frame {frame_num})")
             except Exception as e:
-                print(f"❌ CV processing error: {e}")
+                print(f"❌ Metrics processing error (frame {frame_num}): {e}")
 
         while True:
             data = await websocket.receive_json()
@@ -499,7 +531,7 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
             if data.get("type") == "frame":
                 raw_frame = data.get("frame")
 
-                # IMMEDIATE PASSTHROUGH: Send raw frame to viewers instantly
+                # IMMEDIATE PASSTHROUGH: Send raw frame to viewers instantly (30 FPS)
                 await manager.broadcast_frame({
                     "type": "live_frame",
                     "patient_id": patient_id,
@@ -508,21 +540,13 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                     }
                 })
 
-                # Process CV asynchronously every 3rd frame
-                if frame_count % 3 == 0:
-                    # Start CV processing in background - don't wait for it
-                    asyncio.create_task(process_cv_async(raw_frame, frame_count))
-                elif last_cv_data:
-                    # Send cached CV data for non-processed frames
-                    await manager.broadcast_frame({
-                        "type": "cv_data",
-                        "patient_id": patient_id,
-                        "data": {
-                            "landmarks": last_cv_data["landmarks"],
-                            "head_pose_axes": last_cv_data["head_pose_axes"],
-                            "metrics": last_cv_data["metrics"]
-                        }
-                    })
+                # FAST: Process overlays every 2nd frame (15 FPS)
+                if frame_count % 2 == 0:
+                    asyncio.create_task(process_overlays_fast(raw_frame, frame_count))
+
+                # SLOW: Process metrics every 150th frame (every 5 seconds at 30 FPS)
+                if frame_count % 150 == 0:
+                    asyncio.create_task(process_metrics_slow(raw_frame, frame_count))
 
     except WebSocketDisconnect:
         print(f"❌ Patient {patient_id} stream disconnected")

@@ -68,9 +68,19 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   const imgRef = useRef<HTMLImageElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
-  const [cvData, setCvData] = useState<CVData | null>(null);
+  const [cvData, setCvData] = useState<CVData>({
+    landmarks: [],
+    head_pose_axes: null,
+    metrics: {  // Initialize with dummy metrics to prevent loading overlay
+      heart_rate: 0,
+      respiratory_rate: 0,
+      crs_score: 0,
+      alert: false
+    }
+  });
   const [alertFired, setAlertFired] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const [latestOverlayData, setLatestOverlayData] = useState<any>(null);
 
   // CV data callback effect - notify parent when data changes and player is selected
   useEffect(() => {
@@ -80,128 +90,119 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cvData, isSelected]); // Intentionally excluding onCvDataUpdate and patient.id to avoid infinite loops
 
-  // Canvas overlay drawing effect - runs whenever CV data updates
+  // Persistent canvas overlay rendering - redraws overlays at 60 FPS using cached data
   useEffect(() => {
-    if (!cvData || !isLive) return;  // Only draw overlays for live feeds
+    if (!isLive || !latestOverlayData) return;
 
     const canvas = overlayCanvasRef.current;
     const img = imgRef.current;
     if (!canvas || !img) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    let animationId: number;
 
-    // Match canvas size to image display size
-    const rect = img.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+    const drawOverlays = () => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    // Clear previous frame
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Match canvas size to image display size
+      const rect = img.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
 
-    // Draw landmarks and connections
-    if (cvData.landmarks && cvData.landmarks.length > 0) {
-      // Create a map for easy landmark lookup by type
-      const landmarkMap = new Map();
-      cvData.landmarks.forEach(lm => {
-        landmarkMap.set(lm.type, {
-          x: lm.x * canvas.width,
-          y: lm.y * canvas.height
+      // Clear previous frame
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw landmark connections
+      if (latestOverlayData.connections && latestOverlayData.landmarks) {
+        const landmarkMap = new Map();
+        latestOverlayData.landmarks.forEach((lm: any) => {
+          landmarkMap.set(lm.id, {
+            x: lm.x * canvas.width,
+            y: lm.y * canvas.height,
+            color: lm.color
+          });
         });
-      });
 
-      // Define connections between landmarks - "super cool" tactical HUD style
-      const connections = [
-        // Face perimeter frame
-        ['forehead', 'left_face'],
-        ['left_face', 'chin'],
-        ['chin', 'right_face'],
-        ['right_face', 'forehead'],
+        ctx.strokeStyle = '#00FF00';  // Green lines
+        ctx.lineWidth = 1;
 
-        // Eye crosshairs
-        ['left_eye_inner', 'nose_tip'],
-        ['right_eye_inner', 'nose_tip'],
-        ['left_eye_outer', 'left_face'],
-        ['right_eye_outer', 'right_face'],
+        latestOverlayData.connections.forEach(([startId, endId]: [number, number]) => {
+          const start = landmarkMap.get(startId);
+          const end = landmarkMap.get(endId);
+          if (start && end) {
+            ctx.beginPath();
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(end.x, end.y);
+            ctx.stroke();
+          }
+        });
 
-        // Center axis (nose to mouth)
-        ['nose_tip', 'upper_lip'],
-        ['upper_lip', 'lower_lip'],
-        ['lower_lip', 'chin'],
-
-        // Cheek scanlines (diagonal accents)
-        ['left_cheek', 'nose_tip'],
-        ['right_cheek', 'nose_tip'],
-        ['left_cheek', 'upper_lip'],
-        ['right_cheek', 'upper_lip'],
-      ];
-
-      // Draw connections (thin green lines)
-      ctx.strokeStyle = '#00FF00';  // Green
-      ctx.lineWidth = 1;
-      connections.forEach(([start, end]) => {
-        const startPoint = landmarkMap.get(start);
-        const endPoint = landmarkMap.get(end);
-        if (startPoint && endPoint) {
+        // Draw landmark points with colors
+        latestOverlayData.landmarks.forEach((lm: any) => {
+          const colorMap: Record<string, string> = {
+            'green': '#00FF00',
+            'cyan': '#00FFFF',
+            'red': '#FF0000'
+          };
+          ctx.fillStyle = colorMap[lm.color] || '#00FF00';
           ctx.beginPath();
-          ctx.moveTo(startPoint.x, startPoint.y);
-          ctx.lineTo(endPoint.x, endPoint.y);
-          ctx.stroke();
-        }
-      });
+          ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 3, 0, 2 * Math.PI);
+          ctx.fill();
+        });
+      }
 
-      // Draw landmark points (green)
-      ctx.fillStyle = '#00FF00';  // Green
-      cvData.landmarks.forEach((lm) => {
+      // Draw head pose axes
+      if (latestOverlayData.head_pose_axes) {
+        const axes = latestOverlayData.head_pose_axes;
+        const origin = axes.origin;
+
+        const colorMap: Record<string, string> = {
+          'red': '#FF0000',
+          'green': '#00FF00',
+          'blue': '#0000FF'
+        };
+
+        // Scale coordinates to canvas size
+        const scaleX = canvas.width / (img.naturalWidth || canvas.width);
+        const scaleY = canvas.height / (img.naturalHeight || canvas.height);
+
+        ctx.lineWidth = 2;
+
+        // Draw X axis (Red)
+        ctx.strokeStyle = colorMap[axes.x_axis.color];
         ctx.beginPath();
-        ctx.arc(
-          lm.x * canvas.width,
-          lm.y * canvas.height,
-          3,  // Radius
-          0,
-          2 * Math.PI
-        );
-        ctx.fill();
-      });
-    }
+        ctx.moveTo(origin.x * scaleX, origin.y * scaleY);
+        ctx.lineTo(axes.x_axis.x * scaleX, axes.x_axis.y * scaleY);
+        ctx.stroke();
 
-    // Draw head pose axes
-    if (cvData.head_pose_axes) {
-      const axes = cvData.head_pose_axes;
-      const origin = axes.origin;
+        // Draw Y axis (Green)
+        ctx.strokeStyle = colorMap[axes.y_axis.color];
+        ctx.beginPath();
+        ctx.moveTo(origin.x * scaleX, origin.y * scaleY);
+        ctx.lineTo(axes.y_axis.x * scaleX, axes.y_axis.y * scaleY);
+        ctx.stroke();
 
-      // Scale axis coordinates to match image display size
-      const scaleX = canvas.width / (img.naturalWidth || canvas.width);
-      const scaleY = canvas.height / (img.naturalHeight || canvas.height);
+        // Draw Z axis (Blue)
+        ctx.strokeStyle = colorMap[axes.z_axis.color];
+        ctx.beginPath();
+        ctx.moveTo(origin.x * scaleX, origin.y * scaleY);
+        ctx.lineTo(axes.z_axis.x * scaleX, axes.z_axis.y * scaleY);
+        ctx.stroke();
+      }
 
-      const scaledOrigin = {
-        x: origin.x * scaleX,
-        y: origin.y * scaleY
-      };
+      // Request next frame
+      animationId = requestAnimationFrame(drawOverlays);
+    };
 
-      // Draw X axis (Red)
-      ctx.strokeStyle = axes.x_axis.color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(scaledOrigin.x, scaledOrigin.y);
-      ctx.lineTo(axes.x_axis.x * scaleX, axes.x_axis.y * scaleY);
-      ctx.stroke();
+    // Start animation loop
+    animationId = requestAnimationFrame(drawOverlays);
 
-      // Draw Y axis (Green)
-      ctx.strokeStyle = axes.y_axis.color;
-      ctx.beginPath();
-      ctx.moveTo(scaledOrigin.x, scaledOrigin.y);
-      ctx.lineTo(axes.y_axis.x * scaleX, axes.y_axis.y * scaleY);
-      ctx.stroke();
-
-      // Draw Z axis (Blue)
-      ctx.strokeStyle = axes.z_axis.color;
-      ctx.beginPath();
-      ctx.moveTo(scaledOrigin.x, scaledOrigin.y);
-      ctx.lineTo(axes.z_axis.x * scaleX, axes.z_axis.y * scaleY);
-      ctx.stroke();
-    }
-  }, [cvData, isLive]);
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
+  }, [latestOverlayData, isLive]);
 
   // WebSocket effect for live feed only - separate from pre-recorded
   useEffect(() => {
@@ -221,29 +222,44 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
 
       // Filter by patient_id if provided, otherwise accept all messages
       if (!patientId || data.patient_id === patientId) {
-        // Handle raw frame update (immediate passthrough)
+        // Handle raw frame update (30 FPS smooth video)
         if (data.type === 'live_frame' && data.data?.frame) {
           if (imgRef.current) {
             imgRef.current.src = data.data.frame;
           }
         }
 
-        // Handle CV data update (comes separately, slightly delayed)
-        if (data.type === 'cv_data' && data.data) {
-          // Merge CV data with existing cvData (preserve frame if present)
-          setCvData(prev => ({
-            ...prev,
-            landmarks: data.data.landmarks,
-            head_pose_axes: data.data.head_pose_axes,
-            metrics: data.data.metrics
-          }));
+        // Handle overlay data (15 FPS updates, persists via requestAnimationFrame)
+        if (data.type === 'overlay_data' && data.data) {
+          // Update overlay data (will be redrawn at 60 FPS by animation loop)
+          setLatestOverlayData(data.data);
 
-          // Check for alerts
-          if (data.data.metrics?.alert && !alertFired) {
-            setAlertFired(true);
-            console.log(`🚨 ALERT FIRED for ${data.patient_id}! CRS:`, data.data.metrics.crs_score);
-            const audio = new Audio('/alert.mp3');
-            audio.play().catch(e => console.log('Audio play failed:', e));
+          // Update metrics
+          if (data.data.metrics) {
+            setCvData({
+              frame: undefined,
+              landmarks: data.data.landmarks || [],
+              head_pose_axes: data.data.head_pose_axes,
+              metrics: data.data.metrics,
+              // Legacy flat format support
+              crs_score: data.data.metrics?.crs_score,
+              heart_rate: data.data.metrics?.heart_rate,
+              respiratory_rate: data.data.metrics?.respiratory_rate,
+              alert: data.data.metrics?.alert,
+              head_pitch: data.data.metrics?.head_pitch,
+              head_yaw: data.data.metrics?.head_yaw,
+              head_roll: data.data.metrics?.head_roll,
+              eye_openness: data.data.metrics?.eye_openness,
+              attention_score: data.data.metrics?.attention_score
+            });
+
+            // Check for alerts
+            if (data.data.metrics?.alert && !alertFired) {
+              setAlertFired(true);
+              console.log(`🚨 ALERT FIRED for ${data.patient_id}! CRS:`, data.data.metrics.crs_score);
+              const audio = new Audio('/alert.mp3');
+              audio.play().catch(e => console.log('Audio play failed:', e));
+            }
           }
         }
       }
@@ -279,7 +295,23 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv-data/${patient.id}/${timestamp}`)
         .then(res => res.json())
         .then(data => {
-          setCvData(data);
+          // Normalize data structure to match live feed format
+          setCvData({
+            frame: data.frame,
+            landmarks: data.landmarks || [],
+            head_pose_axes: data.head_pose_axes || null,
+            metrics: data.metrics,
+            // Legacy flat format support
+            crs_score: data.metrics?.crs_score || data.crs_score,
+            heart_rate: data.metrics?.heart_rate || data.heart_rate,
+            respiratory_rate: data.metrics?.respiratory_rate || data.respiratory_rate,
+            alert: data.metrics?.alert || data.alert,
+            head_pitch: data.metrics?.head_pitch || data.head_pitch,
+            head_yaw: data.metrics?.head_yaw || data.head_yaw,
+            head_roll: data.metrics?.head_roll || data.head_roll,
+            eye_openness: data.metrics?.eye_openness || data.eye_openness,
+            attention_score: data.metrics?.attention_score || data.attention_score
+          });
 
           // Handle both nested (metrics.alert) and flat (alert) formats
           const isAlert = data.metrics?.alert || data.alert;
@@ -309,7 +341,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       animate={alertFired ? { scale: [1, 1.02, 1] } : {}}
       transition={{ repeat: alertFired ? Infinity : 0, duration: 1 }}
     >
-      {/* Video Element - Clean, no overlays */}
+      {/* Video Element - 30 FPS video + persistent canvas overlays */}
       {isLive ? (
         <div className={`relative w-full bg-black ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
           <img
@@ -318,7 +350,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
             alt="Live stream"
             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
           />
-          {/* Canvas overlay for landmarks and pose axes */}
+          {/* Canvas overlay for persistent landmark and pose rendering */}
           <canvas
             ref={overlayCanvasRef}
             className="absolute inset-0 pointer-events-none"
@@ -351,8 +383,8 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         </motion.div>
       )}
 
-      {/* Loading State */}
-      {!cvData && (
+      {/* Loading State - only show if no metrics data yet */}
+      {!cvData?.metrics && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50">
           <div className="text-center">
             <div className="text-white text-sm mb-2">

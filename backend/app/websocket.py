@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import json
+import threading
 from app.cv_metrics import (
     HeartRateMonitor,
     RespiratoryRateMonitor,
@@ -19,21 +20,25 @@ from app.cv_metrics import (
     UpperBodyPostureTracker
 )
 
-# Initialize MediaPipe Face Mesh
+# Thread lock for MediaPipe processing (not thread-safe even in static mode)
+cv_processing_lock = threading.Lock()
+
+# Initialize MediaPipe Face Mesh - OPTIMIZED for speed
 face_mesh = mp.solutions.face_mesh.FaceMesh(
     max_num_faces=1,
-    refine_landmarks=True,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
+    refine_landmarks=False,  # ✅ Skip refinement for speed
+    static_image_mode=True,
+    min_detection_confidence=0.3,  # ✅ Lower threshold for speed
+    min_tracking_confidence=0.3
 )
 
-# Initialize MediaPipe Pose
+# Initialize MediaPipe Pose - OPTIMIZED for speed
 pose = mp.solutions.pose.Pose(
-    static_image_mode=False,
-    model_complexity=1,  # 0=lite, 1=full, 2=heavy
-    smooth_landmarks=True,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
+    static_image_mode=True,
+    model_complexity=0,  # ✅ 0 = lite model (faster)
+    smooth_landmarks=False,
+    min_detection_confidence=0.3,  # ✅ Lower threshold for speed
+    min_tracking_confidence=0.3
 )
 
 class PatientMetricTrackers:
@@ -117,31 +122,118 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
+def process_frame_fast(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
     """
-    Process video frame with computer vision (CV data only, no frame re-encoding)
+    ULTRA-FAST: ONLY MediaPipe Pose for overlays (33 landmarks)
+    Face mesh moved to slow processing (too expensive for real-time)
+    Target: <50ms per frame
+    """
+    try:
+        import time
+        start = time.time()
 
-    Args:
-        frame_base64: Base64 encoded JPEG image
-        patient_id: Patient ID to get metric trackers
+        # Decode base64 to OpenCV image
+        if ',' in frame_base64:
+            frame_base64 = frame_base64.split(',')[1]
 
-    Returns:
-        {
-            "landmarks": [...],
-            "head_pose_axes": {...},
-            "metrics": {
-                "crs_score": 0.45,
-                "heart_rate": 78,
-                "respiratory_rate": 14,
-                "face_touching_frequency": 5,
-                "restlessness_index": 0.3,
-                "tremor_magnitude": 0.1,
-                ...
+        img_data = base64.b64decode(frame_base64)
+        nparr = np.frombuffer(img_data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            raise ValueError("Failed to decode frame")
+
+        decode_time = time.time() - start
+
+        # AGGRESSIVE downsampling for speed
+        small_frame = cv2.resize(frame, (160, 90))
+        rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+
+        resize_time = time.time() - start - decode_time
+
+        # Thread-safe MediaPipe: ONLY Pose (no face mesh - too slow)
+        mediapipe_start = time.time()
+        with cv_processing_lock:
+            pose_results = pose.process(rgb_frame)
+        mediapipe_time = time.time() - mediapipe_start
+
+        # Extract pose landmarks as simple overlay
+        landmark_data = []
+        connections_data = []
+        head_pose_axes = None
+
+        if pose_results.pose_landmarks:
+            # Extract key pose landmarks (head, shoulders, arms)
+            pose_landmark_indices = {
+                0: {"type": "nose", "color": "green"},
+                2: {"type": "left_eye", "color": "cyan"},
+                5: {"type": "right_eye", "color": "cyan"},
+                11: {"type": "left_shoulder", "color": "red"},
+                12: {"type": "right_shoulder", "color": "red"},
+                13: {"type": "left_elbow", "color": "green"},
+                14: {"type": "right_elbow", "color": "green"},
+                15: {"type": "left_wrist", "color": "green"},
+                16: {"type": "right_wrist", "color": "green"},
             }
+
+            for idx, metadata in pose_landmark_indices.items():
+                lm = pose_results.pose_landmarks.landmark[idx]
+                landmark_data.append({
+                    "id": int(idx),
+                    "x": float(lm.x),
+                    "y": float(lm.y),
+                    "type": metadata["type"],
+                    "color": metadata["color"]
+                })
+
+            # Simple connections for pose skeleton
+            connections_data = [
+                (0, 2), (0, 5),  # Nose to eyes
+                (2, 11), (5, 12),  # Eyes to shoulders
+                (11, 12),  # Shoulder line
+                (11, 13), (13, 15),  # Left arm
+                (12, 14), (14, 16),  # Right arm
+            ]
+
+            # Simple head direction indicator
+            nose = pose_results.pose_landmarks.landmark[0]
+            left_shoulder = pose_results.pose_landmarks.landmark[11]
+            right_shoulder = pose_results.pose_landmarks.landmark[12]
+
+            head_pose_axes = {
+                "origin": {"x": int(nose.x * 640), "y": int(nose.y * 360)},
+                "x_axis": {"x": int(right_shoulder.x * 640), "y": int(right_shoulder.y * 360), "color": "red"},
+                "y_axis": {"x": int(nose.x * 640), "y": int(nose.y * 360 - 50), "color": "green"},
+                "z_axis": {"x": int(left_shoulder.x * 640), "y": int(left_shoulder.y * 360), "color": "blue"}
+            }
+
+        total_time = time.time() - start
+        if total_time > 0.1:  # Log if >100ms
+            print(f"⚠️ Fast processing slow: {total_time*1000:.0f}ms (decode: {decode_time*1000:.0f}ms, resize: {resize_time*1000:.0f}ms, MediaPipe: {mediapipe_time*1000:.0f}ms)")
+
+        return {
+            "landmarks": landmark_data,
+            "connections": connections_data,
+            "head_pose_axes": head_pose_axes,
+            "metrics": None  # Metrics come from slow processing
         }
+
+    except Exception as e:
+        print(f"❌ Fast processing error: {e}")
+        return {
+            "landmarks": [],
+            "connections": [],
+            "head_pose_axes": None,
+            "metrics": None
+        }
+
+
+def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
     """
-    # Get patient-specific trackers
-    trackers = manager.get_trackers(patient_id) if patient_id else None
+    SLOW: All expensive tracker operations (rPPG, FFT, etc.) - runs every 5 seconds
+    Returns ONLY metrics, no overlay data (overlays come from fast function)
+    Target: Can take 1-2 seconds since it runs infrequently
+    """
     try:
         # Decode base64 to OpenCV image
         if ',' in frame_base64:
@@ -154,53 +246,64 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
         if frame is None:
             raise ValueError("Failed to decode frame")
 
-        # Convert BGR to RGB for MediaPipe
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w = frame.shape[:2]
 
-        # Run face detection
-        results = face_mesh.process(rgb_frame)
+        # Downsample for processing (balance between quality and speed)
+        small_frame = cv2.resize(frame, (320, 180))
+        rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
-        # Run pose detection
-        pose_results = pose.process(rgb_frame)
+        # Thread-safe MediaPipe processing
+        with cv_processing_lock:
+            face_results = face_mesh.process(rgb_frame)
+            pose_results = pose.process(rgb_frame)
 
-        # Default values
-        crs_score = 0.0
+        # Get trackers for this patient
+        trackers = manager.get_trackers(patient_id) if patient_id else None
+
+        # Initialize default values
         heart_rate = 75
         respiratory_rate = 14
+        crs_score = 0.0
+        face_touching_freq = 0
+        restlessness_index = 0.0
+        movement_vigor = 0.0
+        tremor_magnitude = 0.0
+        tremor_detected = False
         head_pitch = 0.0
         head_yaw = 0.0
         head_roll = 0.0
-        eye_openness = 1.0
-        attention_score = 1.0
-        key_landmarks_data = []
-        head_pose_axes = None
+        eye_openness = 0.0
+        attention_score = 0.0
+        upper_body_metrics = {
+            "shoulder_angle": 0.0,
+            "posture_score": 1.0,
+            "upper_body_movement": 0.0,
+            "lean_forward": 0.0,
+            "arm_asymmetry": 0.0
+        }
 
-        if results.multi_face_landmarks:
-            landmarks = results.multi_face_landmarks[0]
-            h, w = frame.shape[:2]
+        if face_results.multi_face_landmarks:
+            landmarks = face_results.multi_face_landmarks[0]
 
             # === HEAD POSE ESTIMATION ===
-            # Key 3D model points for head pose
             model_points = np.array([
-                (0.0, 0.0, 0.0),             # Nose tip
-                (0.0, -330.0, -65.0),        # Chin
-                (-225.0, 170.0, -135.0),     # Left eye corner
-                (225.0, 170.0, -135.0),      # Right eye corner
-                (-150.0, -150.0, -125.0),    # Left mouth corner
-                (150.0, -150.0, -125.0)      # Right mouth corner
+                (0.0, 0.0, 0.0),
+                (0.0, -330.0, -65.0),
+                (-225.0, 170.0, -135.0),
+                (225.0, 170.0, -135.0),
+                (-150.0, -150.0, -125.0),
+                (150.0, -150.0, -125.0)
             ], dtype=np.float64)
 
-            # 2D image points from landmarks
             image_points = np.array([
-                (int(landmarks.landmark[1].x * w), int(landmarks.landmark[1].y * h)),     # Nose tip
-                (int(landmarks.landmark[152].x * w), int(landmarks.landmark[152].y * h)), # Chin
-                (int(landmarks.landmark[263].x * w), int(landmarks.landmark[263].y * h)), # Left eye corner
-                (int(landmarks.landmark[33].x * w), int(landmarks.landmark[33].y * h)),   # Right eye corner
-                (int(landmarks.landmark[287].x * w), int(landmarks.landmark[287].y * h)), # Left mouth corner
-                (int(landmarks.landmark[57].x * w), int(landmarks.landmark[57].y * h))    # Right mouth corner
+                (int(landmarks.landmark[1].x * w), int(landmarks.landmark[1].y * h)),
+                (int(landmarks.landmark[152].x * w), int(landmarks.landmark[152].y * h)),
+                (int(landmarks.landmark[263].x * w), int(landmarks.landmark[263].y * h)),
+                (int(landmarks.landmark[33].x * w), int(landmarks.landmark[33].y * h)),
+                (int(landmarks.landmark[287].x * w), int(landmarks.landmark[287].y * h)),
+                (int(landmarks.landmark[57].x * w), int(landmarks.landmark[57].y * h))
             ], dtype=np.float64)
 
-            # Camera matrix
             focal_length = w
             center = (w / 2, h / 2)
             camera_matrix = np.array([
@@ -211,13 +314,11 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
 
             dist_coeffs = np.zeros((4, 1))
 
-            # Solve for pose
             success, rotation_vec, translation_vec = cv2.solvePnP(
                 model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE
             )
 
             if success:
-                # Convert rotation vector to Euler angles
                 rotation_mat, _ = cv2.Rodrigues(rotation_vec)
                 pose_mat = cv2.hconcat((rotation_mat, translation_vec))
                 _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(pose_mat)
@@ -226,8 +327,6 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
                 head_roll = float(euler_angles[2][0])
 
             # === EYE OPENNESS ===
-            # Left eye: landmarks 159 (top) and 145 (bottom)
-            # Right eye: landmarks 386 (top) and 374 (bottom)
             left_eye_top = landmarks.landmark[159]
             left_eye_bottom = landmarks.landmark[145]
             right_eye_top = landmarks.landmark[386]
@@ -238,135 +337,58 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
             eye_openness = (left_eye_height + right_eye_height) / 2 * 100
 
             # === ATTENTION SCORE ===
-            # Based on head pose and eye openness
-            # Looking straight ahead and eyes open = high attention
             yaw_factor = max(0, 1 - abs(head_yaw) / 45.0)
             pitch_factor = max(0, 1 - abs(head_pitch) / 30.0)
             eye_factor = min(1.0, eye_openness / 2.0)
             attention_score = (yaw_factor * 0.4 + pitch_factor * 0.3 + eye_factor * 0.3)
 
             # === FACIAL FLUSHING (CRS INDICATOR) ===
-            # Sample cheek regions: landmarks 205 (left) and 425 (right)
             cheek_redness = 0.0
-
             for idx in [205, 425]:
                 lm = landmarks.landmark[idx]
                 x, y = int(lm.x * w), int(lm.y * h)
-
-                # Extract 20x20 pixel region around landmark
                 roi = frame[max(0, y-10):min(h, y+10), max(0, x-10):min(w, x+10)]
 
                 if roi.size > 0:
-                    # Calculate redness: R channel minus average of G and B
                     r = np.mean(roi[:, :, 2])
                     g = np.mean(roi[:, :, 1])
                     b = np.mean(roi[:, :, 0])
                     cheek_redness += (r - (g + b) / 2) / 255.0
 
-            # Average both cheeks
             cheek_redness /= 2
-
-            # Calculate CRS risk score (0-1 scale)
             crs_score = min(1.0, max(0.0, cheek_redness * 2.5))
 
-            # === REAL CV METRICS USING TRACKERS ===
+            # === EXPENSIVE TRACKER OPERATIONS ===
             if trackers:
-                # Extract forehead ROI for rPPG heart rate
-                forehead_lm = landmarks.landmark[10]  # Forehead landmark
+                # rPPG heart rate (FFT on forehead color changes)
+                forehead_lm = landmarks.landmark[10]
                 fx, fy = int(forehead_lm.x * w), int(forehead_lm.y * h)
                 forehead_roi = frame[max(0, fy-30):min(h, fy+10), max(0, fx-40):min(w, fx+40)]
-
-                # Real heart rate via rPPG
                 heart_rate = trackers.heart_rate.process_frame(frame, forehead_roi)
 
-                # Real respiratory rate from nose movement
+                # Respiratory rate (FFT on nose movement)
                 nose_y = landmarks.landmark[1].y
                 respiratory_rate = trackers.respiratory_rate.process_frame(nose_y)
 
-                # Face touching frequency
+                # Face touching detection
                 face_touching_freq, is_touching = trackers.face_touching.process_frame(landmarks)
 
                 # Movement and restlessness
                 restlessness_index, movement_vigor = trackers.movement.process_frame(landmarks)
 
-                # Tremor detection
+                # Tremor detection (FFT on hand positions)
                 tremor_magnitude, tremor_detected = trackers.tremor.process_frame(landmarks)
 
                 # Upper body posture tracking
-                upper_body_metrics = trackers.upper_body.process_frame(pose_results.pose_landmarks if pose_results.pose_landmarks else None)
+                if pose_results.pose_landmarks:
+                    upper_body_metrics = trackers.upper_body.process_frame(pose_results.pose_landmarks)
             else:
-                # Fallback if no trackers available
+                # Fallback if no trackers
                 heart_rate = int(75 + (crs_score * 30))
                 respiratory_rate = int(14 + (crs_score * 10))
-                face_touching_freq = 0
-                is_touching = False
-                restlessness_index = 0.0
-                movement_vigor = 0.0
-                tremor_magnitude = 0.0
-                tremor_detected = False
-                upper_body_metrics = {
-                    "shoulder_angle": 0.0,
-                    "posture_score": 1.0,
-                    "shoulder_width": 0.0,
-                    "upper_body_movement": 0.0,
-                    "lean_forward": 0.0,
-                    "arm_asymmetry": 0.0
-                }
 
-            # === PREPARE LANDMARK DATA FOR FRONTEND ===
-            # Extract key landmarks with metadata (no drawing here)
-            key_landmarks_data = []
-            landmark_definitions = {
-                # Face outline (yellow)
-                10: {"type": "forehead", "color": "#FFFF00"},
-                152: {"type": "chin", "color": "#FFFF00"},
-                234: {"type": "left_face", "color": "#FFFF00"},
-                454: {"type": "right_face", "color": "#FFFF00"},
-                # Eyes (cyan)
-                33: {"type": "right_eye_outer", "color": "#00FFFF"},
-                133: {"type": "right_eye_inner", "color": "#00FFFF"},
-                263: {"type": "left_eye_inner", "color": "#00FFFF"},
-                362: {"type": "left_eye_outer", "color": "#00FFFF"},
-                # Nose (magenta)
-                1: {"type": "nose_tip", "color": "#FF00FF"},
-                # Mouth (green)
-                61: {"type": "upper_lip", "color": "#00FF00"},
-                291: {"type": "lower_lip", "color": "#00FF00"},
-                # Cheeks - CRS indicators (red)
-                205: {"type": "left_cheek", "color": "#FF0000"},
-                425: {"type": "right_cheek", "color": "#FF0000"},
-            }
-
-            for idx, metadata in landmark_definitions.items():
-                lm = landmarks.landmark[idx]
-                key_landmarks_data.append({
-                    "id": int(idx),
-                    "x": float(lm.x),  # Normalized 0-1
-                    "y": float(lm.y),  # Normalized 0-1
-                    "type": metadata["type"],
-                    "color": metadata["color"]
-                })
-
-            # Prepare head pose axis data for frontend drawing
-            head_pose_axes = None
-            if success:
-                axis_length = 50
-                axis_3d = np.float32([[axis_length, 0, 0], [0, axis_length, 0], [0, 0, axis_length]])
-                axis_2d, _ = cv2.projectPoints(axis_3d, rotation_vec, translation_vec, camera_matrix, dist_coeffs)
-
-                nose_2d = image_points[0].astype(int)
-                head_pose_axes = {
-                    "origin": {"x": int(nose_2d[0]), "y": int(nose_2d[1])},
-                    "x_axis": {"x": int(axis_2d[0].ravel()[0]), "y": int(axis_2d[0].ravel()[1]), "color": "#FF0000"},  # Red
-                    "y_axis": {"x": int(axis_2d[1].ravel()[0]), "y": int(axis_2d[1].ravel()[1]), "color": "#00FF00"},  # Green
-                    "z_axis": {"x": int(axis_2d[2].ravel()[0]), "y": int(axis_2d[2].ravel()[1]), "color": "#0000FF"}   # Blue
-                }
-
-        # No frame re-encoding needed - we do passthrough in main.py
-        # This function now only returns CV analysis data
+        # Return ONLY metrics (no overlay data)
         return {
-            "landmarks": key_landmarks_data,  # Array of {id, x, y, type, color}
-            "head_pose_axes": head_pose_axes,  # {origin, x_axis, y_axis, z_axis} or None
             "metrics": {
                 # Basic vitals (CV-derived)
                 "heart_rate": int(heart_rate),
@@ -382,19 +404,23 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
                 "tremor_detected": bool(tremor_detected),
                 "movement_vigor": float(round(movement_vigor, 2)),
 
-                # Head pose (useful for both conditions)
+                # Head pose
                 "head_pitch": float(round(head_pitch, 1)),
                 "head_yaw": float(round(head_yaw, 1)),
                 "head_roll": float(round(head_roll, 1)),
 
-                # Upper body posture metrics
+                # Eye and attention
+                "eye_openness": float(round(eye_openness, 2)),
+                "attention_score": float(round(attention_score, 2)),
+
+                # Upper body posture
                 "shoulder_angle": upper_body_metrics["shoulder_angle"],
                 "posture_score": upper_body_metrics["posture_score"],
                 "upper_body_movement": upper_body_metrics["upper_body_movement"],
                 "lean_forward": upper_body_metrics["lean_forward"],
                 "arm_asymmetry": upper_body_metrics["arm_asymmetry"],
 
-                # General alert with trigger reasons
+                # Alerts
                 "alert": bool(crs_score > 0.7 or tremor_detected),
                 "alert_triggers": list(filter(None, [
                     f"CRS Score Critical: {int(crs_score * 100)}%" if crs_score > 0.7 else None,
@@ -404,10 +430,10 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
         }
 
     except Exception as e:
-        print(f"❌ CV processing exception: {e}")
+        import traceback
+        print(f"❌ Metrics processing exception: {e}")
+        print(f"   Traceback: {traceback.format_exc()[:300]}")
         return {
-            "landmarks": [],
-            "head_pose_axes": None,
             "metrics": {
                 "crs_score": 0.0,
                 "heart_rate": 75,
