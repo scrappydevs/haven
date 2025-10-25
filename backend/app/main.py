@@ -163,11 +163,11 @@ async def trigger_sms_alert(request: SMSAlertRequest):
                 "to": request.phone_number
             }
         
-        # Import Vonage client
-        import vonage
+        # Import Vonage client (v3+ API)
+        from vonage import Client, Sms
         
-        client = vonage.Client(key=VONAGE_API_KEY, secret=VONAGE_API_SECRET)
-        sms = vonage.Sms(client)
+        client = Client(key=VONAGE_API_KEY, secret=VONAGE_API_SECRET)
+        sms = Sms(client)
         
         # Send SMS
         response = sms.send_message({
