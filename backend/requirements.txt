@@ -2,7 +2,7 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
-websockets>=11.0,<13.0
+websockets>=13.0
 
 # Computer Vision
 opencv-python==4.10.0.84
@@ -17,7 +17,7 @@ anthropic==0.44.0
 pandas==2.2.3
 
 # Database
-supabase==2.10.0
+supabase==2.11.3
 httpx>=0.26,<0.28
 
 # Production
