@@ -16,6 +16,7 @@ interface VideoPlayerProps {
   isLive?: boolean;
   isSelected?: boolean;
   onCvDataUpdate?: (patientId: number, data: CVData) => void;
+  patientId?: string;  // Patient ID to filter WebSocket messages (e.g., "P-001")
 }
 
 interface Landmark {
@@ -60,7 +61,7 @@ interface CVData {
   attention_score?: number;
 }
 
-export default function VideoPlayer({ patient, isLive = false, isSelected = false, onCvDataUpdate }: VideoPlayerProps) {
+export default function VideoPlayer({ patient, isLive = false, isSelected = false, onCvDataUpdate, patientId }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -217,19 +218,20 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       const data = JSON.parse(event.data);
       console.log('📥 Received WebSocket data:', data.type, data.patient_id);
 
-      if (data.type === 'live_frame' && data.patient_id === 'live-1') {
+      // Filter by patient_id if provided, otherwise accept all frames
+      if (data.type === 'live_frame' && (!patientId || data.patient_id === patientId)) {
         if (imgRef.current && data.data?.frame) {
           imgRef.current.src = data.data.frame;
           const crs = data.data.metrics?.crs_score || 0;
           const hr = data.data.metrics?.heart_rate || 0;
-          console.log('🖼️ Updated live frame, CRS:', crs, 'HR:', hr);
+          console.log(`🖼️ Updated live frame for ${data.patient_id}, CRS:`, crs, 'HR:', hr);
         }
 
         setCvData(data.data);
 
         if (data.data.metrics?.alert && !alertFired) {
           setAlertFired(true);
-          console.log('🚨 ALERT FIRED! CRS:', data.data.metrics.crs_score);
+          console.log(`🚨 ALERT FIRED for ${data.patient_id}! CRS:`, data.data.metrics.crs_score);
           const audio = new Audio('/alert.mp3');
           audio.play().catch(e => console.log('Audio play failed:', e));
         }

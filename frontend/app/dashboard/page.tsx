@@ -5,6 +5,7 @@ import VideoPlayer from '@/components/VideoPlayer';
 import InfoBar from '@/components/InfoBar';
 import DetailPanel from '@/components/DetailPanel';
 import StatsBar from '@/components/StatsBar';
+import PatientSearchModal from '@/components/PatientSearchModal';
 
 interface Patient {
   id: number;
@@ -24,6 +25,16 @@ interface Alert {
   timestamp: string;
 }
 
+interface SupabasePatient {
+  id: string;
+  patient_id: string;
+  name: string;
+  age: number;
+  gender: string;
+  photo_url: string;
+  condition: string;
+}
+
 export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -34,6 +45,46 @@ export default function DashboardPage() {
     active_alerts: 0,
     daily_cost_savings: 17550
   });
+
+  // Box assignment system (which patient_id is in which box)
+  const [boxAssignments, setBoxAssignments] = useState<(string | null)[]>([
+    null, null, null, null, null, null  // 6 boxes, all empty initially
+  ]);
+
+  // Patient selection modal
+  const [showPatientModal, setShowPatientModal] = useState(false);
+  const [selectedBoxIndex, setSelectedBoxIndex] = useState<number | null>(null);
+  const [activeStreams, setActiveStreams] = useState<string[]>([]);
+
+  // Open patient selection for a specific box
+  const openPatientSelectionForBox = async (boxIndex: number) => {
+    setSelectedBoxIndex(boxIndex);
+
+    // Fetch active streams
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/streams/active`);
+      const data = await res.json();
+      setActiveStreams(data.active_streams || []);
+    } catch (error) {
+      console.error('Error fetching active streams:', error);
+    }
+
+    setShowPatientModal(true);
+  };
+
+  // Assign patient to a box
+  const assignPatientToBox = (patient: SupabasePatient) => {
+    if (selectedBoxIndex === null) return;
+
+    setBoxAssignments(prev => {
+      const newAssignments = [...prev];
+      newAssignments[selectedBoxIndex] = patient.patient_id;
+      return newAssignments;
+    });
+
+    setShowPatientModal(false);
+    console.log(`✅ Assigned ${patient.patient_id} to box ${selectedBoxIndex}`);
+  };
 
   // Stable callback for CV data updates
   const handleCvDataUpdate = useCallback((patientId: number, data: any) => {
@@ -73,20 +124,7 @@ export default function DashboardPage() {
     return () => clearInterval(alertInterval);
   }, []);
 
-  // Display first 5 pre-recorded + 1 live feed
-  const displayedPatients = [
-    ...patients.slice(0, 5),
-    {
-      id: 999,  // Special ID for live feed
-      name: "LIVE DEMO",
-      age: 0,
-      condition: "Live Webcam Stream",
-      baseline_vitals: { heart_rate: 75 }
-    }
-  ];
-
-  // Get selected patient
-  const selectedPatient = displayedPatients.find(p => p.id === selectedPatientId) || null;
+  // No longer need displayedPatients - we use boxAssignments instead
 
   return (
     <div className="min-h-screen">
@@ -121,35 +159,54 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-400">Click any feed to view detailed analysis</p>
             </div>
 
-            {displayedPatients.length > 0 ? (
-              <div className="grid grid-cols-2 gap-4">
-                {displayedPatients.map((patient, index) => {
-                  const isLive = index === 5;
-
+            <div className="grid grid-cols-2 gap-4">
+              {boxAssignments.map((patientId, boxIndex) => {
+                // Empty box - show + button
+                if (!patientId) {
                   return (
-                    <div key={patient.id} className="flex flex-col">
-                      <VideoPlayer
-                        patient={patient}
-                        isLive={isLive}
-                        isSelected={selectedPatientId === patient.id}
-                        onCvDataUpdate={handleCvDataUpdate}
-                      />
-                      <InfoBar
-                        patientId={isLive ? 'LIVE' : patient.id}
-                        patientName={patient.name}
-                        isLive={isLive}
-                        isSelected={selectedPatientId === patient.id}
-                        onClick={() => setSelectedPatientId(patient.id)}
-                      />
+                    <div key={boxIndex} className="flex flex-col">
+                      <div className="relative rounded-t-lg overflow-hidden border-2 border-slate-700 bg-slate-900/50">
+                        <div className="w-full aspect-video flex items-center justify-center">
+                          <button
+                            onClick={() => openPatientSelectionForBox(boxIndex)}
+                            className="w-20 h-20 rounded-full bg-slate-800 hover:bg-blue-500 border-2 border-slate-600 hover:border-blue-400 text-slate-400 hover:text-white text-4xl transition-all duration-200 hover:scale-110"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <div className="bg-slate-800 border-2 border-t-0 border-slate-700 rounded-b-lg px-4 py-3">
+                        <p className="text-sm text-slate-500 text-center">Box {boxIndex + 1} - Empty</p>
+                      </div>
                     </div>
                   );
-                })}
-              </div>
-            ) : (
-              <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-12 text-center">
-                <p className="text-slate-400">Loading patients...</p>
-              </div>
-            )}
+                }
+
+                // Assigned box - show VideoPlayer with patient stream
+                return (
+                  <div key={boxIndex} className="flex flex-col">
+                    <VideoPlayer
+                      patient={{ id: boxIndex, name: patientId, age: 0, condition: '', baseline_vitals: { heart_rate: 75 } }}
+                      isLive={true}
+                      patientId={patientId}
+                      isSelected={selectedPatientId === boxIndex}
+                      onCvDataUpdate={handleCvDataUpdate}
+                    />
+                    <InfoBar
+                      patientId={patientId}
+                      patientName={patientId}
+                      isLive={true}
+                      isSelected={selectedPatientId === boxIndex}
+                      onClick={() => {
+                        setSelectedPatientId(boxIndex);
+                        // Also re-assign to allow changing
+                        openPatientSelectionForBox(boxIndex);
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Detail Panel (Right - 4 columns) */}
@@ -159,13 +216,23 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-400">Detailed vitals and AI analysis</p>
             </div>
             <DetailPanel
-              patient={selectedPatient}
+              patient={null}
               cvData={selectedCvData}
-              isLive={selectedPatient?.id === 999}
+              isLive={true}
             />
           </div>
         </div>
       </div>
+
+      {/* Patient Search Modal */}
+      <PatientSearchModal
+        isOpen={showPatientModal}
+        onClose={() => setShowPatientModal(false)}
+        onSelect={assignPatientToBox}
+        activeStreams={activeStreams}
+        assignedPatients={boxAssignments.filter((id): id is string => id !== null)}
+        mode="assign-stream"
+      />
     </div>
   );
 }

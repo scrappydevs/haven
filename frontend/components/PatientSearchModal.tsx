@@ -18,10 +18,12 @@ interface PatientSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (patient: Patient) => void;
-  activeStreams: string[];  // List of patient_ids already streaming
+  activeStreams: string[];  // List of patient_ids currently streaming
+  assignedPatients?: string[];  // List of patient_ids already assigned to boxes (optional)
+  mode?: 'start-stream' | 'assign-stream';  // Mode: start-stream = select to start streaming, assign-stream = select from active streams
 }
 
-export default function PatientSearchModal({ isOpen, onClose, onSelect, activeStreams }: PatientSearchModalProps) {
+export default function PatientSearchModal({ isOpen, onClose, onSelect, activeStreams, assignedPatients = [], mode = 'start-stream' }: PatientSearchModalProps) {
   const [search, setSearch] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(false);
@@ -49,10 +51,16 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
     return () => clearTimeout(timeout);
   }, [search, isOpen]);
 
-  // Filter out patients who are already streaming
-  const availablePatients = patients.filter(
-    p => !activeStreams.includes(p.patient_id)
-  );
+  // Filter based on mode
+  const availablePatients = patients.filter(p => {
+    if (mode === 'assign-stream') {
+      // Dashboard mode: Show only patients who ARE streaming but NOT yet assigned to a box
+      return activeStreams.includes(p.patient_id) && !assignedPatients.includes(p.patient_id);
+    } else {
+      // Stream page mode: Show only patients who are NOT currently streaming
+      return !activeStreams.includes(p.patient_id);
+    }
+  });
 
   const handleSelect = (patient: Patient) => {
     onSelect(patient);
@@ -84,7 +92,9 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
           {/* Header */}
           <div className="p-6 border-b border-slate-700">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-white">Select Patient to Stream</h2>
+              <h2 className="text-2xl font-bold text-white">
+                {mode === 'assign-stream' ? 'Assign Active Stream to Box' : 'Select Patient to Stream'}
+              </h2>
               <button
                 onClick={onClose}
                 className="text-slate-400 hover:text-white transition-colors"
@@ -118,11 +128,15 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
             {availablePatients.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-slate-400 text-lg">
-                  {search ? 'No patients found' : 'Start typing to search patients'}
+                  {mode === 'assign-stream'
+                    ? (activeStreams.length === 0
+                        ? 'No active streams available'
+                        : 'All active streams are already assigned')
+                    : (search ? 'No patients found' : 'Start typing to search patients')}
                 </p>
-                {activeStreams.length > 0 && (
+                {mode === 'assign-stream' && activeStreams.length > 0 && (
                   <p className="text-slate-500 text-sm mt-2">
-                    {activeStreams.length} patient(s) already streaming
+                    {activeStreams.length} active stream(s), {assignedPatients.length} assigned
                   </p>
                 )}
               </div>
@@ -169,7 +183,9 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
           {/* Footer */}
           <div className="p-4 border-t border-slate-700 bg-slate-900/50">
             <p className="text-sm text-slate-400 text-center">
-              Select a patient to start streaming from this device
+              {mode === 'assign-stream'
+                ? 'Select an active stream to assign to this box'
+                : 'Select a patient to start streaming from this device'}
             </p>
           </div>
         </motion.div>
