@@ -70,4 +70,9 @@ from app.main import app
 if __name__ == "__main__":
     # For local development only
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    # Add backend to path so imports work
+    backend_dir = Path(__file__).parent
+    import sys
+    sys.path.insert(0, str(backend_dir))
+    
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
