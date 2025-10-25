@@ -18,6 +18,7 @@ interface VideoPlayerProps {
   onCvDataUpdate?: (patientId: number, data: CVData) => void;
   patientId?: string;  // Patient ID to filter WebSocket messages (e.g., "P-001")
   monitoringConditions?: string[];  // Monitoring conditions for this patient (e.g., ["CRS", "SEIZURE"])
+  fullscreenMode?: boolean;  // Large view for detail mode
 }
 
 interface Landmark {
@@ -62,7 +63,7 @@ interface CVData {
   attention_score?: number;
 }
 
-export default function VideoPlayer({ patient, isLive = false, isSelected = false, onCvDataUpdate, patientId }: VideoPlayerProps) {
+export default function VideoPlayer({ patient, isLive = false, isSelected = false, onCvDataUpdate, patientId, fullscreenMode = false }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -288,6 +289,8 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   return (
     <motion.div
       className={`relative rounded-t-lg overflow-hidden border-2 transition-all duration-200 ${
+        fullscreenMode ? 'h-full' : ''
+      } ${
         alertFired
           ? 'border-red-500 shadow-lg shadow-red-500/50'
           : isSelected
@@ -299,7 +302,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     >
       {/* Video Element - Clean, no overlays */}
       {isLive ? (
-        <div className="relative w-full aspect-video bg-black">
+        <div className={`relative w-full bg-black ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
           <img
             ref={imgRef}
             className="w-full h-full object-cover"
@@ -320,10 +323,10 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
           loop
           muted
           playsInline
-          className="w-full aspect-video object-cover"
+          className={`w-full object-cover ${fullscreenMode ? 'h-full' : 'aspect-video'}`}
         />
       ) : (
-        <div className="w-full aspect-video bg-black flex items-center justify-center text-slate-500">
+        <div className={`w-full bg-black flex items-center justify-center text-slate-500 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
           No video available
         </div>
       )}

@@ -6,6 +6,7 @@ import InfoBar from '@/components/InfoBar';
 import DetailPanel from '@/components/DetailPanel';
 import StatsBar from '@/components/StatsBar';
 import PatientSearchModal from '@/components/PatientSearchModal';
+import GlobalActivityFeed from '@/components/GlobalActivityFeed';
 
 interface Patient {
   id: number;
@@ -35,6 +36,16 @@ interface SupabasePatient {
   condition: string;
 }
 
+interface GlobalEvent {
+  timestamp: string;
+  patientId: number;
+  patientName: string;
+  type: string;
+  severity: string;
+  message: string;
+  details: string;
+}
+
 export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -46,6 +57,12 @@ export default function DashboardPage() {
     active_alerts: 0,
     daily_cost_savings: 17550
   });
+
+  // View mode: overview (6 boxes + global feed) vs detail (1 large video + detail panel)
+  const [viewMode, setViewMode] = useState<'overview' | 'detail'>('overview');
+
+  // Global event feed for overview mode (consolidated from all patients)
+  const [globalEventFeed, setGlobalEventFeed] = useState<GlobalEvent[]>([]);
 
   // Box assignment system (which patient is in which box)
   const [boxAssignments, setBoxAssignments] = useState<(SupabasePatient | null)[]>([
@@ -125,6 +142,22 @@ export default function DashboardPage() {
       return { ...prev, [boxIndex]: newLog };
     });
   }, []);
+
+  // Add event to global feed (for overview mode)
+  const addGlobalEvent = useCallback((event: GlobalEvent) => {
+    setGlobalEventFeed(prev => [event, ...prev].slice(0, 100)); // Keep last 100 events
+  }, []);
+
+  // Navigation between modes
+  const onPatientClicked = (boxIndex: number) => {
+    setSelectedPatientId(boxIndex);
+    setViewMode('detail');
+  };
+
+  const onBackToOverview = () => {
+    setViewMode('overview');
+    // Keep selected patient ID so CV data still updates
+  };
 
   // Stable callback for CV data updates with frequent logging
   const handleCvDataUpdate = useCallback((patientId: number, data: any) => {
@@ -256,10 +289,23 @@ export default function DashboardPage() {
         });
       }
 
-      // Add all logs
-      logEntries.forEach(entry => addPatientEvent(patientId, entry));
+      // Add all logs to patient-specific and global feeds
+      logEntries.forEach(entry => {
+        // Add to patient log
+        addPatientEvent(patientId, entry);
+
+        // Add to global feed with patient info
+        const patient = boxAssignments[patientId];
+        if (patient) {
+          addGlobalEvent({
+            ...entry,
+            patientId,
+            patientName: patient.name
+          });
+        }
+      });
     }
-  }, [selectedPatientId, selectedCvData, addPatientEvent]);
+  }, [selectedPatientId, selectedCvData, addPatientEvent, addGlobalEvent, boxAssignments]);
 
   useEffect(() => {
     // Fetch patients from backend
@@ -318,15 +364,17 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <div className="container mx-auto px-6 py-6">
-        <div className="grid grid-cols-12 gap-6">
-          {/* Video Grid (Left - 8 columns for larger videos) */}
-          <div className="col-span-8">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-white">Patient Monitoring</h2>
-              <p className="text-sm text-slate-400">Click any feed to view detailed analysis</p>
-            </div>
+        {viewMode === 'overview' ? (
+          // OVERVIEW MODE: 6-box grid + global activity feed
+          <div className="grid grid-cols-12 gap-6">
+            {/* Video Grid (Left - 8 columns) */}
+            <div className="col-span-8">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-white">Patient Monitoring</h2>
+                <p className="text-sm text-slate-400">Click any feed to view detailed analysis</p>
+              </div>
 
-            <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
               {boxAssignments.map((patient, boxIndex) => {
                 // Empty box - show + button
                 if (!patient) {
@@ -372,7 +420,7 @@ export default function DashboardPage() {
                       isLive={true}
                       isSelected={selectedPatientId === boxIndex}
                       onClick={() => {
-                        setSelectedPatientId(boxIndex);
+                        onPatientClicked(boxIndex);
                       }}
                     />
                   </div>
@@ -381,34 +429,77 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Detail Panel (Right - 4 columns) */}
-          <div className="col-span-4">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-white">Patient Details</h2>
-              <p className="text-sm text-slate-400">
-                {selectedPatientId !== null && boxAssignments[selectedPatientId]
-                  ? `${boxAssignments[selectedPatientId]?.name} - Live Analysis`
-                  : 'Select a patient to view details'}
-              </p>
+            {/* Global Activity Feed (Right - 4 columns) */}
+            <div className="col-span-4">
+              <GlobalActivityFeed
+                events={globalEventFeed}
+                alerts={alerts}
+                onPatientClick={onPatientClicked}
+              />
             </div>
-            <DetailPanel
-              patient={
-                selectedPatientId !== null && boxAssignments[selectedPatientId]
-                  ? {
-                      id: selectedPatientId,
-                      name: boxAssignments[selectedPatientId]!.name,
-                      age: boxAssignments[selectedPatientId]!.age,
-                      condition: boxAssignments[selectedPatientId]!.condition
-                    }
-                  : null
-              }
-              cvData={selectedCvData}
-              isLive={true}
-              monitoringConditions={selectedPatientId !== null ? (boxMonitoringConditions[selectedPatientId] || []) : []}
-              events={selectedPatientId !== null ? (patientEvents[selectedPatientId] || []) : []}
-            />
           </div>
-        </div>
+        ) : (
+          // DETAIL MODE: Large video + detail panel
+          <div>
+            {/* Back Button */}
+            <div className="mb-4">
+              <button
+                onClick={onBackToOverview}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back to Overview
+              </button>
+            </div>
+
+            <div className="grid grid-cols-12 gap-6">
+              {/* Large Video (Left - 8 columns) */}
+              <div className="col-span-8">
+                {selectedPatientId !== null && boxAssignments[selectedPatientId] && (
+                  <div className="h-[calc(100vh-250px)]">
+                    <VideoPlayer
+                      patient={{
+                        id: selectedPatientId,
+                        name: boxAssignments[selectedPatientId]!.name,
+                        age: boxAssignments[selectedPatientId]!.age,
+                        condition: boxAssignments[selectedPatientId]!.condition,
+                        baseline_vitals: { heart_rate: 75 }
+                      }}
+                      isLive={true}
+                      patientId={boxAssignments[selectedPatientId]!.patient_id}
+                      isSelected={true}
+                      onCvDataUpdate={handleCvDataUpdate}
+                      monitoringConditions={boxMonitoringConditions[selectedPatientId] || []}
+                      fullscreenMode={true}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Detail Panel (Right - 4 columns) */}
+              <div className="col-span-4">
+                <DetailPanel
+                  patient={
+                    selectedPatientId !== null && boxAssignments[selectedPatientId]
+                      ? {
+                          id: selectedPatientId,
+                          name: boxAssignments[selectedPatientId]!.name,
+                          age: boxAssignments[selectedPatientId]!.age,
+                          condition: boxAssignments[selectedPatientId]!.condition
+                        }
+                      : null
+                  }
+                  cvData={selectedCvData}
+                  isLive={true}
+                  monitoringConditions={selectedPatientId !== null ? (boxMonitoringConditions[selectedPatientId] || []) : []}
+                  events={selectedPatientId !== null ? (patientEvents[selectedPatientId] || []) : []}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Patient Search Modal */}
