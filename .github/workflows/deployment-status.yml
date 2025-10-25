@@ -1,37 +1,26 @@
-name: Track Render Deployment
+name: Monitor Backend Health
 
 on:
   push:
     branches: [main]
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
-  render-deployment:
+  health-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Create Deployment
-        uses: chrnorm/deployment-action@v2
-        id: deployment
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          environment: production-backend
-          environment-url: https://haven-new.onrender.com
-          description: Backend deployment to Render
-      
-      - name: Wait for Render Deploy
+      - name: Wait for Render Deployment
         run: |
           echo "🚀 Waiting for Render deployment to complete..."
           echo "⏱️  Initial wait: 90 seconds (Render typically takes 60-120s)"
           sleep 90
           
-          # Health check with extended timeout
+      - name: Check Backend Health
+        run: |
+          echo "🔍 Starting health checks..."
           MAX_ATTEMPTS=30
           ATTEMPT=0
           
-          echo ""
-          echo "🔍 Starting health checks..."
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://haven-new.onrender.com/health || echo "000")
             
@@ -39,7 +28,6 @@ jobs:
               echo ""
               echo "✅ Backend is healthy and responding!"
               echo "🎉 Deployment verified successfully"
-              echo "DEPLOY_STATUS=success" >> $GITHUB_ENV
               exit 0
             fi
             
@@ -50,17 +38,16 @@ jobs:
           done
           
           echo ""
-          echo "❌ Deployment health check timed out after 690 seconds"
-          echo "⚠️  Backend may still be deploying - check Render dashboard"
-          echo "DEPLOY_STATUS=failure" >> $GITHUB_ENV
+          echo "❌ Health check timed out after 690 seconds"
+          echo "⚠️  Backend may still be deploying - check Render dashboard: https://dashboard.render.com"
           exit 1
       
-      - name: Update Deployment Status
-        uses: chrnorm/deployment-status@v2
-        if: always()
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
-          state: ${{ env.DEPLOY_STATUS }}
-          environment-url: https://haven-new.onrender.com
-
+      - name: Notify Success
+        if: success()
+        run: |
+          echo "::notice::Backend deployment successful and healthy at https://haven-new.onrender.com"
+      
+      - name: Notify Failure
+        if: failure()
+        run: |
+          echo "::error::Backend health check failed. Check Render dashboard for details."
