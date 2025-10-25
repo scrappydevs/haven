@@ -1,16 +1,8 @@
 {
-  "version": 2,
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/.next",
-  "framework": "nextjs",
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://haven-u8cf.onrender.com/:path*"
+      "destination": "https://haven-new.onrender.com/:path*"
     }
-  ],
-  "env": {
-    "NEXT_PUBLIC_API_URL": "https://haven-u8cf.onrender.com"
-  }
+  ]
 }
-

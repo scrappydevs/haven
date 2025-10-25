@@ -1,24 +1,22 @@
 # FastAPI and server
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-dotenv==1.0.0
-python-multipart==0.0.6
-websockets>=11.0,<13.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.20
 
 # Computer Vision
-opencv-python==4.9.0.80
-mediapipe==0.10.21
-numpy==1.26.3
-pillow==10.2.0
+opencv-python>=4.10.0
+mediapipe>=0.10.21
+numpy>=1.26.0,<2.0
+pillow>=11.0.0
 
 # AI/ML
-anthropic==0.18.1
+anthropic>=0.44.0
 
 # Data processing
-pandas==2.2.0
+pandas>=2.2.0
 
-# Database
-supabase==2.3.4
+# Database - will auto-install compatible websockets and httpx
+supabase>=2.22.0
 
 # Production
-gunicorn==21.2.0
+gunicorn>=23.0.0

@@ -10,9 +10,9 @@ import json
 from pathlib import Path
 import os
 from app.websocket import manager, process_frame_fast, process_frame_metrics
-from app.supabase_client import supabase
+from app.supabase_client import supabase, SUPABASE_URL
 from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
-from app.infisical_config import get_secret
+from app.infisical_config import get_secret, secret_manager
 from app.rooms import (
     get_all_assignments,
     assign_patient_to_room,

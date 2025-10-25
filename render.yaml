@@ -3,25 +3,22 @@ services:
     name: trialsentinel-backend
     env: python
     region: oregon
-    buildCommand: "cd backend && pip install -r requirements.txt"
-    startCommand: "cd backend && gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "bash start.sh"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.0
-      - key: PORT
-        value: 8000
-      # Add your Infisical secrets here or configure them in Render dashboard
-      - key: INFISICAL_CLIENT_ID
-        sync: false
-      - key: INFISICAL_CLIENT_SECRET
-        sync: false
-      - key: INFISICAL_PROJECT_ID
-        sync: false
+        value: 3.12.7
+      # Secrets - set these in Render Dashboard
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_KEY
+      - key: SUPABASE_ANON_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Infisical (optional - for CLI method)
+      - key: INFISICAL_PROJECT_ID
+        value: 14641fd2-4afc-48b6-a138-c18fd6d65181
     healthCheckPath: /health
+    rootDir: backend
 
