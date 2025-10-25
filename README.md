@@ -1,5 +1,9 @@
 # Haven AI 🏥
 
+[![Frontend](https://img.shields.io/badge/Frontend-Live-success?logo=vercel&style=flat-square)](https://use-haven.vercel.app)
+[![Backend](https://img.shields.io/badge/Backend-Live-success?logo=render&style=flat-square)](https://haven-new.onrender.com/health)
+[![Deployments](https://img.shields.io/github/deployments/scrappydevs/haven/production?label=Deployments&style=flat-square)](https://github.com/scrappydevs/haven/deployments)
+
 Real-time computer vision monitoring for clinical trial safety - detect adverse events 2-4 hours earlier
 
 **Built for CalHacks 12.0 | Target: $20,000+ in prizes**
