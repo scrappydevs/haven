@@ -294,8 +294,8 @@ export default function DetailPanel({
       </div>
 
       {/* ========== TERMINAL LOG (MAIN FEATURE - 80% OF SPACE) ========== */}
-      <div className="flex-1 overflow-hidden">
-        <TerminalLog entries={terminalEntries} maxHeight="100%" />
+      <div className="flex-1 overflow-hidden min-h-0">
+        <TerminalLog entries={terminalEntries} />
       </div>
 
       {/* ========== MINIMAL FOOTER WITH QUICK VITALS ========== */}

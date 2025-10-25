@@ -22,10 +22,9 @@ export interface TerminalLogEntry {
 
 interface TerminalLogProps {
   entries: TerminalLogEntry[];
-  maxHeight?: string;
 }
 
-export default function TerminalLog({ entries, maxHeight = '500px' }: TerminalLogProps) {
+export default function TerminalLog({ entries }: TerminalLogProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new entries added
@@ -70,19 +69,23 @@ export default function TerminalLog({ entries, maxHeight = '500px' }: TerminalLo
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Terminal Header - Minimal */}
-      <div className="bg-neutral-900 border-b border-neutral-700 px-3 py-1.5 flex items-center justify-between">
+      <div className="bg-neutral-900 border-b border-neutral-700 px-3 py-1.5 flex items-center justify-between" style={{ flexShrink: 0 }}>
         <span className="font-mono text-xs text-neutral-400">PATIENT_GUARDIAN_AGENT</span>
         <span className="font-mono text-xs text-neutral-500">
           {entries.length} events
         </span>
       </div>
 
-      {/* Terminal Content */}
+      {/* Terminal Content - Fixed height with scroll */}
       <div
-        className="bg-neutral-950 p-3 font-mono text-xs overflow-y-auto flex-1"
-        style={{ maxHeight }}
+        className="bg-neutral-950 p-3 font-mono text-xs"
+        style={{
+          flex: '1 1 0',
+          overflowY: 'auto',
+          minHeight: 0
+        }}
       >
         <AnimatePresence initial={false}>
           {entries.map((entry) => (
@@ -174,7 +177,7 @@ export default function TerminalLog({ entries, maxHeight = '500px' }: TerminalLo
       </div>
 
       {/* Terminal Footer - Minimal */}
-      <div className="bg-neutral-900 border-t border-neutral-700 px-3 py-1">
+      <div className="bg-neutral-900 border-t border-neutral-700 px-3 py-1" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-2 text-xs">
           <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
           <span className="text-neutral-400 font-mono text-xs">$ _</span>
