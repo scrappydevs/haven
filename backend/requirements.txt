@@ -18,7 +18,7 @@ pandas==2.2.3
 
 # Database
 supabase==2.10.0
-httpx==0.28.1
+httpx>=0.26,<0.28
 
 # Production
 gunicorn==23.0.0
