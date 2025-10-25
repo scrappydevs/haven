@@ -1,0 +1,15 @@
+# Haven AI Multi-Agent System Requirements
+# Fetch.ai uAgents framework
+uagents>=0.12.0
+uagents-ai-engine>=0.4.0
+
+# AI/ML
+anthropic>=0.44.0
+
+# Data models
+pydantic>=2.0.0
+python-dateutil>=2.8.0
+
+# Utilities
+python-dotenv>=1.0.0
+

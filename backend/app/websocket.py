@@ -33,6 +33,7 @@ from app.cv_metrics import (
 )
 from app.monitoring_control import monitoring_manager
 from app.patient_guardian_agent import patient_guardian
+from app.agent_system import agent_system
 
 # MediaPipe models - lazy initialized per worker to avoid fork issues
 _face_mesh = None
@@ -233,14 +234,53 @@ class ConnectionManager:
                         loop.run_until_complete(self.broadcast_frame({
                             "type": "agent_thinking",
                             "patient_id": patient_id,
-                            "message": "Analyzing metrics...",
+                            "message": "🤖 AI Agent analyzing...",
                             "timestamp": time.time()
                         }))
 
-                        # Analyze metrics with Patient Guardian Agent
+                        # Health Agent Analysis (NEW - Simple and focused)
+                        from app.health_agent import health_agent
+                        if health_agent.enabled:
+                            # Prepare vitals and CV metrics
+                            vitals = {
+                                "heart_rate": slow_result["metrics"].get("heart_rate", 75),
+                                "temperature": 37.0,  # Would come from sensors in production
+                                "blood_pressure": "120/80",  # Would come from sensors
+                                "spo2": 98  # Would come from sensors
+                            }
+                            cv_metrics = {
+                                "distress_score": slow_result["metrics"].get("crs_score", 0) * 10,
+                                "movement_score": slow_result["metrics"].get("attention_score", 0) * 10,
+                                "posture_alert": slow_result["metrics"].get("tremor_detected", False)
+                            }
+                            
+                            # Analyze with health agent
+                            analysis = loop.run_until_complete(
+                                health_agent.analyze_patient(patient_id, vitals, cv_metrics)
+                            )
+                            
+                            # Broadcast alert if critical/warning
+                            if analysis["severity"] in ["CRITICAL", "WARNING"]:
+                                loop.run_until_complete(
+                                    self.broadcast(json.dumps({
+                                        "type": "health_alert",
+                                        "patient_id": patient_id,
+                                        "severity": analysis["severity"],
+                                        "message": health_agent._create_alert_message(patient_id, analysis),
+                                        "reasoning": analysis["reasoning"],
+                                        "recommended_action": analysis["recommended_action"],
+                                        "timestamp": datetime.now().isoformat()
+                                    }), patient_id)
+                                )
+                        
+                        # LEGACY Multi-agent system (keeping for compatibility)
+                        if agent_system.enabled:
+                            assessment = loop.run_until_complete(
+                                agent_system.analyze_patient_metrics(patient_id, slow_result["metrics"])
+                            )
+                        
+                        # LEGACY Patient Guardian (keeping for compatibility)
                         decision = patient_guardian.analyze_metrics(patient_id, slow_result["metrics"])
-
-                        # Execute decision if action needed (not MAINTAIN)
                         if decision["action"] != "MAINTAIN":
                             loop.run_until_complete(
                                 patient_guardian.execute_decision(patient_id, decision, self)

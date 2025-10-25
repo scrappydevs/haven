@@ -15,6 +15,8 @@ from app.monitoring_protocols import get_all_protocols, recommend_protocols as k
 from app.infisical_config import get_secret, secret_manager
 from app.monitoring_control import monitoring_manager, MonitoringLevel
 from app.patient_guardian_agent import patient_guardian
+from app.agent_system import agent_system
+from app.health_agent import health_agent
 from app.rooms import (
     get_all_floors,
     get_all_rooms_with_patients,
@@ -103,6 +105,7 @@ async def startup_event():
         f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
     print(
         f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
+    print(f"   • Multi-Agent System: {'✅ Enabled' if agent_system.enabled else '⚠️  Disabled'}")
     print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
     print(
         f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
@@ -1095,7 +1098,124 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 
 
 # ============================================================================
-# Patient Guardian Agent Endpoints
+# Multi-Agent System Endpoints (NEW - Fetch.ai uAgents + Claude)
+# ============================================================================
+
+@app.get("/agents/status")
+async def get_agent_system_status():
+    """Get multi-agent system status"""
+    return agent_system.get_system_status()
+
+
+@app.get("/agents/events")
+async def get_agent_events(limit: int = 50):
+    """Get recent agent events for GlobalActivityFeed"""
+    return {
+        "events": agent_system.get_agent_events(limit),
+        "total": len(agent_system.agent_events)
+    }
+
+
+@app.get("/agents/alerts")
+async def get_agent_alerts():
+    """Get active agent alerts for AlertPanel"""
+    return {
+        "alerts": agent_system.get_agent_alerts(),
+        "total": len(agent_system.agent_alerts)
+    }
+
+
+@app.get("/agents/timeline/{patient_id}")
+async def get_patient_timeline(patient_id: str, limit: int = 100):
+    """Get timeline events for a specific patient"""
+    if not agent_system.enabled:
+        return {
+            "error": "Agent system not enabled",
+            "events": []
+        }
+    
+    return {
+        "patient_id": patient_id,
+        "events": agent_system.get_patient_timeline(patient_id, limit),
+        "total": len(agent_system.timeline_events.get(patient_id, []))
+    }
+
+
+@app.post("/agents/analyze/{patient_id}")
+async def manual_agent_analysis(patient_id: str):
+    """
+    Manually trigger agent analysis (for testing)
+    Uses most recent CV metrics
+    """
+    if not agent_system.enabled:
+        return {
+            "error": "Agent system not enabled",
+            "message": "Install uagents: pip install uagents>=0.12.0"
+        }
+    
+    # Get dummy metrics for testing
+    test_metrics = {
+        "heart_rate": 85,
+        "respiratory_rate": 18,
+        "crs_score": 0.65,
+        "tremor_detected": True,
+        "attention_score": 0.85
+    }
+    
+    assessment = await agent_system.analyze_patient_metrics(patient_id, test_metrics)
+    
+    return {
+        "patient_id": patient_id,
+        "assessment": assessment,
+        "metrics": test_metrics
+    }
+
+
+# ============================================================================
+# Health Agent Endpoints (NEW - Simple focused agent)
+# ============================================================================
+
+@app.get("/health-agent/status")
+async def get_health_agent_status():
+    """Get health agent status"""
+    return health_agent.get_status()
+
+@app.get("/health-agent/patients")
+async def get_health_agent_patients():
+    """Get all monitored patients"""
+    return {
+        "patients": health_agent.get_all_patients(),
+        "count": len(health_agent.get_all_patients())
+    }
+
+@app.get("/health-agent/patient/{patient_id}")
+async def get_health_agent_patient(patient_id: str):
+    """Get specific patient status"""
+    status = health_agent.get_patient_status(patient_id)
+    if status:
+        return {"patient_id": patient_id, **status}
+    else:
+        return {"error": "Patient not found"}
+
+@app.get("/health-agent/alerts")
+async def get_health_agent_alerts():
+    """Get active alerts"""
+    return {
+        "alerts": health_agent.get_active_alerts(),
+        "count": len(health_agent.get_active_alerts())
+    }
+
+@app.get("/health-agent/history")
+async def get_health_agent_history():
+    """Get alert history"""
+    return {
+        "history": health_agent.get_alert_history(),
+        "count": len(health_agent.get_alert_history())
+    }
+
+
+# ============================================================================
+# Patient Guardian Agent Endpoints (LEGACY - keeping for compatibility)
 # ============================================================================
 
 class PatientBaseline(BaseModel):

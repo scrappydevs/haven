@@ -26,3 +26,6 @@ gunicorn>=23.0.0
 
 # SMS Alerts
 vonage>=3.0.0
+
+# Multi-Agent System (Fetch.ai uAgents)
+uagents>=0.12.0
