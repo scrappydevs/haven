@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
   const [selectedCvData, setSelectedCvData] = useState<any>(null);
+  const [patientEvents, setPatientEvents] = useState<Record<number, any[]>>({});  // Events per box
   const [stats, setStats] = useState({
     patients_monitored: 47,
     active_alerts: 0,
@@ -84,16 +85,161 @@ export default function DashboardPage() {
 
     setShowPatientModal(false);
     setSelectedPatientId(selectedBoxIndex);  // Auto-select the newly assigned box
+
+    // Add initial monitoring event
+    addPatientEvent(selectedBoxIndex, {
+      timestamp: new Date().toISOString(),
+      type: 'system',
+      severity: 'info',
+      message: '📹 Monitoring Started',
+      details: `Assigned ${patient.name} to Box ${selectedBoxIndex + 1}`
+    });
+
     console.log(`✅ Assigned ${patient.patient_id} to box ${selectedBoxIndex}`);
   };
 
-  // Stable callback for CV data updates
+  // Add event to patient's log
+  const addPatientEvent = useCallback((boxIndex: number, event: any) => {
+    setPatientEvents(prev => {
+      const patientEventLog = prev[boxIndex] || [];
+      // Keep last 20 events
+      const newLog = [event, ...patientEventLog].slice(0, 20);
+      return { ...prev, [boxIndex]: newLog };
+    });
+  }, []);
+
+  // Stable callback for CV data updates with frequent logging
   const handleCvDataUpdate = useCallback((patientId: number, data: any) => {
     // Only update if this is the selected patient
     if (patientId === selectedPatientId) {
+      const prevData = selectedCvData;
       setSelectedCvData(data);
+
+      const metrics = data?.metrics || {};
+      const prevMetrics = prevData?.metrics || {};
+
+      // Log every frame update (real-time console style)
+      const logEntries: any[] = [];
+
+      // Critical alerts first
+      if (metrics.alert && !prevMetrics.alert) {
+        logEntries.push({
+          timestamp: new Date().toISOString(),
+          type: 'alert',
+          severity: 'high',
+          message: 'Alert Triggered',
+          details: `CRS threshold exceeded`
+        });
+      }
+
+      // CRS monitoring logs
+      if (metrics.crs_score !== undefined) {
+        if (metrics.crs_score > 0.7 && (!prevMetrics.crs_score || prevMetrics.crs_score <= 0.7)) {
+          logEntries.push({
+            timestamp: new Date().toISOString(),
+            type: 'threshold',
+            severity: 'high',
+            message: 'CRS Risk Elevated',
+            details: `Score: ${(metrics.crs_score * 100).toFixed(1)}% [HIGH]`
+          });
+        }
+
+        // Log periodic CRS readings
+        if (Math.random() < 0.15 && metrics.crs_score > 0.3) {
+          logEntries.push({
+            timestamp: new Date().toISOString(),
+            type: 'monitoring',
+            severity: 'info',
+            message: 'CRS Analysis',
+            details: `Facial flushing detected: ${(metrics.crs_score * 100).toFixed(1)}%`
+          });
+        }
+      }
+
+      // Heart rate monitoring
+      if (metrics.heart_rate && prevMetrics.heart_rate) {
+        const hrDiff = metrics.heart_rate - prevMetrics.heart_rate;
+        if (Math.abs(hrDiff) > 3 || Math.random() < 0.1) {
+          const trend = hrDiff > 0 ? '↑' : hrDiff < 0 ? '↓' : '→';
+          logEntries.push({
+            timestamp: new Date().toISOString(),
+            type: 'vital',
+            severity: 'info',
+            message: 'Heart Rate Update',
+            details: `${metrics.heart_rate} bpm ${trend} (${hrDiff > 0 ? '+' : ''}${hrDiff})`
+          });
+        }
+      }
+
+      // Respiratory rate
+      if (metrics.respiratory_rate && Math.random() < 0.08) {
+        logEntries.push({
+          timestamp: new Date().toISOString(),
+          type: 'vital',
+          severity: 'info',
+          message: 'Respiratory Analysis',
+          details: `Rate: ${metrics.respiratory_rate} breaths/min`
+        });
+      }
+
+      // Face touching behavior
+      if (metrics.face_touching_frequency > 0) {
+        if (metrics.face_touching_frequency > 5 && (!prevMetrics.face_touching_frequency || prevMetrics.face_touching_frequency <= 5)) {
+          logEntries.push({
+            timestamp: new Date().toISOString(),
+            type: 'behavior',
+            severity: 'moderate',
+            message: 'Behavior Alert',
+            details: `Frequent face touching: ${metrics.face_touching_frequency}/min`
+          });
+        } else if (Math.random() < 0.12 && metrics.face_touching_frequency > 2) {
+          logEntries.push({
+            timestamp: new Date().toISOString(),
+            type: 'behavior',
+            severity: 'info',
+            message: 'Face Touching Detected',
+            details: `Count: ${metrics.face_touching_frequency} touches/min`
+          });
+        }
+      }
+
+      // Restlessness monitoring
+      if (metrics.restlessness_index > 0.5 && Math.random() < 0.1) {
+        logEntries.push({
+          timestamp: new Date().toISOString(),
+          type: 'behavior',
+          severity: metrics.restlessness_index > 0.7 ? 'moderate' : 'info',
+          message: 'Movement Analysis',
+          details: `Restlessness: ${(metrics.restlessness_index * 100).toFixed(0)}%`
+        });
+      }
+
+      // Tremor detection
+      if (metrics.tremor_detected && !prevMetrics.tremor_detected) {
+        logEntries.push({
+          timestamp: new Date().toISOString(),
+          type: 'seizure',
+          severity: 'high',
+          message: 'Tremor Detected',
+          details: `Magnitude: ${metrics.tremor_magnitude?.toFixed(2)} [SEIZURE RISK]`
+        });
+      }
+
+      // Movement patterns
+      if (metrics.movement_vigor > 1.0 && Math.random() < 0.08) {
+        logEntries.push({
+          timestamp: new Date().toISOString(),
+          type: 'monitoring',
+          severity: 'info',
+          message: 'Movement Tracking',
+          details: `Vigor index: ${metrics.movement_vigor?.toFixed(2)}`
+        });
+      }
+
+      // Add all logs
+      logEntries.forEach(entry => addPatientEvent(patientId, entry));
     }
-  }, [selectedPatientId]);
+  }, [selectedPatientId, selectedCvData, addPatientEvent]);
 
   useEffect(() => {
     // Fetch patients from backend
@@ -237,6 +383,8 @@ export default function DashboardPage() {
               }
               cvData={selectedCvData}
               isLive={true}
+              monitoringConditions={[]}  // TODO: Get from WebSocket or store when assigning
+              events={selectedPatientId !== null ? (patientEvents[selectedPatientId] || []) : []}
             />
           </div>
         </div>

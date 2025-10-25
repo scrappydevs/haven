@@ -39,9 +39,16 @@ interface DetailPanelProps {
   } | null;
   isLive?: boolean;
   monitoringConditions?: string[];  // NEW: Which conditions are being monitored
+  events?: Array<{
+    timestamp: string;
+    type: string;
+    severity: string;
+    message: string;
+    details: string;
+  }>;
 }
 
-export default function DetailPanel({ patient, cvData, isLive = false, monitoringConditions = [] }: DetailPanelProps) {
+export default function DetailPanel({ patient, cvData, isLive = false, monitoringConditions = [], events = [] }: DetailPanelProps) {
   if (!patient) {
     return (
       <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-6">
@@ -117,6 +124,35 @@ export default function DetailPanel({ patient, cvData, isLive = false, monitorin
           <p className="text-sm text-slate-300 mt-2">
             {patient.condition}
           </p>
+        )}
+
+        {/* Active Monitoring Protocols */}
+        {monitoringConditions.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-slate-700">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+              Active Monitoring Protocols
+            </h4>
+            <div className="space-y-2">
+              {monitoringConditions.includes('CRS') && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-semibold text-blue-400">CRS (Cytokine Release Syndrome)</span>
+                    <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">Active</span>
+                  </div>
+                  <p className="text-xs text-slate-400">Monitoring: Facial flushing, face touching, restlessness, vital signs</p>
+                </div>
+              )}
+              {monitoringConditions.includes('SEIZURE') && (
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-semibold text-purple-400">Seizure Monitoring</span>
+                    <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded">Active</span>
+                  </div>
+                  <p className="text-xs text-slate-400">Monitoring: Tremor detection, movement patterns, coordination</p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -301,45 +337,182 @@ export default function DetailPanel({ patient, cvData, isLive = false, monitorin
         </div>
       </div>
 
-      {/* Recent Events Section */}
+      {/* Console-Style Event Log */}
       <div className="px-6 py-4">
-        <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wide">
-          Recent Events
-        </h4>
-        <div className="space-y-2 max-h-48 overflow-y-auto">
-          {alert ? (
-            <div className="flex gap-3 text-sm">
-              <span className="text-slate-500 flex-shrink-0">
-                {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-              </span>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+            System Log
+          </h4>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">{events.length} entries</span>
+            <div className="flex gap-1">
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              <div className="w-2 h-2 rounded-full bg-slate-700"></div>
+              <div className="w-2 h-2 rounded-full bg-slate-700"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Metrics Bar */}
+        <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-3 mb-2 font-mono text-xs">
+          <div className="grid grid-cols-3 gap-3">
+            {/* Heart Rate */}
+            <div className="flex items-center gap-2">
+              <span className="text-red-400">❤</span>
               <div>
-                <span className="text-red-400 font-semibold">⚠️ CRS Alert Detected</span>
-                <p className="text-slate-400 text-xs mt-1">
-                  CRS risk elevated to {crsScore ? `${(crsScore * 100).toFixed(0)}%` : 'unknown'}
+                <p className="text-slate-500 text-[10px]">HR</p>
+                <p className={`font-bold ${heartRate > 90 ? 'text-yellow-400' : 'text-green-400'}`}>
+                  {heartRate || '--'} <span className="text-slate-600 text-[10px]">bpm</span>
                 </p>
               </div>
             </div>
-          ) : null}
 
-          <div className="flex gap-3 text-sm">
-            <span className="text-slate-500 flex-shrink-0">
-              {new Date(Date.now() - 120000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            <div>
-              <span className="text-slate-300">Vitals Normal</span>
-              <p className="text-slate-400 text-xs mt-1">All parameters within range</p>
+            {/* Respiratory Rate */}
+            <div className="flex items-center gap-2">
+              <span className="text-blue-400">⊙</span>
+              <div>
+                <p className="text-slate-500 text-[10px]">RESP</p>
+                <p className={`font-bold ${respiratoryRate > 20 ? 'text-yellow-400' : 'text-green-400'}`}>
+                  {respiratoryRate || '--'} <span className="text-slate-600 text-[10px]">/min</span>
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="flex gap-3 text-sm">
-            <span className="text-slate-500 flex-shrink-0">
-              {new Date(Date.now() - 300000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            <div>
-              <span className="text-slate-300">Monitoring Started</span>
-              <p className="text-slate-400 text-xs mt-1">AI analysis initialized</p>
-            </div>
+            {/* CRS Score (if monitored) */}
+            {hasCRS && (
+              <div className="flex items-center gap-2">
+                <span className="text-orange-400">⚠</span>
+                <div>
+                  <p className="text-slate-500 text-[10px]">CRS</p>
+                  <p className={`font-bold ${
+                    (crsScore || 0) > 0.7 ? 'text-red-400' :
+                    (crsScore || 0) > 0.4 ? 'text-yellow-400' :
+                    'text-green-400'
+                  }`}>
+                    {crsScore ? `${(crsScore * 100).toFixed(0)}` : '--'}<span className="text-slate-600 text-[10px]">%</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Face Touching (if CRS monitored) */}
+            {hasCRS && (
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400">✋</span>
+                <div>
+                  <p className="text-slate-500 text-[10px]">TOUCH</p>
+                  <p className={`font-bold ${
+                    (faceTouchingFreq || 0) > 5 ? 'text-yellow-400' : 'text-slate-400'
+                  }`}>
+                    {faceTouchingFreq || '0'} <span className="text-slate-600 text-[10px]">/min</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Restlessness */}
+            {hasCRS && (
+              <div className="flex items-center gap-2">
+                <span className="text-cyan-400">⟳</span>
+                <div>
+                  <p className="text-slate-500 text-[10px]">REST</p>
+                  <p className={`font-bold ${
+                    (restlessnessIndex || 0) > 0.6 ? 'text-yellow-400' : 'text-slate-400'
+                  }`}>
+                    {restlessnessIndex ? `${(restlessnessIndex * 100).toFixed(0)}` : '0'}<span className="text-slate-600 text-[10px]">%</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Tremor (if seizure monitored) */}
+            {hasSeizure && (
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400">⚡</span>
+                <div>
+                  <p className="text-slate-500 text-[10px]">TREMOR</p>
+                  <p className={`font-bold ${tremorDetected ? 'text-red-400' : 'text-green-400'}`}>
+                    {tremorDetected ? 'YES' : 'NO'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Movement Vigor */}
+            {hasSeizure && (
+              <div className="flex items-center gap-2">
+                <span className="text-yellow-400">◉</span>
+                <div>
+                  <p className="text-slate-500 text-[10px]">MOVE</p>
+                  <p className="font-bold text-slate-400">
+                    {movementVigor ? movementVigor.toFixed(1) : '0.0'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Console Terminal */}
+        <div className="bg-black/80 rounded-lg p-3 border border-slate-700 max-h-80 overflow-y-auto font-mono text-xs">
+          {events.length === 0 ? (
+            <div className="text-slate-600 py-4">
+              <p>~ Awaiting system events...</p>
+              <p className="mt-1">~ Monitoring active. Events will be logged here.</p>
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {events.map((event, index) => {
+                const time = new Date(event.timestamp).toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: false
+                });
+
+                // Console log styling based on severity
+                const logStyles = {
+                  high: { color: 'text-red-400', prefix: '[ERROR]', icon: '❌' },
+                  moderate: { color: 'text-yellow-400', prefix: '[WARN ]', icon: '⚠️' },
+                  info: { color: 'text-blue-400', prefix: '[INFO ]', icon: 'ℹ️' },
+                  alert: { color: 'text-red-500', prefix: '[ALERT]', icon: '🚨' },
+                  threshold: { color: 'text-orange-400', prefix: '[WARN ]', icon: '⚡' },
+                  behavior: { color: 'text-yellow-400', prefix: '[EVENT]', icon: '👁️' },
+                  seizure: { color: 'text-purple-400', prefix: '[ALERT]', icon: '⚡' },
+                  vital: { color: 'text-cyan-400', prefix: '[VITAL]', icon: '❤️' },
+                  system: { color: 'text-green-400', prefix: '[SYS  ]', icon: '✓' }
+                };
+
+                const style = logStyles[event.type as keyof typeof logStyles] || logStyles.info;
+
+                return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.2 }}
+                    className="leading-relaxed"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-slate-500 flex-shrink-0">{time}</span>
+                      <span className={`${style.color} flex-shrink-0 font-bold`}>{style.prefix}</span>
+                      <span className={`${style.color} flex-1`}>
+                        {event.message.replace(/[🚨⚠️⚡👋🔄❤️📹👁️✓]/g, '').trim()}
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-2 ml-20">
+                      <span className="text-slate-600">└─</span>
+                      <span className="text-slate-500">{event.details}</span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+              <div className="flex items-center gap-2 mt-2 text-green-500">
+                <span className="animate-pulse">▊</span>
+                <span className="text-slate-600">Monitoring...</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
