@@ -1,5 +1,8 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "installCommand": "npm install --prefix frontend",
-  "outputDirectory": "frontend/.next"
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://haven-new.onrender.com/:path*"
+    }
+  ]
 }
