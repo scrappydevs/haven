@@ -218,24 +218,33 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log('📥 Received WebSocket data:', data.type, data.patient_id);
 
-      // Filter by patient_id if provided, otherwise accept all frames
-      if (data.type === 'live_frame' && (!patientId || data.patient_id === patientId)) {
-        if (imgRef.current && data.data?.frame) {
-          imgRef.current.src = data.data.frame;
-          const crs = data.data.metrics?.crs_score || 0;
-          const hr = data.data.metrics?.heart_rate || 0;
-          console.log(`🖼️ Updated live frame for ${data.patient_id}, CRS:`, crs, 'HR:', hr);
+      // Filter by patient_id if provided, otherwise accept all messages
+      if (!patientId || data.patient_id === patientId) {
+        // Handle raw frame update (immediate passthrough)
+        if (data.type === 'live_frame' && data.data?.frame) {
+          if (imgRef.current) {
+            imgRef.current.src = data.data.frame;
+          }
         }
 
-        setCvData(data.data);
+        // Handle CV data update (comes separately, slightly delayed)
+        if (data.type === 'cv_data' && data.data) {
+          // Merge CV data with existing cvData (preserve frame if present)
+          setCvData(prev => ({
+            ...prev,
+            landmarks: data.data.landmarks,
+            head_pose_axes: data.data.head_pose_axes,
+            metrics: data.data.metrics
+          }));
 
-        if (data.data.metrics?.alert && !alertFired) {
-          setAlertFired(true);
-          console.log(`🚨 ALERT FIRED for ${data.patient_id}! CRS:`, data.data.metrics.crs_score);
-          const audio = new Audio('/alert.mp3');
-          audio.play().catch(e => console.log('Audio play failed:', e));
+          // Check for alerts
+          if (data.data.metrics?.alert && !alertFired) {
+            setAlertFired(true);
+            console.log(`🚨 ALERT FIRED for ${data.patient_id}! CRS:`, data.data.metrics.crs_score);
+            const audio = new Audio('/alert.mp3');
+            audio.play().catch(e => console.log('Audio play failed:', e));
+          }
         }
       }
     };

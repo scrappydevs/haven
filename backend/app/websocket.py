@@ -93,18 +93,25 @@ class ConnectionManager:
             self.viewers.remove(websocket)
 
     async def broadcast_frame(self, frame_data: Dict):
-        """Send processed frame to all viewers"""
+        """Send processed frame to all viewers in parallel"""
         if not self.viewers:
             return
 
-        dead = []
-        for viewer in self.viewers:
+        import asyncio
+
+        async def send_to_viewer(viewer):
             try:
                 await viewer.send_json(frame_data)
+                return None
             except Exception as e:
                 print(f"❌ Failed to send to viewer: {e}")
-                dead.append(viewer)
+                return viewer
 
+        # Send to all viewers in parallel
+        results = await asyncio.gather(*[send_to_viewer(v) for v in self.viewers], return_exceptions=True)
+
+        # Clean up dead connections
+        dead = [r for r in results if r is not None and not isinstance(r, Exception)]
         for viewer in dead:
             self.disconnect(viewer)
 
@@ -112,7 +119,7 @@ manager = ConnectionManager()
 
 def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
     """
-    Process video frame with computer vision
+    Process video frame with computer vision (CV data only, no frame re-encoding)
 
     Args:
         frame_base64: Base64 encoded JPEG image
@@ -120,7 +127,8 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
 
     Returns:
         {
-            "frame": base64_string,
+            "landmarks": [...],
+            "head_pose_axes": {...},
             "metrics": {
                 "crs_score": 0.45,
                 "heart_rate": 78,
@@ -354,12 +362,9 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
                     "z_axis": {"x": int(axis_2d[2].ravel()[0]), "y": int(axis_2d[2].ravel()[1]), "color": "#0000FF"}   # Blue
                 }
 
-        # Encode frame back to base64 (quality 65 for streaming performance)
-        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
-        frame_base64_out = base64.b64encode(buffer).decode('utf-8')
-
+        # No frame re-encoding needed - we do passthrough in main.py
+        # This function now only returns CV analysis data
         return {
-            "frame": f"data:image/jpeg;base64,{frame_base64_out}",
             "landmarks": key_landmarks_data,  # Array of {id, x, y, type, color}
             "head_pose_axes": head_pose_axes,  # {origin, x_axis, y_axis, z_axis} or None
             "metrics": {
@@ -399,8 +404,8 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
         }
 
     except Exception as e:
+        print(f"❌ CV processing exception: {e}")
         return {
-            "frame": frame_base64,
             "landmarks": [],
             "head_pose_axes": None,
             "metrics": {

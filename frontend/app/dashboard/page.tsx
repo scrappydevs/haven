@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import VideoPlayer from '@/components/VideoPlayer';
 import InfoBar from '@/components/InfoBar';
 import DetailPanel from '@/components/DetailPanel';
@@ -159,7 +159,11 @@ export default function DashboardPage() {
     // Keep selected patient ID so CV data still updates
   };
 
-  // Stable callback for CV data updates with frequent logging
+  // Throttle logging to reduce state updates (ref-based, no re-renders)
+  const lastLogTime = useRef<number>(0);
+  const LOG_THROTTLE_MS = 200; // Log at most 5 times per second instead of 30
+
+  // Stable callback for CV data updates with throttled logging
   const handleCvDataUpdate = useCallback((patientId: number, data: any) => {
     // Only update if this is the selected patient
     if (patientId === selectedPatientId) {
@@ -169,7 +173,16 @@ export default function DashboardPage() {
       const metrics = data?.metrics || {};
       const prevMetrics = prevData?.metrics || {};
 
-      // Log every frame update (real-time console style)
+      // Throttle log generation to reduce React state updates
+      const now = Date.now();
+      const shouldLog = now - lastLogTime.current >= LOG_THROTTLE_MS;
+      if (!shouldLog && !metrics.alert) {
+        // Skip logging unless it's an alert (always log alerts)
+        return;
+      }
+      lastLogTime.current = now;
+
+      // Log every 200ms (5 FPS) instead of every frame (30 FPS)
       const logEntries: any[] = [];
 
       // Critical alerts first
@@ -197,8 +210,8 @@ export default function DashboardPage() {
           });
         }
 
-        // Log periodic CRS readings
-        if (Math.random() < 0.15 && metrics.crs_score > 0.3) {
+        // Log periodic CRS readings (reduced frequency due to throttling)
+        if (Math.random() < 0.3 && metrics.crs_score > 0.3) {
           logEntries.push({
             timestamp: new Date().toISOString(),
             type: 'monitoring',
@@ -209,10 +222,10 @@ export default function DashboardPage() {
         }
       }
 
-      // Heart rate monitoring
+      // Heart rate monitoring (only log significant changes)
       if (metrics.heart_rate && prevMetrics.heart_rate) {
         const hrDiff = metrics.heart_rate - prevMetrics.heart_rate;
-        if (Math.abs(hrDiff) > 3 || Math.random() < 0.1) {
+        if (Math.abs(hrDiff) > 5) {  // Increased threshold from 3 to 5
           const trend = hrDiff > 0 ? '↑' : hrDiff < 0 ? '↓' : '→';
           logEntries.push({
             timestamp: new Date().toISOString(),
@@ -224,8 +237,8 @@ export default function DashboardPage() {
         }
       }
 
-      // Respiratory rate
-      if (metrics.respiratory_rate && Math.random() < 0.08) {
+      // Respiratory rate (reduced frequency due to throttling)
+      if (metrics.respiratory_rate && Math.random() < 0.15) {
         logEntries.push({
           timestamp: new Date().toISOString(),
           type: 'vital',
@@ -245,7 +258,7 @@ export default function DashboardPage() {
             message: 'Behavior Alert',
             details: `Frequent face touching: ${metrics.face_touching_frequency}/min`
           });
-        } else if (Math.random() < 0.12 && metrics.face_touching_frequency > 2) {
+        } else if (Math.random() < 0.25 && metrics.face_touching_frequency > 2) {
           logEntries.push({
             timestamp: new Date().toISOString(),
             type: 'behavior',
@@ -256,8 +269,8 @@ export default function DashboardPage() {
         }
       }
 
-      // Restlessness monitoring
-      if (metrics.restlessness_index > 0.5 && Math.random() < 0.1) {
+      // Restlessness monitoring (reduced frequency due to throttling)
+      if (metrics.restlessness_index > 0.5 && Math.random() < 0.2) {
         logEntries.push({
           timestamp: new Date().toISOString(),
           type: 'behavior',
@@ -278,8 +291,8 @@ export default function DashboardPage() {
         });
       }
 
-      // Movement patterns
-      if (metrics.movement_vigor > 1.0 && Math.random() < 0.08) {
+      // Movement patterns (reduced frequency due to throttling)
+      if (metrics.movement_vigor > 1.0 && Math.random() < 0.15) {
         logEntries.push({
           timestamp: new Date().toISOString(),
           type: 'monitoring',

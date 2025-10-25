@@ -463,63 +463,66 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         manager.register_streamer(patient_id, websocket, [])
 
     try:
+        import asyncio
         frame_count = 0
-        last_cv_result = None
+        last_cv_data = None
+
+        async def process_cv_async(frame_data: str, frame_num: int):
+            """Process CV in background and broadcast results"""
+            nonlocal last_cv_data
+            try:
+                result = await asyncio.to_thread(process_frame, frame_data, patient_id)
+                last_cv_data = result
+
+                # Broadcast CV data separately
+                await manager.broadcast_frame({
+                    "type": "cv_data",
+                    "patient_id": patient_id,
+                    "data": {
+                        "landmarks": result["landmarks"],
+                        "head_pose_axes": result["head_pose_axes"],
+                        "metrics": result["metrics"]
+                    }
+                })
+
+                if frame_num % 30 == 0:
+                    crs = result.get('metrics', {}).get('crs_score', 0)
+                    hr = result.get('metrics', {}).get('heart_rate', 0)
+                    print(f"📦 Patient {patient_id} - Frame #{frame_num} [CV PROCESSED], CRS: {crs}, HR: {hr}")
+            except Exception as e:
+                print(f"❌ CV processing error: {e}")
 
         while True:
             data = await websocket.receive_json()
             frame_count += 1
 
             if data.get("type") == "frame":
-                # Process every 3rd frame with full CV, skip others for performance
-                if frame_count % 3 == 0:
-                    result = process_frame(data.get("frame"), patient_id=patient_id)
-                    last_cv_result = result
+                raw_frame = data.get("frame")
 
-                    if frame_count % 30 == 0:
-                        crs = result.get('metrics', {}).get('crs_score', 0)
-                        hr = result.get('metrics', {}).get('heart_rate', 0)
-                        print(f"📦 Patient {patient_id} - Frame #{frame_count} [PROCESSED], CRS: {crs}, HR: {hr}, viewers: {len(manager.viewers)}")
-                else:
-                    # Use cached CV data for skipped frames, just update the image
-                    if last_cv_result:
-                        result = {
-                            "frame": data.get("frame"),  # Use raw frame (no overlays)
-                            "landmarks": last_cv_result["landmarks"],  # Cached landmark positions
-                            "head_pose_axes": last_cv_result["head_pose_axes"],  # Cached pose axes
-                            "metrics": last_cv_result["metrics"]  # Cached metrics
-                        }
-                    else:
-                        # First frame(s), use defaults
-                        result = {
-                            "frame": data.get("frame"),
-                            "landmarks": [],
-                            "head_pose_axes": None,
-                            "metrics": {
-                                "crs_score": 0.0,
-                                "heart_rate": 75,
-                                "respiratory_rate": 14,
-                                "alert": False,
-                                "alert_triggers": [],
-                                "head_pitch": 0.0,
-                                "head_yaw": 0.0,
-                                "head_roll": 0.0,
-                                "eye_openness": 0.0,
-                                "attention_score": 0.0,
-                                "shoulder_angle": 0.0,
-                                "posture_score": 1.0,
-                                "upper_body_movement": 0.0,
-                                "lean_forward": 0.0,
-                                "arm_asymmetry": 0.0
-                            }
-                        }
-
-                # Broadcast with patient_id tag
+                # IMMEDIATE PASSTHROUGH: Send raw frame to viewers instantly
                 await manager.broadcast_frame({
                     "type": "live_frame",
-                    "patient_id": patient_id,  # Patient-specific tag
-                    "data": result
+                    "patient_id": patient_id,
+                    "data": {
+                        "frame": raw_frame
+                    }
                 })
+
+                # Process CV asynchronously every 3rd frame
+                if frame_count % 3 == 0:
+                    # Start CV processing in background - don't wait for it
+                    asyncio.create_task(process_cv_async(raw_frame, frame_count))
+                elif last_cv_data:
+                    # Send cached CV data for non-processed frames
+                    await manager.broadcast_frame({
+                        "type": "cv_data",
+                        "patient_id": patient_id,
+                        "data": {
+                            "landmarks": last_cv_data["landmarks"],
+                            "head_pose_axes": last_cv_data["head_pose_axes"],
+                            "metrics": last_cv_data["metrics"]
+                        }
+                    })
 
     except WebSocketDisconnect:
         print(f"❌ Patient {patient_id} stream disconnected")
