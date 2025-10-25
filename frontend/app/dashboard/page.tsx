@@ -7,6 +7,7 @@ import DetailPanel from '@/components/DetailPanel';
 import StatsBar from '@/components/StatsBar';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import GlobalActivityFeed from '@/components/GlobalActivityFeed';
+import ManualAlertsPanel from '@/components/ManualAlertsPanel';
 import { getApiUrl } from '@/lib/api';
 import AgentAlertToast from '@/components/AgentAlertToast';
 
@@ -643,13 +644,16 @@ export default function DashboardPage() {
             </div>
           </div>
 
-            {/* Global Activity Feed (Right - 4 columns) */}
-            <div className="col-span-4">
+            {/* Global Activity Feed + Manual Alerts (Right - 4 columns) */}
+            <div className="col-span-4 space-y-6">
               <GlobalActivityFeed
                 events={globalEventFeed}
                 alerts={alerts}
                 onPatientClick={onPatientClicked}
               />
+              
+              {/* Manual Alerts Panel */}
+              <ManualAlertsPanel />
             </div>
           </div>
         ) : (

@@ -129,6 +129,74 @@ async def health_check():
     }
 
 
+# ============================================================================
+# Twilio SMS Alerts
+# ============================================================================
+
+class SMSAlertRequest(BaseModel):
+    phone_number: str
+    message: str
+
+
+@app.post("/alerts/trigger")
+async def trigger_sms_alert(request: SMSAlertRequest):
+    """
+    Send SMS alert via Twilio
+    For MVP: Manual alerts from dashboard
+    Future: Automatically triggered by AI agent
+    """
+    try:
+        # Get Twilio credentials from secrets
+        TWILIO_ACCOUNT_SID = get_secret("TWILIO_ACCOUNT_SID")
+        TWILIO_AUTH_TOKEN = get_secret("TWILIO_AUTH_TOKEN")
+        TWILIO_PHONE_NUMBER = get_secret("TWILIO_PHONE_NUMBER")
+        
+        if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
+            return {
+                "status": "error",
+                "message": "Twilio credentials not configured",
+                "mock_sent": True,
+                "details": "In production, this would send via Twilio"
+            }
+        
+        # Import Twilio client
+        from twilio.rest import Client
+        
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        
+        # Send SMS
+        message = client.messages.create(
+            body=f"[Haven Alert] {request.message}",
+            from_=TWILIO_PHONE_NUMBER,
+            to=request.phone_number
+        )
+        
+        print(f"✅ SMS sent to {request.phone_number}: {message.sid}")
+        
+        return {
+            "status": "success",
+            "message": "Alert sent successfully",
+            "sid": message.sid,
+            "to": request.phone_number
+        }
+        
+    except ImportError:
+        # Twilio not installed - return mock success
+        print(f"⚠️ Twilio not installed - mock sending SMS to {request.phone_number}")
+        return {
+            "status": "success",
+            "message": "Alert sent (mock mode - Twilio not installed)",
+            "mock_sent": True,
+            "to": request.phone_number
+        }
+    except Exception as e:
+        print(f"❌ Failed to send SMS: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to send alert: {str(e)}"
+        }
+
+
 @app.get("/smplrspace/config")
 async def get_smplrspace_config():
     """
