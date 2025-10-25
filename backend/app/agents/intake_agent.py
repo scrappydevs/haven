@@ -370,17 +370,18 @@ async def entrypoint(ctx: agents.JobContext):
     logger.info(f"🏥 Starting intake for patient {patient_id}, session {session_id}")
 
     try:
-        # Create agent session with OpenAI Realtime API (simpler: STT+LLM+TTS in one)
+        # Create agent session with STT + LLM + TTS pipeline
         session = AgentSession(
-            # OpenAI Realtime Model (handles speech-to-speech directly)
-            realtime_model=openai.realtime.RealtimeModel(
-                model="gpt-4o-realtime-preview-2024-12-17",
-                voice="alloy",  # Options: alloy, echo, shimmer
-                temperature=0.7,
-                modalities=["audio", "text"],
-            ),
+            # Speech-to-Text
+            stt=openai.STT(model="whisper-1"),
 
-            # Voice Activity Detection (optional, OpenAI has built-in VAD)
+            # Language Model
+            llm=openai.LLM(model="gpt-4o-mini", temperature=0.7),
+
+            # Text-to-Speech
+            tts=openai.TTS(voice="alloy"),  # Options: alloy, echo, shimmer, fable, onyx, nova
+
+            # Voice Activity Detection
             vad=silero.VAD.load(),
         )
 
@@ -394,13 +395,8 @@ async def entrypoint(ctx: agents.JobContext):
             ),
         )
 
-        # Generate opening greeting
-        logger.info("👋 Generating opening greeting...")
-        await session.generate_reply(
-            instructions="Greet the patient warmly, introduce yourself as Haven AI, and ask for their name and what brings them in today."
-        )
-
         logger.info(f"✅ Agent session started successfully for patient {patient_id}")
+        logger.info("Agent is ready and will greet the patient when they speak")
 
     except Exception as e:
         logger.error(f"❌ Error in agent entrypoint: {e}", exc_info=True)
