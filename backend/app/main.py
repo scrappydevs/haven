@@ -14,13 +14,15 @@ from app.supabase_client import supabase, SUPABASE_URL
 from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
 from app.infisical_config import get_secret, secret_manager
 from app.rooms import (
-    get_all_assignments,
+    get_all_floors,
+    get_all_rooms_with_patients,
     assign_patient_to_room,
     unassign_patient_from_room,
-    assign_nurse_to_station,
-    unassign_nurse_from_station,
+    get_patient_current_room,
+    sync_room_from_smplrspace,
+    Floor,
     AssignPatientRequest,
-    AssignNurseRequest
+    UnassignPatientRequest
 )
 
 # Try to import anthropic for LLM recommendations
@@ -430,15 +432,42 @@ Only recommend protocols that are clearly relevant based on the patient's condit
     }
 
 
+@app.get("/floors")
+async def get_floors():
+    """
+    Get all floor definitions
+    
+    Returns:
+        List of floor definitions with Smplrspace references
+    """
+    return get_all_floors()
+
+
+@app.get("/rooms")
+async def get_rooms(floor_id: str = None):
+    """
+    Get all rooms with their current patient assignments
+    Optionally filter by floor_id
+    
+    Args:
+        floor_id: Optional floor ID to filter rooms
+    
+    Returns:
+        List of rooms with optional patient information
+    """
+    return get_all_rooms_with_patients(floor_id)
+
+
 @app.get("/rooms/assignments")
 async def get_room_assignments():
     """
-    Get all room assignments
+    DEPRECATED: Use /rooms instead
+    Get all rooms with their current patient assignments
     
     Returns:
-        List of room assignments with patient and nurse information
+        List of rooms with optional patient information
     """
-    return get_all_assignments()
+    return get_all_rooms_with_patients()
 
 
 @app.post("/rooms/assign-patient")
@@ -447,77 +476,87 @@ async def assign_patient(request: AssignPatientRequest):
     Assign a patient to a room
     
     Args:
-        request: Room ID and patient ID
+        request: Room ID, patient ID, and optional notes
     
     Returns:
-        Updated room assignment
+        Patient-room assignment record
     """
     try:
-        # Get patient details from Supabase
-        if supabase:
-            patient = supabase.table("patients") \
-                .select("*") \
-                .eq("patient_id", request.patient_id) \
-                .single() \
-                .execute()
-            
-            patient_name = patient.data.get("name", "Unknown") if patient.data else "Unknown"
-        else:
-            patient_name = request.patient_id
-        
-        return assign_patient_to_room(request.room_id, request.patient_id, patient_name)
+        return assign_patient_to_room(
+            room_id=request.room_id,
+            patient_id=request.patient_id,
+            notes=request.notes
+        )
     except Exception as e:
         return {"error": str(e)}
 
 
 @app.delete("/rooms/unassign-patient/{room_id}")
-async def unassign_patient(room_id: str):
+async def unassign_patient(room_id: str, patient_id: str = None):
     """
     Remove patient from a room
     
     Args:
         room_id: Room identifier
+        patient_id: Optional patient ID to remove specific patient
     
     Returns:
-        Updated room assignment
+        Success message
     """
     try:
-        return unassign_patient_from_room(room_id)
+        return unassign_patient_from_room(room_id, patient_id)
     except Exception as e:
         return {"error": str(e)}
 
 
-@app.post("/rooms/assign-nurse")
-async def assign_nurse(request: AssignNurseRequest):
+@app.get("/patients/{patient_id}/room")
+async def get_patient_room(patient_id: str):
     """
-    Assign a nurse to a station
+    Get the current room assignment for a patient
     
     Args:
-        request: Room ID and nurse ID
+        patient_id: Patient identifier
     
     Returns:
-        Updated room assignment
+        Room info if assigned, None otherwise
     """
     try:
-        return assign_nurse_to_station(request.room_id, request.nurse_id)
+        room = get_patient_current_room(patient_id)
+        if room:
+            return room
+        return {"message": "Patient not assigned to any room"}
     except Exception as e:
         return {"error": str(e)}
 
 
-@app.delete("/rooms/unassign-nurse/{room_id}/{nurse_id}")
-async def unassign_nurse(room_id: str, nurse_id: str):
+class SyncRoomsRequest(BaseModel):
+    rooms: list
+    floor_id: str = 'floor-1'
+
+
+@app.post("/rooms/sync-from-smplrspace")
+async def sync_rooms_from_smplrspace(request: SyncRoomsRequest):
     """
-    Remove nurse from a station
+    Sync rooms from Smplrspace automatic room detection
     
     Args:
-        room_id: Room identifier
-        nurse_id: Nurse identifier
+        request: { rooms: [...], floor_id: 'floor-1' } from smplrClient.getRoomsOnLevel()
     
     Returns:
-        Updated room assignment
+        { synced_count: number, rooms: [...] }
     """
     try:
-        return unassign_nurse_from_station(room_id, nurse_id)
+        synced_rooms = []
+        for room_item in request.rooms:
+            room = sync_room_from_smplrspace(room_item, request.floor_id)
+            synced_rooms.append(room)
+        
+        print(f"✅ Synced {len(synced_rooms)} rooms to floor {request.floor_id}")
+        return {
+            "synced_count": len(synced_rooms),
+            "rooms": synced_rooms,
+            "floor_id": request.floor_id
+        }
     except Exception as e:
         return {"error": str(e)}
 

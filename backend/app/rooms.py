@@ -1,182 +1,326 @@
 """
 Room Management for Hospital Floor Plan
-Handles room assignments for patients and nurses
-Uses Supabase for persistence with in-memory fallback
+Handles room definitions and patient-room assignments
+Uses Supabase with normalized tables: rooms + patients_room
 """
 
 from typing import List, Optional, Dict
 from pydantic import BaseModel
+from datetime import datetime
 from app.supabase_client import supabase
 
-class RoomAssignment(BaseModel):
+class Floor(BaseModel):
+    floor_id: str
+    name: str
+    smplr_space_id: str
+    level_index: int = 0
+    building: Optional[str] = None
+    description: Optional[str] = None
+    metadata: Dict = {}
+
+class Room(BaseModel):
     room_id: str
     room_name: str
     room_type: str  # 'patient' | 'nurse_station' | 'other'
+    floor_id: str
+    capacity: int = 1
+    metadata: Dict = {}
+
+class PatientRoomAssignment(BaseModel):
+    room_id: str
+    patient_id: str
+    assigned_at: Optional[datetime] = None
+    assigned_by: Optional[str] = None
+    notes: Optional[str] = None
+
+class RoomWithPatient(BaseModel):
+    """Room with optional patient assignment info"""
+    room_id: str
+    room_name: str
+    room_type: str
+    floor_id: str
+    capacity: int = 1
     patient_id: Optional[str] = None
     patient_name: Optional[str] = None
-    nurse_ids: List[str] = []
+    assigned_at: Optional[datetime] = None
 
 class AssignPatientRequest(BaseModel):
     room_id: str
     patient_id: str
+    notes: Optional[str] = None
 
-class AssignNurseRequest(BaseModel):
+class UnassignPatientRequest(BaseModel):
     room_id: str
-    nurse_id: str
+    patient_id: str
 
-# In-memory fallback - EMPTY by default, rooms should come from Supabase
-_fallback_assignments: Dict[str, RoomAssignment] = {}
+# In-memory fallback - EMPTY by default
+_fallback_rooms: Dict[str, Room] = {}
 
-def get_all_assignments() -> List[RoomAssignment]:
+def get_all_floors() -> List[Floor]:
+    """Get all floor definitions from database"""
+    if supabase:
+        try:
+            response = supabase.table("floors").select("*").execute()
+            floors = [Floor(**floor) for floor in response.data]
+            print(f"✅ Fetched {len(floors)} floors from Supabase")
+            return floors
+        except Exception as e:
+            print(f"⚠️ Supabase error: {e}")
+            return []
+    return []
+
+def get_all_rooms_with_patients(floor_id: str = None) -> List[RoomWithPatient]:
     """
-    Get all room assignments from Supabase
+    Get all rooms with their current patient assignments
+    Optionally filter by floor_id
     
-    DATABASE REFERENCE: public.room_assignments
-    - Fetches all rows from room_assignments table
-    - Returns list of RoomAssignment objects
-    - Falls back to empty list if Supabase unavailable
+    DATABASE REFERENCE: 
+    - public.rooms - room definitions
+    - public.patients_room - patient assignments
+    - public.patients - patient details
+    
+    Args:
+        floor_id: Optional floor ID to filter rooms
+    
+    Returns list of rooms with optional patient info
     """
     if supabase:
         try:
-            response = supabase.table("room_assignments").select("*").execute()
-            print(f"✅ Fetched {len(response.data)} room assignments from Supabase")
-            return [RoomAssignment(**row) for row in response.data]
+            # Get rooms (optionally filtered by floor)
+            query = supabase.table("rooms").select("*")
+            if floor_id:
+                query = query.eq("floor_id", floor_id)
+            rooms_response = query.execute()
+            
+            # Get all current assignments with patient info
+            assignments_response = supabase.table("patients_room") \
+                .select("room_id, patient_id, assigned_at, patients(name)") \
+                .execute()
+            
+            # Create a map of room_id -> patient assignment
+            assignment_map = {}
+            for assignment in assignments_response.data:
+                assignment_map[assignment['room_id']] = {
+                    'patient_id': assignment['patient_id'],
+                    'patient_name': assignment['patients']['name'] if assignment.get('patients') else None,
+                    'assigned_at': assignment.get('assigned_at')
+                }
+            
+            # Combine rooms with their assignments
+            rooms_with_patients = []
+            for room in rooms_response.data:
+                room_data = {
+                    'room_id': room['room_id'],
+                    'room_name': room['room_name'],
+                    'room_type': room['room_type'],
+                    'floor_id': room.get('floor_id', 'floor-1'),
+                    'capacity': room.get('capacity', 1),
+                }
+                
+                # Add patient info if assigned
+                if room['room_id'] in assignment_map:
+                    assignment = assignment_map[room['room_id']]
+                    room_data.update({
+                        'patient_id': assignment['patient_id'],
+                        'patient_name': assignment['patient_name'],
+                        'assigned_at': assignment['assigned_at']
+                    })
+                
+                rooms_with_patients.append(RoomWithPatient(**room_data))
+            
+            print(f"✅ Fetched {len(rooms_with_patients)} rooms from Supabase")
+            return rooms_with_patients
+            
         except Exception as e:
             print(f"⚠️ Supabase error: {e}")
-            print(f"⚠️ Make sure room_assignments table exists in Supabase")
+            print(f"⚠️ Make sure rooms and patients_room tables exist in Supabase")
     else:
         print("⚠️ Supabase not configured - no room data available")
     
-    return list(_fallback_assignments.values())
+    return []
 
-def assign_patient_to_room(room_id: str, patient_id: str, patient_name: str) -> RoomAssignment:
+def assign_patient_to_room(room_id: str, patient_id: str, notes: Optional[str] = None, assigned_by: Optional[str] = None) -> PatientRoomAssignment:
     """
     Assign a patient to a room
     
-    DATABASE REFERENCE: public.room_assignments
-    - Updates patient_id and patient_name columns
-    - WHERE room_id = :room_id
-    - Returns updated RoomAssignment
+    DATABASE REFERENCE: public.patients_room
+    - Inserts new patient-room assignment
+    - Enforces UNIQUE constraint on (room_id, patient_id)
+    - Returns the assignment record
     """
     if supabase:
         try:
-            response = supabase.table("room_assignments") \
-                .update({"patient_id": patient_id, "patient_name": patient_name}) \
+            # First check if room exists
+            room_check = supabase.table("rooms").select("room_id").eq("room_id", room_id).execute()
+            if not room_check.data:
+                raise ValueError(f"Room {room_id} does not exist")
+            
+            # Check if patient is already assigned to this room
+            existing = supabase.table("patients_room") \
+                .select("*") \
                 .eq("room_id", room_id) \
+                .eq("patient_id", patient_id) \
                 .execute()
             
-            if response.data and len(response.data) > 0:
-                print(f"✅ Assigned {patient_id} to {room_id}")
-                return RoomAssignment(**response.data[0])
-            else:
-                # Room doesn't exist, create it
-                response = supabase.table("room_assignments") \
-                    .insert({
-                        "room_id": room_id,
-                        "room_name": room_id.replace('-', ' ').title(),
-                        "room_type": "patient",
-                        "patient_id": patient_id,
-                        "patient_name": patient_name
-                    }) \
+            if existing.data:
+                print(f"⚠️ Patient {patient_id} already assigned to {room_id}")
+                return PatientRoomAssignment(**existing.data[0])
+            
+            # Check if patient is assigned to another room (optional, depending on business logic)
+            patient_rooms = supabase.table("patients_room") \
+                .select("room_id") \
+                .eq("patient_id", patient_id) \
+                .execute()
+            
+            if patient_rooms.data:
+                # Patient already in another room - unassign first
+                old_room = patient_rooms.data[0]['room_id']
+                print(f"⚠️ Patient {patient_id} was in {old_room}, removing...")
+                supabase.table("patients_room") \
+                    .delete() \
+                    .eq("patient_id", patient_id) \
                     .execute()
-                print(f"✅ Created room {room_id} and assigned {patient_id}")
-                return RoomAssignment(**response.data[0])
+            
+            # Insert new assignment
+            response = supabase.table("patients_room") \
+                .insert({
+                    "room_id": room_id,
+                    "patient_id": patient_id,
+                    "notes": notes,
+                    "assigned_by": assigned_by
+                }) \
+                .execute()
+            
+            print(f"✅ Assigned {patient_id} to {room_id}")
+            return PatientRoomAssignment(**response.data[0])
+            
         except Exception as e:
             print(f"⚠️ Supabase error: {e}")
             raise ValueError(f"Failed to assign patient: {e}")
     
     raise ValueError("Supabase not configured")
 
-def unassign_patient_from_room(room_id: str) -> RoomAssignment:
+def unassign_patient_from_room(room_id: str, patient_id: Optional[str] = None) -> Dict:
     """
     Remove patient from a room
     
-    DATABASE REFERENCE: public.room_assignments
-    - Sets patient_id and patient_name to NULL
-    - WHERE room_id = :room_id
-    - Returns updated RoomAssignment
+    DATABASE REFERENCE: public.patients_room
+    - Deletes assignment record
+    - WHERE room_id = :room_id (and optionally patient_id)
+    - Returns success message
     """
     if supabase:
         try:
-            response = supabase.table("room_assignments") \
-                .update({"patient_id": None, "patient_name": None}) \
-                .eq("room_id", room_id) \
-                .execute()
+            query = supabase.table("patients_room").delete().eq("room_id", room_id)
             
-            if response.data and len(response.data) > 0:
-                print(f"✅ Removed patient from {room_id}")
-                return RoomAssignment(**response.data[0])
+            # If specific patient_id provided, only remove that patient
+            if patient_id:
+                query = query.eq("patient_id", patient_id)
+            
+            response = query.execute()
+            
+            print(f"✅ Removed patient(s) from {room_id}")
+            return {"success": True, "message": f"Patient removed from {room_id}"}
+            
         except Exception as e:
             print(f"⚠️ Supabase error: {e}")
             raise ValueError(f"Failed to unassign patient: {e}")
     
     raise ValueError("Supabase not configured")
 
-def assign_nurse_to_station(room_id: str, nurse_id: str) -> RoomAssignment:
-    """Assign a nurse to a station"""
-    if supabase:
-        try:
-            # Get current nurse_ids
-            current = supabase.table("room_assignments") \
-                .select("nurse_ids") \
-                .eq("room_id", room_id) \
-                .single() \
-                .execute()
-            
-            nurse_ids = current.data.get("nurse_ids", []) if current.data else []
-            if nurse_id not in nurse_ids:
-                nurse_ids.append(nurse_id)
-            
-            response = supabase.table("room_assignments") \
-                .update({"nurse_ids": nurse_ids}) \
-                .eq("room_id", room_id) \
-                .execute()
-            
-            if response.data and len(response.data) > 0:
-                return RoomAssignment(**response.data[0])
-        except Exception as e:
-            print(f"⚠️ Supabase error, using in-memory fallback: {e}")
+def sync_room_from_smplrspace(room_data: Dict, floor_id: str = 'floor-1') -> Room:
+    """
+    Sync a room from Smplrspace automatic room detection
+    Creates or updates room based on room polygon from walls
     
-    # Fallback
-    if room_id not in _fallback_assignments:
-        raise ValueError(f"Room {room_id} not found")
+    Args:
+        room_data: Room object from smplrClient.getRoomsOnLevel()
+          {
+            id: 'room-1',
+            name: 'Room 1',
+            levelIndex: 0,
+            position: { x: 10.5, z: 20.3 },
+            polygon: [{ levelIndex: 0, x: ..., z: ... }, ...],
+            holes: []
+          }
+        floor_id: Floor identifier (defaults to 'floor-1')
     
-    if nurse_id not in _fallback_assignments[room_id].nurse_ids:
-        _fallback_assignments[room_id].nurse_ids.append(nurse_id)
+    Returns:
+        Room object
+    """
+    if not supabase:
+        raise ValueError("Supabase not configured")
     
-    return _fallback_assignments[room_id]
+    try:
+        room_id = room_data.get('id')
+        room_name = room_data.get('name', room_id)
+        
+        # Determine room type from name
+        room_type = 'patient'  # default
+        name_lower = room_name.lower()
+        if 'nurse' in name_lower or 'station' in name_lower:
+            room_type = 'nurse_station'
+        elif 'icu' in name_lower:
+            room_type = 'icu'
+        elif 'surgery' in name_lower or 'operating' in name_lower:
+            room_type = 'surgery'
+        elif 'lab' in name_lower:
+            room_type = 'lab'
+        
+        # Store full room data including polygon boundaries
+        metadata = {
+            'smplrspace_data': room_data,
+            'polygon': room_data.get('polygon', []),
+            'holes': room_data.get('holes', []),
+            'synced_at': datetime.now().isoformat()
+        }
+        
+        # Upsert (insert or update) room
+        response = supabase.table("rooms") \
+            .upsert({
+                'room_id': room_id,
+                'room_name': room_name,
+                'room_type': room_type,
+                'floor_id': floor_id,
+                'capacity': 1,
+                'metadata': metadata
+            }, on_conflict='room_id') \
+            .execute()
+        
+        print(f"✅ Synced room {room_id} to floor {floor_id}")
+        return Room(**response.data[0])
+        
+    except Exception as e:
+        print(f"⚠️ Error syncing room: {e}")
+        raise ValueError(f"Failed to sync room: {e}")
 
-def unassign_nurse_from_station(room_id: str, nurse_id: str) -> RoomAssignment:
-    """Remove nurse from a station"""
+
+def get_patient_current_room(patient_id: str) -> Optional[RoomWithPatient]:
+    """
+    Get the current room assignment for a patient
+    
+    Returns None if patient is not assigned to any room
+    """
     if supabase:
         try:
-            # Get current nurse_ids
-            current = supabase.table("room_assignments") \
-                .select("nurse_ids") \
-                .eq("room_id", room_id) \
-                .single() \
-                .execute()
-            
-            nurse_ids = current.data.get("nurse_ids", []) if current.data else []
-            if nurse_id in nurse_ids:
-                nurse_ids.remove(nurse_id)
-            
-            response = supabase.table("room_assignments") \
-                .update({"nurse_ids": nurse_ids}) \
-                .eq("room_id", room_id) \
+            response = supabase.table("patients_room") \
+                .select("room_id, rooms(room_name, room_type, floor), assigned_at") \
+                .eq("patient_id", patient_id) \
                 .execute()
             
             if response.data and len(response.data) > 0:
-                return RoomAssignment(**response.data[0])
+                assignment = response.data[0]
+                room_info = assignment.get('rooms', {})
+                return RoomWithPatient(
+                    room_id=assignment['room_id'],
+                    room_name=room_info.get('room_name', ''),
+                    room_type=room_info.get('room_type', 'patient'),
+                    floor=room_info.get('floor', 1),
+                    patient_id=patient_id,
+                    assigned_at=assignment.get('assigned_at')
+                )
         except Exception as e:
-            print(f"⚠️ Supabase error, using in-memory fallback: {e}")
+            print(f"⚠️ Error getting patient room: {e}")
     
-    # Fallback
-    if room_id not in _fallback_assignments:
-        raise ValueError(f"Room {room_id} not found")
-    
-    if nurse_id in _fallback_assignments[room_id].nurse_ids:
-        _fallback_assignments[room_id].nurse_ids.remove(nurse_id)
-    
-    return _fallback_assignments[room_id]
+    return None
 
