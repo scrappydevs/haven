@@ -243,11 +243,11 @@ async def trigger_voice_alert(request: SMSAlertRequest):
         VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
         VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
         VONAGE_APPLICATION_ID = get_secret("VONAGE_APPLICATION_ID")
+        VONAGE_PRIVATE_KEY = get_secret("VONAGE_PRIVATE_KEY")
 
-        if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
+        if not all([VONAGE_API_KEY, VONAGE_API_SECRET, VONAGE_APPLICATION_ID, VONAGE_PRIVATE_KEY]):
             # Mock mode for demos without credentials
-            print(
-                f"⚠️  Vonage not configured - mock calling {request.phone_number}")
+            print(f"⚠️  Vonage Voice not fully configured - mock calling {request.phone_number}")
             print(f"   Message: {request.message}")
             return {
                 "status": "success",
@@ -257,11 +257,19 @@ async def trigger_voice_alert(request: SMSAlertRequest):
                 "note": "Voice API requires Vonage Application setup - see dashboard"
             }
 
+        # Convert escaped newlines to actual newlines in private key
+        private_key_formatted = VONAGE_PRIVATE_KEY.replace("\\n", "\n")
+
         # Import Vonage client (v4+ API)
         from vonage import Auth, Vonage
-
-        # Create auth and client
-        auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
+        
+        # Create auth with application credentials for Voice API
+        auth = Auth(
+            api_key=VONAGE_API_KEY,
+            api_secret=VONAGE_API_SECRET,
+            application_id=VONAGE_APPLICATION_ID,
+            private_key=private_key_formatted
+        )
         client = Vonage(auth=auth)
 
         # Create voice call with TTS
@@ -286,13 +294,14 @@ async def trigger_voice_alert(request: SMSAlertRequest):
             "ncco": ncco
         })
 
-        print(
-            f"✅ Voice call placed to {request.phone_number}: {response.get('uuid')}")
+        # Extract call UUID from response object
+        call_uuid = response.uuid if hasattr(response, 'uuid') else str(response)
+        print(f"✅ Voice call placed to {request.phone_number}: {call_uuid}")
 
         return {
             "status": "success",
             "message": "Voice call placed successfully",
-            "call_uuid": response.get("uuid"),
+            "call_uuid": call_uuid,
             "to": request.phone_number,
             "type": "voice"
         }

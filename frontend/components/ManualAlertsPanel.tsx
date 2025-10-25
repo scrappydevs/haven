@@ -21,6 +21,7 @@ interface ToastMessage {
 export default function ManualAlertsPanel() {
   const [selectedNurse, setSelectedNurse] = useState('');
   const [customMessage, setCustomMessage] = useState('');
+  const [alertType, setAlertType] = useState<'sms' | 'call'>('call'); // Default to voice call
   const [isSending, setIsSending] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -44,7 +45,8 @@ export default function ManualAlertsPanel() {
 
     try {
       const API_URL = getApiUrl();
-      const response = await fetch(`${API_URL}/alerts/trigger`, {
+      const endpoint = alertType === 'call' ? '/alerts/call' : '/alerts/trigger';
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,7 +63,8 @@ export default function ManualAlertsPanel() {
 
       const data = await response.json();
       
-      showToast('success', `✅ Alert sent to ${NURSES.find(n => n.phone === selectedNurse)?.name}`);
+      const alertTypeText = alertType === 'call' ? 'Voice call placed to' : 'SMS sent to';
+      showToast('success', `✅ ${alertTypeText} ${NURSES.find(n => n.phone === selectedNurse)?.name}`);
       
       // Clear form
       setCustomMessage('');
@@ -107,6 +110,42 @@ export default function ManualAlertsPanel() {
           </select>
         </div>
 
+        {/* Alert Type Toggle */}
+        <div className="mb-4">
+          <label className="block text-xs font-medium uppercase tracking-wider text-neutral-700 mb-2">
+            Alert Type
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setAlertType('call')}
+              disabled={isSending}
+              className={`flex-1 px-4 py-2.5 text-sm font-medium uppercase tracking-wider transition-all border
+                ${alertType === 'call'
+                  ? 'bg-neutral-950 text-white border-neutral-950'
+                  : 'bg-white text-neutral-700 border-neutral-300 hover:border-neutral-950'
+                } ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              📞 Voice Call (TTS)
+            </button>
+            <button
+              onClick={() => setAlertType('sms')}
+              disabled={isSending}
+              className={`flex-1 px-4 py-2.5 text-sm font-medium uppercase tracking-wider transition-all border
+                ${alertType === 'sms'
+                  ? 'bg-neutral-950 text-white border-neutral-950'
+                  : 'bg-white text-neutral-700 border-neutral-300 hover:border-neutral-950'
+                } ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              💬 SMS Text
+            </button>
+          </div>
+          <p className="text-xs text-neutral-500 mt-2 font-light">
+            {alertType === 'call' 
+              ? '🎙️ AI voice will read your message aloud - no 10DLC needed!' 
+              : '⏳ SMS requires 10DLC registration (1-2 days) - use Voice for immediate alerts'}
+          </p>
+        </div>
+
         {/* Message Input */}
         <div className="mb-4">
           <label className="block text-xs font-medium uppercase tracking-wider text-neutral-700 mb-2">
@@ -142,18 +181,20 @@ export default function ManualAlertsPanel() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              Sending...
+              {alertType === 'call' ? 'Placing Call...' : 'Sending SMS...'}
             </span>
           ) : (
-            'Send Alert'
+            alertType === 'call' ? '📞 Place Voice Call' : '💬 Send SMS'
           )}
         </button>
 
         {/* Info Notice */}
         <div className="mt-4 p-3 bg-neutral-50 border border-neutral-200">
           <p className="text-xs text-neutral-600 font-light">
-            <span className="font-medium">Note:</span> This will send an SMS via Vonage (global delivery, no A2P registration needed). 
-            In production, alerts will be triggered automatically by the AI when anomalies are detected.
+            <span className="font-medium">Note:</span> {alertType === 'call' 
+              ? 'Voice calls work immediately with TTS - no carrier restrictions!' 
+              : 'SMS requires 10DLC registration (pending). Use Voice for immediate alerts.'}
+            {' '}In production, alerts will be triggered automatically by AI when anomalies are detected.
           </p>
         </div>
       </div>
