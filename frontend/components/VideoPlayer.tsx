@@ -96,13 +96,63 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     // Clear previous frame
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw landmarks
+    // Draw landmarks and connections
     if (cvData.landmarks && cvData.landmarks.length > 0) {
+      // Create a map for easy landmark lookup by type
+      const landmarkMap = new Map();
+      cvData.landmarks.forEach(lm => {
+        landmarkMap.set(lm.type, {
+          x: lm.x * canvas.width,
+          y: lm.y * canvas.height
+        });
+      });
+
+      // Define connections between landmarks - "super cool" tactical HUD style
+      const connections = [
+        // Face perimeter frame
+        ['forehead', 'left_face'],
+        ['left_face', 'chin'],
+        ['chin', 'right_face'],
+        ['right_face', 'forehead'],
+
+        // Eye crosshairs
+        ['left_eye_inner', 'nose_tip'],
+        ['right_eye_inner', 'nose_tip'],
+        ['left_eye_outer', 'left_face'],
+        ['right_eye_outer', 'right_face'],
+
+        // Center axis (nose to mouth)
+        ['nose_tip', 'upper_lip'],
+        ['upper_lip', 'lower_lip'],
+        ['lower_lip', 'chin'],
+
+        // Cheek scanlines (diagonal accents)
+        ['left_cheek', 'nose_tip'],
+        ['right_cheek', 'nose_tip'],
+        ['left_cheek', 'upper_lip'],
+        ['right_cheek', 'upper_lip'],
+      ];
+
+      // Draw connections (thin green lines)
+      ctx.strokeStyle = '#00FF00';  // Green
+      ctx.lineWidth = 1;
+      connections.forEach(([start, end]) => {
+        const startPoint = landmarkMap.get(start);
+        const endPoint = landmarkMap.get(end);
+        if (startPoint && endPoint) {
+          ctx.beginPath();
+          ctx.moveTo(startPoint.x, startPoint.y);
+          ctx.lineTo(endPoint.x, endPoint.y);
+          ctx.stroke();
+        }
+      });
+
+      // Draw landmark points (green)
+      ctx.fillStyle = '#00FF00';  // Green
       cvData.landmarks.forEach((lm) => {
-        ctx.fillStyle = lm.color;
         ctx.beginPath();
         ctx.arc(
-          lm.x * canvas.width,   // Scale normalized coords to canvas size
+          lm.x * canvas.width,
           lm.y * canvas.height,
           3,  // Radius
           0,
