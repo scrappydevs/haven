@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build outputs
+.next/
+*/.next/
+dist/
+build/
+*.pyc
+__pycache__/
+
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# OS
+.DS_Store
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

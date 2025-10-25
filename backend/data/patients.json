@@ -1,0 +1,942 @@
+[
+  {
+    "id": 1,
+    "name": "Robert Nguyen",
+    "age": 62,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 0,
+    "enrollment_date": "2024-05-07",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 76,
+      "respiratory_rate": 14,
+      "blood_pressure": "132/72",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.29,
+    "status": "Active"
+  },
+  {
+    "id": 2,
+    "name": "Margaret Ramirez",
+    "age": 53,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 6,
+    "ecog_status": 1,
+    "enrollment_date": "2024-02-16",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 68,
+      "respiratory_rate": 16,
+      "blood_pressure": "118/80",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.16,
+    "status": "Active"
+  },
+  {
+    "id": 3,
+    "name": "Paul Harris",
+    "age": 53,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 4,
+    "ecog_status": 1,
+    "enrollment_date": "2024-08-20",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 73,
+      "respiratory_rate": 14,
+      "blood_pressure": "123/83",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.26,
+    "status": "Active"
+  },
+  {
+    "id": 4,
+    "name": "Michelle Baker",
+    "age": 56,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 3,
+    "ecog_status": 2,
+    "enrollment_date": "2024-09-05",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 82,
+      "respiratory_rate": 14,
+      "blood_pressure": "128/89",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.2,
+    "status": "Active"
+  },
+  {
+    "id": 5,
+    "name": "Andrew Kim",
+    "age": 51,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 6,
+    "ecog_status": 2,
+    "enrollment_date": "2024-04-06",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 88,
+      "respiratory_rate": 18,
+      "blood_pressure": "118/86",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.38,
+    "status": "Active"
+  },
+  {
+    "id": 6,
+    "name": "Ashley Gonzalez",
+    "age": 70,
+    "gender": "Male",
+    "ethnicity": "African American",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 0,
+    "enrollment_date": "2024-01-24",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 65,
+      "respiratory_rate": 16,
+      "blood_pressure": "131/72",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.24,
+    "status": "Active"
+  },
+  {
+    "id": 7,
+    "name": "Andrew Moore",
+    "age": 79,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 0,
+    "enrollment_date": "2024-11-20",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 72,
+      "respiratory_rate": 17,
+      "blood_pressure": "123/89",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.21,
+    "status": "Active"
+  },
+  {
+    "id": 8,
+    "name": "Jennifer Lee",
+    "age": 79,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-03-17",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 78,
+      "respiratory_rate": 13,
+      "blood_pressure": "129/82",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.16,
+    "status": "Active"
+  },
+  {
+    "id": 9,
+    "name": "Michelle Wu",
+    "age": 66,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 4,
+    "ecog_status": 1,
+    "enrollment_date": "2024-03-17",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 76,
+      "respiratory_rate": 13,
+      "blood_pressure": "114/90",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.36,
+    "status": "Active"
+  },
+  {
+    "id": 10,
+    "name": "Robert Johnson",
+    "age": 69,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-03-19",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 81,
+      "respiratory_rate": 12,
+      "blood_pressure": "136/71",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.3,
+    "status": "Active"
+  },
+  {
+    "id": 11,
+    "name": "Steven Torres",
+    "age": 65,
+    "gender": "Female",
+    "ethnicity": "African American",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 3,
+    "ecog_status": 1,
+    "enrollment_date": "2024-05-15",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 68,
+      "respiratory_rate": 16,
+      "blood_pressure": "120/75",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.24,
+    "status": "Active"
+  },
+  {
+    "id": 12,
+    "name": "Thomas Wu",
+    "age": 63,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-02-15",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 78,
+      "respiratory_rate": 17,
+      "blood_pressure": "129/88",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.14,
+    "status": "Active"
+  },
+  {
+    "id": 13,
+    "name": "Paul Clark",
+    "age": 77,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 6,
+    "ecog_status": 1,
+    "enrollment_date": "2024-08-13",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 74,
+      "respiratory_rate": 17,
+      "blood_pressure": "123/90",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.2,
+    "status": "Active"
+  },
+  {
+    "id": 14,
+    "name": "Donald Clark",
+    "age": 68,
+    "gender": "Female",
+    "ethnicity": "African American",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-11-15",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 80,
+      "respiratory_rate": 18,
+      "blood_pressure": "121/72",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.27,
+    "status": "Active"
+  },
+  {
+    "id": 15,
+    "name": "Kimberly Torres",
+    "age": 70,
+    "gender": "Male",
+    "ethnicity": "Asian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 3,
+    "ecog_status": 1,
+    "enrollment_date": "2024-11-21",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 68,
+      "respiratory_rate": 14,
+      "blood_pressure": "125/80",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.14,
+    "status": "Active"
+  },
+  {
+    "id": 16,
+    "name": "Emily Taylor",
+    "age": 57,
+    "gender": "Male",
+    "ethnicity": "Asian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 3,
+    "ecog_status": 1,
+    "enrollment_date": "2024-06-17",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 84,
+      "respiratory_rate": 15,
+      "blood_pressure": "135/89",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.27,
+    "status": "Active"
+  },
+  {
+    "id": 17,
+    "name": "Christopher Anderson",
+    "age": 74,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 4,
+    "ecog_status": 1,
+    "enrollment_date": "2024-04-11",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 84,
+      "respiratory_rate": 13,
+      "blood_pressure": "114/79",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.36,
+    "status": "Active"
+  },
+  {
+    "id": 18,
+    "name": "Kenneth Jackson",
+    "age": 52,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 3,
+    "ecog_status": 2,
+    "enrollment_date": "2024-11-04",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 86,
+      "respiratory_rate": 17,
+      "blood_pressure": "111/74",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.14,
+    "status": "Active"
+  },
+  {
+    "id": 19,
+    "name": "Betty Taylor",
+    "age": 55,
+    "gender": "Male",
+    "ethnicity": "Asian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 6,
+    "ecog_status": 2,
+    "enrollment_date": "2024-01-13",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 74,
+      "respiratory_rate": 12,
+      "blood_pressure": "113/71",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.11,
+    "status": "Active"
+  },
+  {
+    "id": 20,
+    "name": "Barbara Lewis",
+    "age": 51,
+    "gender": "Male",
+    "ethnicity": "Other",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-04-25",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 79,
+      "respiratory_rate": 18,
+      "blood_pressure": "139/87",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.36,
+    "status": "Active"
+  },
+  {
+    "id": 21,
+    "name": "Anthony Moore",
+    "age": 79,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-10-15",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 75,
+      "respiratory_rate": 17,
+      "blood_pressure": "138/77",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.37,
+    "status": "Active"
+  },
+  {
+    "id": 22,
+    "name": "Matthew Chen",
+    "age": 73,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 6,
+    "ecog_status": 1,
+    "enrollment_date": "2024-09-18",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 68,
+      "respiratory_rate": 17,
+      "blood_pressure": "132/90",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.38,
+    "status": "Active"
+  },
+  {
+    "id": 23,
+    "name": "Maria Lewis",
+    "age": 53,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 4,
+    "ecog_status": 0,
+    "enrollment_date": "2024-03-25",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 69,
+      "respiratory_rate": 13,
+      "blood_pressure": "135/83",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.13,
+    "status": "Active"
+  },
+  {
+    "id": 24,
+    "name": "Elizabeth Chen",
+    "age": 67,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 4,
+    "ecog_status": 0,
+    "enrollment_date": "2024-08-01",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 67,
+      "respiratory_rate": 16,
+      "blood_pressure": "112/78",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.11,
+    "status": "Active"
+  },
+  {
+    "id": 25,
+    "name": "Elizabeth Lee",
+    "age": 65,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 0,
+    "enrollment_date": "2024-08-24",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 80,
+      "respiratory_rate": 12,
+      "blood_pressure": "128/73",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.31,
+    "status": "Active"
+  },
+  {
+    "id": 26,
+    "name": "Carol Wilson",
+    "age": 77,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 0,
+    "enrollment_date": "2024-10-15",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 74,
+      "respiratory_rate": 13,
+      "blood_pressure": "121/71",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.14,
+    "status": "Active"
+  },
+  {
+    "id": 27,
+    "name": "Thomas Sanchez",
+    "age": 57,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 3,
+    "ecog_status": 1,
+    "enrollment_date": "2024-01-22",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 69,
+      "respiratory_rate": 17,
+      "blood_pressure": "135/82",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.1,
+    "status": "Active"
+  },
+  {
+    "id": 28,
+    "name": "Emily Rodriguez",
+    "age": 59,
+    "gender": "Female",
+    "ethnicity": "African American",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 3,
+    "ecog_status": 1,
+    "enrollment_date": "2024-12-28",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 74,
+      "respiratory_rate": 18,
+      "blood_pressure": "137/75",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.18,
+    "status": "Active"
+  },
+  {
+    "id": 29,
+    "name": "Joseph Harris",
+    "age": 57,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 2,
+    "enrollment_date": "2024-03-18",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 85,
+      "respiratory_rate": 13,
+      "blood_pressure": "118/88",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.38,
+    "status": "Active"
+  },
+  {
+    "id": 30,
+    "name": "Nancy Martin",
+    "age": 70,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 4,
+    "ecog_status": 0,
+    "enrollment_date": "2024-12-06",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 75,
+      "respiratory_rate": 16,
+      "blood_pressure": "137/74",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.38,
+    "status": "Active"
+  },
+  {
+    "id": 31,
+    "name": "James Garcia",
+    "age": 79,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 3,
+    "ecog_status": 0,
+    "enrollment_date": "2024-03-04",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 66,
+      "respiratory_rate": 13,
+      "blood_pressure": "135/77",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.19,
+    "status": "Active"
+  },
+  {
+    "id": 32,
+    "name": "Susan Hernandez",
+    "age": 68,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-11-06",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 89,
+      "respiratory_rate": 15,
+      "blood_pressure": "113/82",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.18,
+    "status": "Active"
+  },
+  {
+    "id": 33,
+    "name": "Linda Kim",
+    "age": 63,
+    "gender": "Male",
+    "ethnicity": "African American",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 5,
+    "ecog_status": 2,
+    "enrollment_date": "2024-07-28",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 65,
+      "respiratory_rate": 16,
+      "blood_pressure": "128/77",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.4,
+    "status": "Active"
+  },
+  {
+    "id": 34,
+    "name": "Richard Chen",
+    "age": 55,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 4,
+    "ecog_status": 0,
+    "enrollment_date": "2024-01-24",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 75,
+      "respiratory_rate": 17,
+      "blood_pressure": "139/83",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.13,
+    "status": "Active"
+  },
+  {
+    "id": 35,
+    "name": "Emily Jackson",
+    "age": 62,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 4,
+    "ecog_status": 1,
+    "enrollment_date": "2024-09-26",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 87,
+      "respiratory_rate": 16,
+      "blood_pressure": "138/75",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.22,
+    "status": "Active"
+  },
+  {
+    "id": 36,
+    "name": "Kimberly Rivera",
+    "age": 57,
+    "gender": "Male",
+    "ethnicity": "African American",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-12-22",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 73,
+      "respiratory_rate": 15,
+      "blood_pressure": "118/83",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.34,
+    "status": "Active"
+  },
+  {
+    "id": 37,
+    "name": "Jessica King",
+    "age": 54,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 4,
+    "ecog_status": 2,
+    "enrollment_date": "2024-05-12",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 80,
+      "respiratory_rate": 12,
+      "blood_pressure": "118/75",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.34,
+    "status": "Active"
+  },
+  {
+    "id": 38,
+    "name": "Emma Young",
+    "age": 52,
+    "gender": "Male",
+    "ethnicity": "African American",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 4,
+    "ecog_status": 2,
+    "enrollment_date": "2024-04-11",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 75,
+      "respiratory_rate": 16,
+      "blood_pressure": "111/82",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.11,
+    "status": "Active"
+  },
+  {
+    "id": 39,
+    "name": "Maria Jackson",
+    "age": 71,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 5,
+    "ecog_status": 1,
+    "enrollment_date": "2024-02-21",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 78,
+      "respiratory_rate": 15,
+      "blood_pressure": "134/74",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.15,
+    "status": "Active"
+  },
+  {
+    "id": 40,
+    "name": "Daniel Torres",
+    "age": 76,
+    "gender": "Female",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 3,
+    "ecog_status": 1,
+    "enrollment_date": "2024-03-12",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 74,
+      "respiratory_rate": 17,
+      "blood_pressure": "140/74",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.22,
+    "status": "Active"
+  },
+  {
+    "id": 41,
+    "name": "David Young",
+    "age": 64,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 3,
+    "ecog_status": 2,
+    "enrollment_date": "2024-11-04",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 84,
+      "respiratory_rate": 18,
+      "blood_pressure": "116/81",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.14,
+    "status": "Active"
+  },
+  {
+    "id": 42,
+    "name": "Andrew Kim",
+    "age": 57,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 4,
+    "ecog_status": 1,
+    "enrollment_date": "2024-06-25",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 88,
+      "respiratory_rate": 17,
+      "blood_pressure": "123/81",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.35,
+    "status": "Active"
+  },
+  {
+    "id": 43,
+    "name": "Christopher Lopez",
+    "age": 51,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 6,
+    "ecog_status": 1,
+    "enrollment_date": "2024-06-24",
+    "infusion_count": 1,
+    "baseline_vitals": {
+      "heart_rate": 88,
+      "respiratory_rate": 16,
+      "blood_pressure": "129/70",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.28,
+    "status": "Active"
+  },
+  {
+    "id": 44,
+    "name": "Robert Flores",
+    "age": 56,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 6,
+    "ecog_status": 2,
+    "enrollment_date": "2024-09-26",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 75,
+      "respiratory_rate": 18,
+      "blood_pressure": "115/75",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.39,
+    "status": "Active"
+  },
+  {
+    "id": 45,
+    "name": "Joseph Rivera",
+    "age": 60,
+    "gender": "Male",
+    "ethnicity": "Caucasian",
+    "condition": "Multiple Myeloma Stage II",
+    "prior_lines": 6,
+    "ecog_status": 0,
+    "enrollment_date": "2024-09-18",
+    "infusion_count": 3,
+    "baseline_vitals": {
+      "heart_rate": 67,
+      "respiratory_rate": 18,
+      "blood_pressure": "110/87",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.21,
+    "status": "Active"
+  },
+  {
+    "id": 46,
+    "name": "Karen Jackson",
+    "age": 77,
+    "gender": "Male",
+    "ethnicity": "Hispanic",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 6,
+    "ecog_status": 1,
+    "enrollment_date": "2024-02-03",
+    "infusion_count": 4,
+    "baseline_vitals": {
+      "heart_rate": 87,
+      "respiratory_rate": 12,
+      "blood_pressure": "111/86",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.24,
+    "status": "Active"
+  },
+  {
+    "id": 47,
+    "name": "Joshua King",
+    "age": 78,
+    "gender": "Female",
+    "ethnicity": "African American",
+    "condition": "Multiple Myeloma Stage III",
+    "prior_lines": 6,
+    "ecog_status": 0,
+    "enrollment_date": "2024-09-05",
+    "infusion_count": 2,
+    "baseline_vitals": {
+      "heart_rate": 68,
+      "respiratory_rate": 13,
+      "blood_pressure": "115/90",
+      "temperature": 36.8
+    },
+    "baseline_crs_risk": 0.29,
+    "status": "Active"
+  }
+]
