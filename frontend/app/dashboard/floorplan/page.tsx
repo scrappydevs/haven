@@ -348,43 +348,76 @@ export default function FloorPlanPage() {
       
       console.log('📋 All annotations:', annotationsArray);
       
-      // Get all annotations labeled "Hospital Room"
-      const hospitalAnnotations = annotationsArray.filter((a: any) => 
-        (a.text?.toLowerCase().includes('hospital room') || 
-         a.name?.toLowerCase().includes('hospital room'))
-      );
+      // Get all annotations named "Room 1", "Room 2", etc. (exclude "Entrance")
+      const hospitalAnnotations = annotationsArray.filter((a: any) => {
+        const name = a.name || a.text || '';
+        const nameLower = name.toLowerCase();
+        // Match "Room X" pattern or "Hospital Room"
+        return (
+          nameLower.startsWith('room ') || 
+          nameLower.includes('hospital room')
+        ) && !nameLower.includes('entrance');
+      });
 
-      console.log(`🏥 Found ${hospitalAnnotations.length} "Hospital Room" annotations`);
+      console.log(`🏥 Found ${hospitalAnnotations.length} room annotations:`, hospitalAnnotations.map(a => a.name));
 
       // Match hospital annotations to detected rooms
       const rooms: any[] = [];
+      const usedRoomIndices = new Set(); // Track which rooms we've already used
       
       if (hospitalAnnotations.length > 0) {
-        // Match each annotation to a room by checking if annotation position is inside room polygon
+        // Match each annotation to the nearest unused room
         for (let i = 0; i < hospitalAnnotations.length; i++) {
           const annotation = hospitalAnnotations[i];
-          const r = annotation.r || 0;
-          const t = annotation.t || 0;
+          const annotX = annotation.r || 0;
+          const annotZ = annotation.t || 0;
           
-          // Try to find which room this annotation is in
-          for (const roomData of allRoomsData) {
+          console.log(`📍 Finding room for "${annotation.name}" at (${annotX}, ${annotZ})`);
+          
+          // Find the closest room to this annotation
+          let closestRoomIndex = -1;
+          let closestDistance = Infinity;
+          
+          for (let j = 0; j < allRoomsData.length; j++) {
+            if (usedRoomIndices.has(j)) continue; // Skip already used rooms
+            
+            const roomData = allRoomsData[j];
             if (roomData.room && roomData.room.length > 0) {
               // Calculate center point of room polygon
               const centerX = roomData.room.reduce((sum: number, p: any) => sum + p.x, 0) / roomData.room.length;
               const centerZ = roomData.room.reduce((sum: number, p: any) => sum + p.z, 0) / roomData.room.length;
-
-              rooms.push({
-                id: annotation.id || `room-${i + 1}`,
-                name: annotation.name || `Hospital Room ${i + 1}`,
-                levelIndex: 0,
-                position: { x: centerX, z: centerZ },
-                polygon: roomData.room,
-                holes: roomData.holes || [],
-              });
               
-              console.log(`✅ Matched annotation "${annotation.name}" to room`);
-              break; // Move to next annotation
+              // Calculate distance from annotation to room center
+              const distance = Math.sqrt(
+                Math.pow(annotX - centerX, 2) + Math.pow(annotZ - centerZ, 2)
+              );
+              
+              if (distance < closestDistance) {
+                closestDistance = distance;
+                closestRoomIndex = j;
+              }
             }
+          }
+          
+          // Use the closest room
+          if (closestRoomIndex >= 0) {
+            const roomData = allRoomsData[closestRoomIndex];
+            const centerX = roomData.room.reduce((sum: number, p: any) => sum + p.x, 0) / roomData.room.length;
+            const centerZ = roomData.room.reduce((sum: number, p: any) => sum + p.z, 0) / roomData.room.length;
+            
+            rooms.push({
+              id: annotation.id || `room-${i + 1}`,
+              name: annotation.name || `Room ${i + 1}`,
+              levelIndex: 0,
+              position: { x: centerX, z: centerZ },
+              polygon: roomData.room,
+              holes: roomData.holes || [],
+            });
+            
+            usedRoomIndices.add(closestRoomIndex);
+            console.log(`✅ Matched "${annotation.name}" to room at (${centerX.toFixed(2)}, ${centerZ.toFixed(2)}) - distance: ${closestDistance.toFixed(2)}m`);
+          } else {
+            console.warn(`⚠️ Could not find room for "${annotation.name}"`);
           }
         }
       } else {
@@ -739,17 +772,12 @@ export default function FloorPlanPage() {
           ) : (
             <>
               {/* Legend - Always Visible */}
-              <div className="bg-surface border border-neutral-200">
-                <div className="px-4 py-3 border-b border-neutral-200">
-                  <p className="text-xs font-light text-neutral-500">Legend</p>
-                </div>
-                <div className="px-4 py-3">
-                  <FloorPlanLegend
-                    totalRooms={rooms.filter(r => r.type === 'patient').length}
-                    occupiedRooms={rooms.filter(r => r.assignedPatient).length}
-                    totalNurses={rooms.reduce((sum, r) => sum + (r.assignedNurses?.length || 0), 0)}
-                  />
-                </div>
+              <div className="bg-surface border border-neutral-200 px-4 py-3">
+                <FloorPlanLegend
+                  totalRooms={rooms.filter(r => r.type === 'patient').length}
+                  occupiedRooms={rooms.filter(r => r.assignedPatient).length}
+                  totalNurses={rooms.reduce((sum, r) => sum + (r.assignedNurses?.length || 0), 0)}
+                />
               </div>
 
               {/* All Rooms - Collapsible */}
