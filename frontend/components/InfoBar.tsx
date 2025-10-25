@@ -10,7 +10,6 @@ interface InfoBarProps {
   isLive?: boolean;
   isSelected?: boolean;
   onClick?: () => void;
-  monitoringLevel?: 'BASELINE' | 'ENHANCED' | 'CRITICAL';
 }
 
 export default function InfoBar({
@@ -20,8 +19,7 @@ export default function InfoBar({
   crsScore,
   isLive = false,
   isSelected = false,
-  onClick,
-  monitoringLevel = 'BASELINE'
+  onClick
 }: InfoBarProps) {
 
   // Determine border color based on CRS score
@@ -33,35 +31,6 @@ export default function InfoBar({
   };
 
   const borderColor = getBorderColor();
-
-  // Get monitoring level badge styling
-  const getMonitoringBadgeStyle = () => {
-    switch (monitoringLevel) {
-      case 'CRITICAL':
-        return {
-          bg: 'bg-accent-terra/10',
-          text: 'text-accent-terra',
-          border: 'border-accent-terra',
-          icon: '🚨'
-        };
-      case 'ENHANCED':
-        return {
-          bg: 'bg-primary-400/10',
-          text: 'text-primary-400',
-          border: 'border-primary-400',
-          icon: '⚡'
-        };
-      default:  // BASELINE
-        return {
-          bg: 'bg-primary-700/10',
-          text: 'text-primary-700',
-          border: 'border-primary-700',
-          icon: '📊'
-        };
-    }
-  };
-
-  const badgeStyle = getMonitoringBadgeStyle();
 
   return (
     <motion.div
@@ -109,18 +78,6 @@ export default function InfoBar({
               </span>
             </div>
           )}
-
-          {/* Monitoring Level Badge */}
-          <div className={`
-            flex items-center gap-1 px-2 py-0.5
-            border ${badgeStyle.border} ${badgeStyle.bg}
-            ${monitoringLevel !== 'BASELINE' ? 'animate-pulse' : ''}
-          `}>
-            <span className="text-xs">{badgeStyle.icon}</span>
-            <span className={`label-uppercase text-[10px] ${badgeStyle.text}`}>
-              {monitoringLevel}
-            </span>
-          </div>
 
           {/* Status Indicator */}
           {isLive && (

@@ -137,7 +137,7 @@ export default function DetailPanel({
 
     // Log HR if concerning or random
     if (hr && (hrConcerning || Math.random() < 0.3)) {
-      const status = hr > 100 ? '⚠️ [ELEVATED]' : hr > 90 ? '↑ [HIGH]' : '✓ [NORMAL]';
+      const status = hr > 100 ? '[ELEVATED]' : hr > 90 ? '[HIGH]' : '[NORMAL]';
       const entry: TerminalLogEntry = {
         id: logIdCounterRef.current++, // Atomic increment
         timestamp: new Date(),
@@ -151,7 +151,7 @@ export default function DetailPanel({
 
     // Log RR if concerning
     if (rr && (rrConcerning || Math.random() < 0.3)) {
-      const status = rr > 22 ? '⚠️ [ELEVATED]' : rr > 18 ? '↑ [HIGH]' : '✓ [NORMAL]';
+      const status = rr > 22 ? '[ELEVATED]' : rr > 18 ? '[HIGH]' : '[NORMAL]';
       const entry: TerminalLogEntry = {
         id: logIdCounterRef.current++, // Atomic increment
         timestamp: new Date(),
@@ -165,7 +165,7 @@ export default function DetailPanel({
 
     // Log CRS if concerning
     if (crs !== undefined && (crsConcerning || Math.random() < 0.3)) {
-      const status = crs > 0.7 ? '🚨 [CRITICAL]' : crs > 0.5 ? '⚠️ [CONCERNING]' : '✓ [STABLE]';
+      const status = crs > 0.7 ? '[CRITICAL]' : crs > 0.5 ? '[CONCERNING]' : '[STABLE]';
       const entry: TerminalLogEntry = {
         id: logIdCounterRef.current++, // Atomic increment
         timestamp: new Date(),
@@ -203,24 +203,24 @@ export default function DetailPanel({
 
   // Get monitoring level badge styling
   const getMonitoringBadge = () => {
-    const baseClasses = "px-2 py-0.5 text-xs font-semibold border transition-all duration-300";
+    const baseClasses = "px-2 py-0.5 label-uppercase border transition-all duration-300";
 
     if (monitoringLevel === 'CRITICAL') {
       return {
         className: `${baseClasses} border-red-600 bg-red-600/20 text-red-600 shadow-lg shadow-red-500/50`,
-        icon: '🚨',
+        icon: '',
         label: 'CRITICAL'
       };
     } else if (monitoringLevel === 'ENHANCED') {
       return {
         className: `${baseClasses} border-yellow-600 bg-yellow-600/20 text-yellow-600 shadow-lg shadow-yellow-500/30`,
-        icon: '⚡',
+        icon: '',
         label: 'ENHANCED'
       };
     } else {
       return {
         className: `${baseClasses} border-neutral-400 bg-neutral-100 text-neutral-600`,
-        icon: '📊',
+        icon: '',
         label: 'BASELINE'
       };
     }
@@ -241,38 +241,38 @@ export default function DetailPanel({
             <h3 className="text-sm font-light text-neutral-950">
               {patient.name}
             </h3>
-            <span className="text-xs text-neutral-500">• {patient.age}y/o</span>
+            <span className="text-xs text-neutral-500">{patient.age}y/o</span>
             {patient.condition && (
-              <span className="text-xs text-neutral-500">• {patient.condition}</span>
+              <span className="text-xs text-neutral-500">{patient.condition}</span>
             )}
           </div>
-          <div className={`px-2 py-0.5 text-xs font-semibold border ${
+          <div className={`px-2 py-0.5 label-uppercase border ${
             alert ? 'border-accent-terra bg-accent-terra/10 text-accent-terra' :
                    'border-green-600 bg-green-600/10 text-green-600'
           }`}>
-            {alert ? '⚠️ Alert' : '✓ Stable'}
+            {alert ? 'Alert' : 'Stable'}
           </div>
         </div>
       </div>
 
       {/* ========== COMPACT AGENT STATUS LINE ========== */}
-      <div className="border-b border-neutral-200 bg-neutral-900 px-3 py-1.5 flex-shrink-0">
+      <div className="border-b border-neutral-200 bg-primary-100 px-3 py-1.5 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {isAgentAnalyzing ? (
               <motion.span
                 animate={{ opacity: [1, 0.5, 1] }}
                 transition={{ repeat: Infinity, duration: 1.5 }}
-                className="text-sm text-cyan-400 font-mono"
+                className="text-sm text-primary-700 font-mono"
               >
-                🤖 Analyzing...
+                Analyzing...
               </motion.span>
             ) : (
-              <span className="text-sm text-green-400 font-mono flex items-center gap-2">
-                👁️ Watching
+              <span className="text-sm text-primary-700 font-mono flex items-center gap-2">
+                Watching
               </span>
             )}
-            <span className="text-neutral-600">│</span>
+            <span className="text-neutral-400">│</span>
             <motion.div
               className={badge.className}
               animate={isAgentAnalyzing ? { scale: [1, 1.05, 1] } : {}}
@@ -282,12 +282,12 @@ export default function DetailPanel({
             </motion.div>
             {timeRemaining && monitoringLevel !== 'BASELINE' && (
               <>
-                <span className="text-neutral-600">│</span>
-                <span className="text-xs text-neutral-400 font-mono">⏱️ {timeRemaining}</span>
+                <span className="text-neutral-400">│</span>
+                <span className="text-xs text-neutral-600 font-mono">{timeRemaining}</span>
               </>
             )}
           </div>
-          <div className="text-xs text-neutral-500 font-mono">
+          <div className="text-xs text-neutral-600 font-mono">
             {agentStats.decisionsToday} decisions
           </div>
         </div>
@@ -299,27 +299,27 @@ export default function DetailPanel({
       </div>
 
       {/* ========== MINIMAL FOOTER WITH QUICK VITALS ========== */}
-      <div className="border-t border-neutral-200 bg-neutral-900 px-3 py-1.5 flex-shrink-0">
+      <div className="border-t border-neutral-200 bg-primary-100 px-3 py-1.5 flex-shrink-0">
         <div className="flex items-center justify-between text-xs font-mono">
-          <div className="flex items-center gap-3 text-neutral-400">
-            <span className={heartRate > 100 ? 'text-red-400' : heartRate > 90 ? 'text-yellow-400' : 'text-green-400'}>
-              ❤️ {heartRate ?? '--'}
+          <div className="flex items-center gap-3 text-neutral-700">
+            <span className={heartRate > 100 ? 'text-accent-terra' : heartRate > 90 ? 'text-yellow-600' : 'text-primary-700'}>
+              HR: {heartRate ?? '--'}
             </span>
-            <span className="text-neutral-600">│</span>
-            <span className={respiratoryRate > 22 ? 'text-red-400' : respiratoryRate > 18 ? 'text-yellow-400' : 'text-green-400'}>
-              💨 {respiratoryRate ?? '--'}
+            <span className="text-neutral-400">│</span>
+            <span className={respiratoryRate > 22 ? 'text-accent-terra' : respiratoryRate > 18 ? 'text-yellow-600' : 'text-primary-700'}>
+              RR: {respiratoryRate ?? '--'}
             </span>
-            <span className="text-neutral-600">│</span>
-            <span className={crsScore > 0.7 ? 'text-red-400' : crsScore > 0.4 ? 'text-yellow-400' : 'text-green-400'}>
-              🌡️ {crsScore ? `${(crsScore * 100).toFixed(0)}%` : '--'}
+            <span className="text-neutral-400">│</span>
+            <span className={crsScore > 0.7 ? 'text-accent-terra' : crsScore > 0.4 ? 'text-yellow-600' : 'text-primary-700'}>
+              CRS: {crsScore ? `${(crsScore * 100).toFixed(0)}%` : '--'}
             </span>
-            <span className="text-neutral-600">│</span>
-            <span className="text-neutral-500">
-              👁️ {enabledMetrics.length} metrics
+            <span className="text-neutral-400">│</span>
+            <span className="text-neutral-600">
+              {enabledMetrics.length} metrics
             </span>
           </div>
-          <span className="text-neutral-500 text-xs">
-            AI: Claude 3.5 Sonnet
+          <span className="text-neutral-600 text-xs">
+            {/* Removed AI attribution */}
           </span>
         </div>
       </div>

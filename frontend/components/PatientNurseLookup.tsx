@@ -91,7 +91,7 @@ export default function PatientManagement() {
   const filteredPatients = getFilteredPatients();
 
   return (
-    <div className="bg-surface border border-neutral-200 flex flex-col h-full">
+    <div className="bg-surface border border-neutral-200 flex flex-col h-full rounded-lg overflow-hidden">
       {/* Header */}
       <div className="px-6 py-4 border-b-2 border-neutral-950">
         <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950">
@@ -100,10 +100,10 @@ export default function PatientManagement() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="px-6 py-3 border-b border-neutral-200 flex gap-4">
+      <div className="px-6 py-4 border-b border-neutral-200 flex gap-6">
         <button
           onClick={() => setFilterStatus('all')}
-          className={`px-3 py-1.5 text-xs font-light transition-colors ${
+          className={`px-4 py-2 text-sm font-light transition-colors ${
             filterStatus === 'all'
               ? 'text-neutral-950 border-b-2 border-primary-700'
               : 'text-neutral-500 hover:text-neutral-950'
@@ -113,7 +113,7 @@ export default function PatientManagement() {
         </button>
         <button
           onClick={() => setFilterStatus('active')}
-          className={`px-3 py-1.5 text-xs font-light transition-colors ${
+          className={`px-4 py-2 text-sm font-light transition-colors ${
             filterStatus === 'active'
               ? 'text-neutral-950 border-b-2 border-primary-700'
               : 'text-neutral-500 hover:text-neutral-950'
@@ -123,7 +123,7 @@ export default function PatientManagement() {
         </button>
         <button
           onClick={() => setFilterStatus('monitoring')}
-          className={`px-3 py-1.5 text-xs font-light transition-colors ${
+          className={`px-4 py-2 text-sm font-light transition-colors ${
             filterStatus === 'monitoring'
               ? 'text-neutral-950 border-b-2 border-primary-700'
               : 'text-neutral-500 hover:text-neutral-950'

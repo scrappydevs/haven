@@ -375,9 +375,9 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         fullscreenMode ? 'h-full' : ''
       } ${
         alertFired
-          ? 'border-red-500 shadow-lg shadow-red-500/50'
+          ? 'border-accent-terra shadow-lg shadow-accent-terra/50'
           : isSelected
-          ? 'border-blue-500 shadow-lg shadow-blue-500/30'
+          ? 'border-primary-700 shadow-lg shadow-primary-700/30'
           : 'border-neutral-200'
       }`}
       animate={alertFired ? { scale: [1, 1.02, 1] } : {}}
@@ -385,10 +385,11 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     >
       {/* Video Element - 30 FPS video + persistent canvas overlays */}
       {isLive ? (
-        <div className={`relative w-full bg-neutral-950 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
+        <div className={`relative w-full bg-neutral-100 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
           <img
             ref={imgRef}
             className="w-full h-full object-contain"
+            style={{ transform: 'scaleX(-1)' }}
             alt="Live stream"
             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
           />
@@ -396,6 +397,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
           <canvas
             ref={overlayCanvasRef}
             className="absolute inset-0 pointer-events-none w-full h-full"
+            style={{ transform: 'scaleX(-1)' }}
           />
         </div>
       ) : patient.id <= 5 ? (
@@ -407,6 +409,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
           muted
           playsInline
           className={`w-full object-cover ${fullscreenMode ? 'h-full' : 'aspect-video'}`}
+          style={{ transform: 'scaleX(-1)' }}
         />
       ) : (
         <div className={`w-full bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-400 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
@@ -427,13 +430,13 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
 
       {/* Loading State - only show if no metrics data yet */}
       {!cvData?.metrics && (
-        <div className="absolute inset-0 flex items-center justify-center bg-neutral-950/50">
+        <div className="absolute inset-0 flex items-center justify-center bg-neutral-50/90">
           <div className="text-center">
-            <div className="text-white text-sm font-light mb-2">
+            <div className="text-neutral-700 text-sm font-light mb-2">
               {isLive ? 'Waiting for live stream...' : 'Loading CV analysis...'}
             </div>
             {isLive && (
-              <div className="text-neutral-300 text-xs font-light">
+              <div className="text-neutral-600 text-xs font-light">
                 Make sure streaming is active on /stream page
               </div>
             )}
