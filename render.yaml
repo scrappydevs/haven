@@ -5,7 +5,7 @@ services:
     region: oregon
     plan: starter
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "bash start.sh"
+    startCommand: "gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120"
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
@@ -16,9 +16,6 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      # Infisical (optional - for CLI method)
-      - key: INFISICAL_PROJECT_ID
-        value: 14641fd2-4afc-48b6-a138-c18fd6d65181
     healthCheckPath: /health
     rootDir: backend
 
