@@ -39,9 +39,17 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
         const apiUrl = getApiUrl();
         const res = await fetch(`${apiUrl}/patients/search?q=${search}`);
         const data = await res.json();
-        setPatients(Array.isArray(data) ? data : []);
+        console.log('📦 Received data:', data);
+
+        if (Array.isArray(data)) {
+          console.log(`✅ Found ${data.length} patients`);
+          setPatients(data);
+        } else {
+          console.warn('⚠️ Response is not an array:', data);
+          setPatients([]);
+        }
       } catch (error) {
-        console.error('Error fetching patients:', error);
+        console.error('❌ Error fetching patients:', error);
         setPatients([]);
       } finally {
         setLoading(false);

@@ -17,6 +17,7 @@ interface VideoPlayerProps {
   isLive?: boolean;
   isSelected?: boolean;
   onCvDataUpdate?: (patientId: number, data: CVData) => void;
+  onAgentMessage?: (patientId: number, message: any) => void;  // Agent state changes and alerts
   patientId?: string;  // Patient ID to filter WebSocket messages (e.g., "P-001")
   monitoringConditions?: string[];  // Monitoring conditions for this patient (e.g., ["CRS", "SEIZURE"])
   fullscreenMode?: boolean;  // Large view for detail mode
@@ -64,7 +65,7 @@ interface CVData {
   attention_score?: number;
 }
 
-export default function VideoPlayer({ patient, isLive = false, isSelected = false, onCvDataUpdate, patientId, fullscreenMode = false }: VideoPlayerProps) {
+export default function VideoPlayer({ patient, isLive = false, isSelected = false, onCvDataUpdate, onAgentMessage, patientId, fullscreenMode = false }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -261,6 +262,38 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
               const audio = new Audio('/alert.mp3');
               audio.play().catch(e => console.log('Audio play failed:', e));
             }
+          }
+        }
+
+        // Handle agent thinking (analyzing)
+        if (data.type === 'agent_thinking') {
+          console.log(`🤖 Agent thinking for ${data.patient_id}:`, data.message);
+          if (onAgentMessage) {
+            onAgentMessage(patient.id, data);
+          }
+        }
+
+        // Handle agent reasoning (Claude's analysis)
+        if (data.type === 'agent_reasoning') {
+          console.log(`🤖 Agent reasoning for ${data.patient_id}:`, data.reasoning);
+          if (onAgentMessage) {
+            onAgentMessage(patient.id, data);
+          }
+        }
+
+        // Handle monitoring state changes from agent
+        if (data.type === 'monitoring_state_change') {
+          console.log(`🤖 Monitoring state change for ${data.patient_id}:`, data.level);
+          if (onAgentMessage) {
+            onAgentMessage(patient.id, data);
+          }
+        }
+
+        // Handle agent alerts
+        if (data.type === 'agent_alert') {
+          console.log(`🤖 Agent alert for ${data.patient_id}:`, data.message);
+          if (onAgentMessage) {
+            onAgentMessage(patient.id, data);
           }
         }
       }
