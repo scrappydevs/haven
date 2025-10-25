@@ -15,18 +15,32 @@ from app.monitoring_protocols import get_all_protocols, recommend_protocols as k
 from app.infisical_config import get_secret, secret_manager
 from app.monitoring_control import monitoring_manager, MonitoringLevel
 from app.patient_guardian_agent import patient_guardian
+from app.rooms import (
+    get_all_floors,
+    get_all_rooms_with_patients,
+    assign_patient_to_room,
+    unassign_patient_from_room,
+    get_patient_current_room,
+    sync_room_from_smplrspace,
+    Floor,
+    AssignPatientRequest,
+    UnassignPatientRequest
+)
 
 # Try to import anthropic for LLM recommendations
 try:
     import anthropic
     ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")
     anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+    if anthropic_client:
+        print("✅ Anthropic client initialized")
 except ImportError:
     anthropic_client = None
+    print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
 
 app = FastAPI(
-    title="Haven AI",
-    description="Real-time computer vision monitoring for clinical trial safety",
+    title="Haven",
+    description="Real-time patient monitoring and floor plan management for clinical trials",
     version="1.0.0"
 )
 
@@ -62,6 +76,8 @@ patients_file = DATA_DIR / "patients.json"
 if patients_file.exists():
     with open(patients_file, "r") as f:
         patients = json.load(f)
+else:
+    print("⚠️  Warning: patients.json not found. Run scripts/generate_patients.py first!")
 
 # Load trial protocol
 trial_protocol = {}
@@ -69,6 +85,8 @@ protocol_file = DATA_DIR / "nct04649359.json"
 if protocol_file.exists():
     with open(protocol_file, "r") as f:
         trial_protocol = json.load(f)
+else:
+    print("⚠️  Warning: nct04649359.json not found. Run scripts/pull_trial_data.py first!")
 
 # Print secret manager status after all imports
 @app.on_event("startup")
@@ -77,13 +95,13 @@ async def startup_event():
     secret_manager.print_status()
     
     # Print service status
-    print("🚀 TrialSentinel Backend Services:")
+    print("🏥 Haven Backend Services:")
     print(f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
     print(f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
     print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
     print(f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
     print(f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
-    print("\n✅ Backend ready!\n")
+    print("\n✅ Haven ready!\n")
 
 # In-memory alert storage
 alerts = []
@@ -477,6 +495,135 @@ Only recommend protocols that are clearly relevant based on the patient's condit
     }
 
 
+@app.get("/floors")
+async def get_floors():
+    """
+    Get all floor definitions
+    
+    Returns:
+        List of floor definitions with Smplrspace references
+    """
+    return get_all_floors()
+
+
+@app.get("/rooms")
+async def get_rooms(floor_id: str = None):
+    """
+    Get all rooms with their current patient assignments
+    Optionally filter by floor_id
+    
+    Args:
+        floor_id: Optional floor ID to filter rooms
+    
+    Returns:
+        List of rooms with optional patient information
+    """
+    return get_all_rooms_with_patients(floor_id)
+
+
+@app.get("/rooms/assignments")
+async def get_room_assignments():
+    """
+    DEPRECATED: Use /rooms instead
+    Get all rooms with their current patient assignments
+    
+    Returns:
+        List of rooms with optional patient information
+    """
+    return get_all_rooms_with_patients()
+
+
+@app.post("/rooms/assign-patient")
+async def assign_patient(request: AssignPatientRequest):
+    """
+    Assign a patient to a room
+    
+    Args:
+        request: Room ID, patient ID, and optional notes
+    
+    Returns:
+        Patient-room assignment record
+    """
+    try:
+        return assign_patient_to_room(
+            room_id=request.room_id,
+            patient_id=request.patient_id,
+            notes=request.notes
+        )
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.delete("/rooms/unassign-patient/{room_id}")
+async def unassign_patient(room_id: str, patient_id: str = None):
+    """
+    Remove patient from a room
+    
+    Args:
+        room_id: Room identifier
+        patient_id: Optional patient ID to remove specific patient
+    
+    Returns:
+        Success message
+    """
+    try:
+        return unassign_patient_from_room(room_id, patient_id)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/patients/{patient_id}/room")
+async def get_patient_room(patient_id: str):
+    """
+    Get the current room assignment for a patient
+    
+    Args:
+        patient_id: Patient identifier
+    
+    Returns:
+        Room info if assigned, None otherwise
+    """
+    try:
+        room = get_patient_current_room(patient_id)
+        if room:
+            return room
+        return {"message": "Patient not assigned to any room"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+class SyncRoomsRequest(BaseModel):
+    rooms: list
+    floor_id: str = 'floor-1'
+
+
+@app.post("/rooms/sync-from-smplrspace")
+async def sync_rooms_from_smplrspace(request: SyncRoomsRequest):
+    """
+    Sync rooms from Smplrspace automatic room detection
+    
+    Args:
+        request: { rooms: [...], floor_id: 'floor-1' } from smplrClient.getRoomsOnLevel()
+    
+    Returns:
+        { synced_count: number, rooms: [...] }
+    """
+    try:
+        synced_rooms = []
+        for room_item in request.rooms:
+            room = sync_room_from_smplrspace(room_item, request.floor_id)
+            synced_rooms.append(room)
+        
+        print(f"✅ Synced {len(synced_rooms)} rooms to floor {request.floor_id}")
+        return {
+            "synced_count": len(synced_rooms),
+            "rooms": synced_rooms,
+            "floor_id": request.floor_id
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ============================================================================
 # MCP-Inspired Agent Monitoring Control Tools
 # ============================================================================
@@ -644,7 +791,6 @@ async def trigger_agent_analysis(patient_id: str):
 # ============================================================================
 # WebSocket Endpoints
 # ============================================================================
-
 @app.websocket("/ws/stream/{patient_id}")
 async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""

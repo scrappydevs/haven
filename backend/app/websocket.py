@@ -8,6 +8,16 @@ from typing import List, Dict, Optional
 import base64
 import cv2
 import numpy as np
+import os
+import logging
+
+# ✅ SUPPRESS MEDIAPIPE VERBOSE LOGGING - Must be set BEFORE importing mediapipe
+os.environ['GLOG_minloglevel'] = '2'  # Suppress INFO and WARNING logs from Google's glog
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs (if used)
+
+# Suppress MediaPipe's Python logging
+logging.getLogger('mediapipe').setLevel(logging.ERROR)
+
 import mediapipe as mp
 import json
 import threading

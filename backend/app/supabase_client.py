@@ -23,6 +23,11 @@ if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     print("   Patient search will return empty results")
     supabase: Client | None = None
 else:
-    print(f"✅ Supabase configured: {SUPABASE_URL[:30]}...")
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        print(f"✅ Supabase configured: {SUPABASE_URL[:30]}...")
+    except Exception as e:
+        print(f"⚠️ Failed to initialize Supabase client: {e}")
+        print("⚠️ Backend will run without database integration")
+        supabase: Client | None = None
 print("=" * 60)

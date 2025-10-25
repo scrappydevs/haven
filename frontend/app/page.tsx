@@ -1,19 +1,21 @@
-export default function Home() {
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function HomePage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Redirect to dashboard on load
+    router.replace('/dashboard');
+  }, [router]);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center max-w-4xl px-8">
-        <h1 className="text-6xl md:text-7xl font-playfair font-black mb-6 bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent">
-          Haven
-        </h1>
-        <p className="text-xl font-extralight text-neutral-700 mb-12 leading-relaxed">
-          Real-time computer vision monitoring for clinical trial safety
-        </p>
-        <a 
-          href="/dashboard" 
-          className="border-2 border-neutral-950 px-8 py-3 font-normal text-xs uppercase tracking-widest hover:bg-neutral-950 hover:text-white transition-all inline-block"
-        >
-          Launch Dashboard
-        </a>
+    <div className="h-screen flex items-center justify-center bg-background">
+      <div className="text-center">
+        <h1 className="text-2xl font-light text-neutral-950 mb-2">Haven</h1>
+        <p className="text-sm font-light text-neutral-500">Loading...</p>
       </div>
     </div>
   );

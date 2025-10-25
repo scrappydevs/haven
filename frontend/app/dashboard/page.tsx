@@ -565,28 +565,13 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b-2 border-neutral-950 bg-surface">
-        <div className="container mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            {/* Logo */}
-            <div className="flex items-center gap-4">
-              <div>
-                <h1 className="text-4xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent">
-                  Haven
-                </h1>
-                <p className="text-sm label-uppercase text-neutral-500 mt-1">Linvoseltamab Phase III - NCT04649359</p>
-              </div>
-            </div>
-
-            {/* Stats */}
-            <StatsBar stats={stats} alertCount={alerts.length} />
-          </div>
-        </div>
-      </header>
-
       {/* Main Content */}
       <div className="container mx-auto px-6 py-6">
+        {/* Stats Bar */}
+        <div className="mb-6">
+          <StatsBar stats={stats} alertCount={alerts.length} />
+        </div>
+
         {viewMode === 'overview' ? (
           // OVERVIEW MODE: 6-box grid + global activity feed
           <div className="grid grid-cols-12 gap-6">
