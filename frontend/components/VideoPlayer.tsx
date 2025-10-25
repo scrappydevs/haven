@@ -210,7 +210,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   useEffect(() => {
     if (!isLive) return;
 
-    const wsUrl = getWsUrl('/ws/view');
+    const wsUrl = `${getWsUrl()}/ws/view`;
     console.log('🔌 Viewer connecting to:', wsUrl);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

@@ -45,6 +45,8 @@ interface DetailPanelProps {
     severity: string;
     message: string;
     details: string;
+    confidence?: number;
+    concerns?: string[];
   }>;
   monitoringLevel?: 'BASELINE' | 'ENHANCED' | 'CRITICAL';
   monitoringExpiresAt?: string | null;

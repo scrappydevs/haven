@@ -1,0 +1,58 @@
+name: Track Render Deployment
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  render-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Create Deployment
+        uses: chrnorm/deployment-action@v2
+        id: deployment
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          environment: production-backend
+          environment-url: https://haven-new.onrender.com
+          description: Backend deployment to Render
+      
+      - name: Wait for Render Deploy
+        run: |
+          echo "Waiting for Render deployment..."
+          sleep 30
+          
+          # Check if backend is healthy
+          MAX_ATTEMPTS=20
+          ATTEMPT=0
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://haven-new.onrender.com/health || echo "000")
+            
+            if [ "$STATUS_CODE" = "200" ]; then
+              echo "✅ Backend is healthy!"
+              echo "DEPLOY_STATUS=success" >> $GITHUB_ENV
+              exit 0
+            fi
+            
+            echo "Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS: Status $STATUS_CODE, waiting..."
+            sleep 15
+            ATTEMPT=$((ATTEMPT+1))
+          done
+          
+          echo "❌ Deployment check timed out"
+          echo "DEPLOY_STATUS=failure" >> $GITHUB_ENV
+          exit 1
+      
+      - name: Update Deployment Status
+        uses: chrnorm/deployment-status@v2
+        if: always()
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          state: ${{ env.DEPLOY_STATUS }}
+          environment-url: https://haven-new.onrender.com
+

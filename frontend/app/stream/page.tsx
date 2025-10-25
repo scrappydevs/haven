@@ -119,8 +119,7 @@ export default function StreamPage() {
       }
 
       // Connect to patient-specific WebSocket
-      const apiUrl = getApiUrl();
-      const wsUrl = getWsUrl(`/ws/stream/${selectedPatient.patient_id}`);
+      const wsUrl = `${getWsUrl()}/ws/stream/${selectedPatient.patient_id}`;
       console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
 
       const ws = new WebSocket(wsUrl);
@@ -194,6 +193,7 @@ export default function StreamPage() {
           (errorEvent.error instanceof Error && errorEvent.error.message) ||
           (typeof errorEvent.reason === 'string' ? errorEvent.reason : undefined);
 
+        const apiUrl = getApiUrl();
         const fallbackMessage = `Failed to connect to server at ${apiUrl}. Make sure the backend is reachable.`;
         let userMessage = detailedMessage ? `WebSocket error: ${detailedMessage}` : fallbackMessage;
 
