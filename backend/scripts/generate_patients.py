@@ -28,6 +28,7 @@ LAST_NAMES = [
     "Rivera", "Campbell"
 ]
 
+
 def generate_patient(patient_id: int) -> dict:
     """Generate a single patient profile"""
     first_name = random.choice(FIRST_NAMES)
@@ -40,8 +41,10 @@ def generate_patient(patient_id: int) -> dict:
     gender = random.choice(["Male", "Female", "Male"])
 
     # Ethnicity (diverse for FDA FDORA compliance)
-    ethnicities = ["Caucasian", "African American", "Hispanic", "Asian", "Other"]
-    ethnicity_weights = [0.6, 0.15, 0.15, 0.08, 0.02]  # Realistic US distribution
+    ethnicities = ["Caucasian", "African American",
+                   "Hispanic", "Asian", "Other"]
+    # Realistic US distribution
+    ethnicity_weights = [0.6, 0.15, 0.15, 0.08, 0.02]
     ethnicity = random.choices(ethnicities, weights=ethnicity_weights)[0]
 
     # MM Stage (most patients are Stage II or III)
@@ -80,6 +83,7 @@ def generate_patient(patient_id: int) -> dict:
         "prior_lines": prior_lines,
         "ecog_status": ecog,
         "enrollment_date": enrollment_date,
+        "enrollment_status": "active",  # 'active', 'completed', or 'withdrawn'
         "infusion_count": infusion_count,
         "baseline_vitals": {
             "heart_rate": baseline_hr,
@@ -88,7 +92,6 @@ def generate_patient(patient_id: int) -> dict:
             "temperature": 36.8
         },
         "baseline_crs_risk": baseline_crs_risk,
-        "status": "Active"
     }
 
 
@@ -115,12 +118,18 @@ def main():
     ethnicities = [p["ethnicity"] for p in patients]
 
     print(f"\n📊 Demographics:")
-    print(f"   Female: {genders.count('Female')} ({genders.count('Female')/47*100:.1f}%)")
-    print(f"   Male: {genders.count('Male')} ({genders.count('Male')/47*100:.1f}%)")
-    print(f"\n   Caucasian: {ethnicities.count('Caucasian')} ({ethnicities.count('Caucasian')/47*100:.1f}%)")
-    print(f"   African American: {ethnicities.count('African American')} ({ethnicities.count('African American')/47*100:.1f}%)")
-    print(f"   Hispanic: {ethnicities.count('Hispanic')} ({ethnicities.count('Hispanic')/47*100:.1f}%)")
-    print(f"   Asian: {ethnicities.count('Asian')} ({ethnicities.count('Asian')/47*100:.1f}%)")
+    print(
+        f"   Female: {genders.count('Female')} ({genders.count('Female')/47*100:.1f}%)")
+    print(
+        f"   Male: {genders.count('Male')} ({genders.count('Male')/47*100:.1f}%)")
+    print(
+        f"\n   Caucasian: {ethnicities.count('Caucasian')} ({ethnicities.count('Caucasian')/47*100:.1f}%)")
+    print(
+        f"   African American: {ethnicities.count('African American')} ({ethnicities.count('African American')/47*100:.1f}%)")
+    print(
+        f"   Hispanic: {ethnicities.count('Hispanic')} ({ethnicities.count('Hispanic')/47*100:.1f}%)")
+    print(
+        f"   Asian: {ethnicities.count('Asian')} ({ethnicities.count('Asian')/47*100:.1f}%)")
 
 
 if __name__ == "__main__":
