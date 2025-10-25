@@ -16,25 +16,25 @@ export default function FloorPlanLegend({ totalRooms, occupiedRooms, totalNurses
       <div className="grid grid-cols-4 gap-2">
         <div className="border-l-2 border-primary-700 pl-2">
           <p className="text-sm font-normal text-neutral-700 mb-1">Occupied</p>
-          <p className="text-xl font-normal text-neutral-950">
+          <p className="text-lg font-normal text-neutral-950">
             {occupiedRooms}/{totalRooms}
           </p>
         </div>
         <div className="border-l-2 border-primary-400 pl-2">
           <p className="text-sm font-normal text-neutral-700 mb-1">Occupancy</p>
-          <p className="text-xl font-normal text-neutral-950">
+          <p className="text-lg font-normal text-neutral-950">
             {occupancyRate.toFixed(0)}%
           </p>
         </div>
         <div className="border-l-2 border-blue-500 pl-2">
           <p className="text-sm font-normal text-neutral-700 mb-1">Stations</p>
-          <p className="text-xl font-normal text-neutral-950">
+          <p className="text-lg font-normal text-neutral-950">
             {nurseStations}
           </p>
         </div>
         <div className="border-l-2 border-accent-terra pl-2">
           <p className="text-sm font-normal text-neutral-700 mb-1">Nurses</p>
-          <p className="text-xl font-normal text-neutral-950">
+          <p className="text-lg font-normal text-neutral-950">
             {totalNurses}
           </p>
         </div>
