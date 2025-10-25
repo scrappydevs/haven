@@ -79,123 +79,98 @@ export default function ManualAlertsPanel() {
 
   return (
     <>
-      <div className="bg-white border border-neutral-200 p-6 rounded-lg">
+      <div className="bg-surface border border-neutral-200">
         {/* Header */}
-        <div className="mb-6 pb-4 border-b border-neutral-200">
-          <h2 className="text-xl font-light uppercase tracking-wider text-neutral-950 mb-1">
-            Manual Alerts
+        <div className="px-5 py-4 border-b-2 border-neutral-950">
+          <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950">
+            Send Staff Alert
           </h2>
-          <p className="text-xs text-neutral-600 font-light">
-            Send SMS notifications to nursing staff
-          </p>
         </div>
-
-        {/* Nurse Selection */}
-        <div className="mb-4">
-          <label className="block text-xs font-medium uppercase tracking-wider text-neutral-700 mb-2">
-            Select Recipient
-          </label>
-          <select
-            value={selectedNurse}
-            onChange={(e) => setSelectedNurse(e.target.value)}
-            className="w-full border border-neutral-300 px-4 py-2.5 text-sm focus:outline-none focus:border-neutral-950 transition-colors bg-white"
-            disabled={isSending}
-          >
-            <option value="">Choose a nurse...</option>
-            {NURSES.map((nurse, index) => (
-              <option key={`${nurse.name}-${index}`} value={nurse.phone}>
-                {nurse.name} ({nurse.phone})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Alert Type Toggle */}
-        <div className="mb-4">
-          <label className="block text-xs font-medium uppercase tracking-wider text-neutral-700 mb-2">
-            Alert Type
-          </label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setAlertType('call')}
+        
+        {/* Content */}
+        <div className="p-5 space-y-4">
+          {/* Nurse Selection */}
+          <div>
+            <label className="block text-xs font-light text-neutral-600 mb-2">
+              Recipient
+            </label>
+            <select
+              value={selectedNurse}
+              onChange={(e) => setSelectedNurse(e.target.value)}
+              className="w-full border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:border-primary-700 transition-colors bg-white"
               disabled={isSending}
-              className={`flex-1 px-4 py-2.5 text-sm font-medium uppercase tracking-wider transition-all border
-                ${alertType === 'call'
-                  ? 'bg-neutral-950 text-white border-neutral-950'
-                  : 'bg-white text-neutral-700 border-neutral-300 hover:border-neutral-950'
-                } ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              📞 Voice Call (TTS)
-            </button>
-            <button
-              onClick={() => setAlertType('sms')}
-              disabled={isSending}
-              className={`flex-1 px-4 py-2.5 text-sm font-medium uppercase tracking-wider transition-all border
-                ${alertType === 'sms'
-                  ? 'bg-neutral-950 text-white border-neutral-950'
-                  : 'bg-white text-neutral-700 border-neutral-300 hover:border-neutral-950'
-                } ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              💬 SMS Text
-            </button>
+              <option value="">Select staff member...</option>
+              {NURSES.map((nurse, index) => (
+                <option key={`${nurse.name}-${index}`} value={nurse.phone}>
+                  {nurse.name}
+                </option>
+              ))}
+            </select>
           </div>
-          <p className="text-xs text-neutral-500 mt-2 font-light">
-            {alertType === 'call' 
-              ? '🎙️ AI voice will read your message aloud - no 10DLC needed!' 
-              : '⏳ SMS requires 10DLC registration (1-2 days) - use Voice for immediate alerts'}
-          </p>
-        </div>
 
-        {/* Message Input */}
-        <div className="mb-4">
-          <label className="block text-xs font-medium uppercase tracking-wider text-neutral-700 mb-2">
-            Message
-          </label>
-          <textarea
-            value={customMessage}
-            onChange={(e) => setCustomMessage(e.target.value)}
-            placeholder="Enter alert message (e.g., Patient P-001 showing elevated CRS score...)"
-            className="w-full border border-neutral-300 px-4 py-2.5 text-sm focus:outline-none focus:border-neutral-950 transition-colors resize-none bg-white"
-            rows={4}
-            disabled={isSending}
-            maxLength={160}
-          />
-          <p className="text-xs text-neutral-500 mt-1 font-light">
-            {customMessage.length}/160 characters
-          </p>
-        </div>
+          {/* Alert Type */}
+          <div>
+            <label className="block text-xs font-light text-neutral-600 mb-2">
+              Method
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAlertType('call')}
+                disabled={isSending}
+                className={`flex-1 px-3 py-2 text-xs uppercase tracking-wider transition-all border
+                  ${alertType === 'call'
+                    ? 'bg-primary-700 text-white border-primary-700'
+                    : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400'
+                  } ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                Voice
+              </button>
+              <button
+                onClick={() => setAlertType('sms')}
+                disabled={isSending}
+                className={`flex-1 px-3 py-2 text-xs uppercase tracking-wider transition-all border
+                  ${alertType === 'sms'
+                    ? 'bg-primary-700 text-white border-primary-700'
+                    : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400'
+                  } ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                SMS
+              </button>
+            </div>
+          </div>
 
-        {/* Send Button */}
-        <button
-          onClick={handleSendAlert}
-          disabled={isSending || !selectedNurse || !customMessage.trim()}
-          className={`w-full px-6 py-3 text-sm font-medium uppercase tracking-wider transition-all
-            ${isSending || !selectedNurse || !customMessage.trim()
-              ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
-              : 'bg-neutral-950 text-white hover:bg-neutral-800'
-            }`}
-        >
-          {isSending ? (
-            <span className="flex items-center justify-center gap-2">
-              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              {alertType === 'call' ? 'Placing Call...' : 'Sending SMS...'}
-            </span>
-          ) : (
-            alertType === 'call' ? '📞 Place Voice Call' : '💬 Send SMS'
-          )}
-        </button>
+          {/* Message */}
+          <div>
+            <label className="block text-xs font-light text-neutral-600 mb-2">
+              Message
+            </label>
+            <textarea
+              value={customMessage}
+              onChange={(e) => setCustomMessage(e.target.value)}
+              placeholder="Alert message..."
+              className="w-full border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:border-primary-700 transition-colors resize-none bg-white"
+              rows={3}
+              disabled={isSending}
+              maxLength={160}
+            />
+            <p className="text-[10px] text-neutral-400 mt-1">
+              {customMessage.length}/160
+            </p>
+          </div>
 
-        {/* Info Notice */}
-        <div className="mt-4 p-3 bg-neutral-50 border border-neutral-200">
-          <p className="text-xs text-neutral-600 font-light">
-            <span className="font-medium">Note:</span> {alertType === 'call' 
-              ? 'Voice calls work immediately with TTS - no carrier restrictions!' 
-              : 'SMS requires 10DLC registration (pending). Use Voice for immediate alerts.'}
-            {' '}In production, alerts will be triggered automatically by AI when anomalies are detected.
-          </p>
+          {/* Send Button */}
+          <button
+            onClick={handleSendAlert}
+            disabled={isSending || !selectedNurse || !customMessage.trim()}
+            className={`w-full px-4 py-2 text-sm uppercase tracking-wider transition-all
+              ${isSending || !selectedNurse || !customMessage.trim()
+                ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed border border-neutral-200'
+                : 'bg-primary-700 text-white hover:bg-primary-800 border border-primary-700'
+              }`}
+          >
+            {isSending ? 'Sending...' : 'Send Alert'}
+          </button>
         </div>
       </div>
 

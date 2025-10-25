@@ -24,6 +24,25 @@ export default function PatientManagement() {
   useEffect(() => {
     fetchPatients();
     fetchRoomAssignments();
+    
+    // Listen for cache invalidation from AI chat
+    const handleCacheInvalidation = (e: CustomEvent) => {
+      const keys = e.detail?.keys || [];
+      console.log('🔄 Cache invalidation event received:', keys);
+      
+      if (keys.includes('patients') || keys.includes('rooms')) {
+        console.log('♻️ Refreshing patient and room data...');
+        fetchPatients();
+        fetchRoomAssignments();
+      }
+    };
+    
+    window.addEventListener('haven-invalidate-cache', handleCacheInvalidation as EventListener);
+    
+    return () => {
+      window.removeEventListener('haven-invalidate-cache', handleCacheInvalidation as EventListener);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchPatients = async () => {

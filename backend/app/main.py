@@ -1459,17 +1459,38 @@ async def ai_chat(request: ChatRequest):
         # Check if Claude wants to use tools
         if message.stop_reason == "tool_use":
             # Execute tool calls
+            tool_call_log = []
             for content_block in message.content:
                 if content_block.type == "text":
                     assistant_response += content_block.text
                 elif content_block.type == "tool_use":
-                    print(f"🔧 Tool call: {content_block.name}")
+                    print(f"\n🔧 Tool call: {content_block.name}")
+                    print(f"   Input: {content_block.input}")
                     tool_result = await execute_tool(content_block.name, content_block.input)
+                    print(f"   Result: {tool_result}")
+                    
+                    tool_call_log.append(f"{content_block.name}: {json.dumps(tool_result)}")
+                    
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": content_block.id,
                         "content": json.dumps(tool_result)
                     })
+            
+            print(f"\n📊 Tool execution summary:")
+            for log in tool_call_log:
+                print(f"   ✓ {log[:100]}...")
+            
+            # Build fresh system prompt emphasizing tool results are THE TRUTH
+            tool_results_system = system_prompt + f"""
+
+**CRITICAL: TOOL RESULTS ARE THE TRUTH**
+The tool results above are FRESH from the database RIGHT NOW.
+IGNORE any information from earlier in the conversation.
+Base your response ONLY on the tool results you just received.
+If tool says room is occupied, it IS occupied RIGHT NOW.
+If tool says room is empty, it IS empty RIGHT NOW.
+Previous tool calls may have changed the state - ONLY trust the latest tool results."""
             
             # Continue conversation with tool results
             anthropic_messages.append({
@@ -1485,7 +1506,7 @@ async def ai_chat(request: ChatRequest):
             final_message = anthropic_client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=2048,
-                system=system_prompt,
+                system=tool_results_system,  # Use modified prompt
                 tools=HAVEN_TOOLS,
                 messages=anthropic_messages
             )
@@ -1509,12 +1530,38 @@ async def ai_chat(request: ChatRequest):
         # Save updated context
         await write_context(session_id, context)
         
+        # Check if any write operations were performed
+        invalidate_cache = False
+        cache_keys = set()
+        
+        print(f"\n📊 Checking {len(tool_results)} tool results for cache invalidation...")
+        
+        for tool_result in tool_results:
+            result_data = json.loads(tool_result.get("content", "{}"))
+            print(f"   Tool result: {result_data.get('success', False)} - {list(result_data.keys())[:3]}")
+            
+            if result_data.get("success"):
+                invalidate_cache = True
+                cache_keys.update(["rooms", "patients", "patients_room", "assignments"])
+                print(f"   ✅ Success detected - will invalidate cache: rooms, patients, patients_room")
+        
+        cache_keys_list = list(cache_keys) if cache_keys else ["rooms", "patients"]
+        
+        print(f"\n{'='*60}")
+        print(f"📤 Returning to frontend:")
+        print(f"   invalidate_cache: {invalidate_cache}")
+        print(f"   cache_keys: {cache_keys_list}")
+        print(f"   tool_calls: {len(tool_results)}")
+        print(f"{'='*60}\n")
+        
         return {
             "response": assistant_response,
             "model": "claude-haiku-4.5",
             "session_id": session_id,
             "session_title": session_title,
-            "tool_calls": len(tool_results) if tool_results else 0
+            "tool_calls": len(tool_results) if tool_results else 0,
+            "invalidate_cache": invalidate_cache,
+            "cache_keys": cache_keys_list
         }
         
     except Exception as e:
@@ -1562,7 +1609,6 @@ async def download_discharge_report(patient_id: str, room_id: str):
     """
     try:
         from app.pdf_generator import generate_patient_discharge_report, REPORTLAB_AVAILABLE, generate_simple_text_report
-        from fastapi.responses import Response
         
         if not REPORTLAB_AVAILABLE:
             # Fallback to text report
@@ -1586,6 +1632,64 @@ async def download_discharge_report(patient_id: str, room_id: str):
         )
     except Exception as e:
         print(f"❌ Error generating discharge report: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+@app.get("/reports/clinical-summary/{patient_id}")
+async def download_clinical_summary(patient_id: str):
+    """
+    Generate and download AI-powered clinical summary PDF for a patient
+    """
+    try:
+        from app.pdf_generator import generate_clinical_summary_report, REPORTLAB_AVAILABLE
+        from app.ai_tools import generate_patient_clinical_summary_tool
+        
+        # Generate summary data with AI insights
+        summary_data = await generate_patient_clinical_summary_tool(patient_id, include_recommendations=True)
+        
+        if "error" in summary_data:
+            return {"error": summary_data["error"]}
+        
+        if not REPORTLAB_AVAILABLE:
+            # Text fallback
+            text_report = f"""HAVEN HOSPITAL - CLINICAL SUMMARY
+
+Patient: {summary_data.get('patient_name')} ({patient_id})
+Age: {summary_data.get('age')} | Gender: {summary_data.get('gender')}
+Condition: {summary_data.get('condition')}
+
+KEY CONCERNS:
+{chr(10).join(summary_data.get('ai_insights', {}).get('key_concerns', []))}
+
+RISK FACTORS:
+{chr(10).join(summary_data.get('ai_insights', {}).get('risk_factors', []))}
+
+RECOMMENDATIONS:
+{chr(10).join(summary_data.get('ai_insights', {}).get('recommendations', []))}
+
+Active Alerts: {summary_data.get('active_alerts_count', 0)}
+"""
+            return Response(
+                content=text_report,
+                media_type="text/plain",
+                headers={
+                    "Content-Disposition": f"attachment; filename=clinical-summary-{patient_id}-{datetime.now().strftime('%Y%m%d')}.txt"
+                }
+            )
+        
+        # Generate PDF
+        pdf_bytes = await generate_clinical_summary_report(summary_data)
+        
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=clinical-summary-{patient_id}-{datetime.now().strftime('%Y%m%d')}.pdf"
+            }
+        )
+    except Exception as e:
+        print(f"❌ Error generating clinical summary: {e}")
         import traceback
         traceback.print_exc()
         return {"error": str(e)}

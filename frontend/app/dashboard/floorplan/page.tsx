@@ -635,6 +635,36 @@ export default function FloorPlanPage() {
   // Fetch room assignments from backend on page load
   useEffect(() => {
     fetchRoomAssignments();
+    
+    // Listen for cache invalidation from AI chat
+    const handleCacheInvalidation = async (e: CustomEvent) => {
+      const keys = e.detail?.keys || [];
+      const timestamp = e.detail?.timestamp || Date.now();
+      console.log(`\n🔄 [FLOOR PLAN] Cache invalidation received at ${new Date(timestamp).toLocaleTimeString()}`);
+      console.log('   Keys to invalidate:', keys);
+      
+      if (keys.includes('rooms') || keys.includes('patients')) {
+        console.log('♻️ [FLOOR PLAN] Refreshing room assignments from database...');
+        
+        // Refresh room data
+        await fetchRoomAssignments();
+        
+        // Force re-render of room visualization
+        console.log('🎨 [FLOOR PLAN] Triggering visualization update...');
+        
+        // Small delay to ensure state updates
+        setTimeout(() => {
+          console.log('✅ [FLOOR PLAN] Refresh complete');
+        }, 500);
+      }
+    };
+    
+    window.addEventListener('haven-invalidate-cache', handleCacheInvalidation as EventListener);
+    
+    return () => {
+      window.removeEventListener('haven-invalidate-cache', handleCacheInvalidation as EventListener);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch available patients
@@ -1112,7 +1142,7 @@ export default function FloorPlanPage() {
                               className={`border-b border-neutral-200 p-4 transition-colors cursor-pointer ${
                                 selectedRoom?.id === room.id ? 'bg-primary-50' : ''
                               } ${canDrop ? 'hover:bg-green-50 hover:border-green-300' : 'hover:bg-neutral-50'}`}
-                              onClick={() => {
+            onClick={() => {
                                 setSelectedRoom(room);
                                 navigateToRoom(room);
                               }}
@@ -1129,18 +1159,18 @@ export default function FloorPlanPage() {
                                         {room.assignedPatient.name}
                                       </p>
                                     )}
-                                  </div>
+                </div>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                   <span className="text-xs font-light text-neutral-400">
                                     {statusText}
-                                  </span>
+                          </span>
                                   <svg className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                   </svg>
-                                </div>
-                              </div>
-                            </div>
+                        </div>
+                      </div>
+                </div>
                           );
                         }
                       })}

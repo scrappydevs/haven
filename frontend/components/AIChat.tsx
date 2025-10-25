@@ -123,23 +123,103 @@ export default function AIChat() {
     }
   }, []);
 
-  // Generate follow-up questions based on context
+  // Generate follow-up questions based on actual conversation context
   const generateFollowUpQuestions = (userQuery: string, response: string) => {
     const questions: string[] = [];
+    const queryLower = userQuery.toLowerCase();
+    const responseLower = response.toLowerCase();
     
-    if (userQuery.toLowerCase().includes('patient') || response.toLowerCase().includes('patient')) {
-      questions.push('Show patient vitals');
-      questions.push('Check for alerts');
-    }
-    if (userQuery.toLowerCase().includes('room') || response.toLowerCase().includes('room')) {
-      questions.push('List all rooms');
-      questions.push('Find available rooms');
-    }
-    if (response.toLowerCase().includes('crs') || response.toLowerCase().includes('protocol')) {
-      questions.push('Explain monitoring steps');
+    // Check recent conversation history for better context
+    const recentMessages = messages.slice(-3); // Last 3 messages
+    const conversationContext = recentMessages.map(m => m.content.toLowerCase()).join(' ');
+    
+    // After successful operations - show verification options
+    if (responseLower.includes('✅')) {
+      // After patient removed
+      if (responseLower.includes('removed')) {
+        const roomMatch = response.match(/Room \d+/i);
+        if (roomMatch) {
+          questions.push(`Verify ${roomMatch[0]} is empty`);
+        }
+        if (!conversationContext.includes('occupancy')) {
+          questions.push('Check all room status');
+        }
+        return questions.slice(0, 2);
+      }
+      
+      // After transfer
+      if (responseLower.includes('transferred')) {
+        const toRoomMatch = response.match(/to\s+(Room \d+|`Room \d+`)/i);
+        if (toRoomMatch) {
+          const roomNum = toRoomMatch[1].replace(/`/g, '');
+          questions.push(`Confirm patient arrived in ${roomNum}`);
+        }
+        return questions.slice(0, 1);
+      }
+      
+      // After assignment
+      if (responseLower.includes('assigned')) {
+        questions.push('Show remaining available rooms');
+        return questions.slice(0, 1);
+      }
     }
     
-    return questions.slice(0, 3); // Max 3 follow-ups
+    // Room is empty response
+    if (responseLower.includes('empty') || responseLower.includes('no patient')) {
+      questions.push('Show which rooms are occupied');
+      return questions.slice(0, 1);
+    }
+    
+    // Confirmation requests - different options
+    if (responseLower.includes('confirm')) {
+      questions.push('Cancel operation');
+      questions.push('Show current state first');
+      return questions;
+    }
+    
+    // Patient location query result
+    if (queryLower.includes('where') && responseLower.includes('room')) {
+      const patientMatch = userQuery.match(/(P-\d+|\w+ \w+)/i);
+      if (patientMatch) {
+        questions.push('Get full patient details');
+      }
+      return questions.slice(0, 1);
+    }
+    
+    // Multi-room query
+    if (queryLower.includes('all rooms') || queryLower.includes('who\'s in')) {
+      if (!conversationContext.includes('available')) {
+        questions.push('List only available rooms');
+      }
+      if (!conversationContext.includes('statistics')) {
+        questions.push('Hospital statistics');
+      }
+      return questions.slice(0, 2);
+    }
+    
+    // Alert queries
+    if (queryLower.includes('alert')) {
+      if (responseLower.includes('active')) {
+        questions.push('Show alert details');
+      } else {
+        questions.push('Active alerts');
+      }
+      return questions.slice(0, 1);
+    }
+    
+    // Protocol queries
+    if (responseLower.includes('protocol') || responseLower.includes('monitoring')) {
+      return []; // No follow-ups for protocols
+    }
+    
+    // If no specific context, show page-relevant options
+    if (pathname?.includes('floorplan')) {
+      return ['Current room status'];
+    } else if (pathname?.includes('dashboard')) {
+      return ['Hospital overview'];
+    }
+    
+    return []; // No follow-ups if nothing relevant
   };
 
   // Get smart context based on current page
@@ -385,6 +465,22 @@ export default function AIChat() {
       // Stream the response text with animation
       const responseText = data.response || 'Sorry, I encountered an error.';
       await streamText(responseText);
+      
+      // Invalidate cache if AI made changes to database
+      if (data.invalidate_cache || data.tool_calls > 0) {
+        console.log('🔄 AI made changes - invalidating cache');
+        console.log('   Tool calls:', data.tool_calls);
+        console.log('   Cache keys:', data.cache_keys || ['rooms', 'patients']);
+        
+        // Dispatch multiple times to ensure it's caught
+        for (let i = 0; i < 3; i++) {
+          window.dispatchEvent(new CustomEvent('haven-invalidate-cache', {
+            detail: { keys: data.cache_keys || ['rooms', 'patients'], timestamp: Date.now() }
+          }));
+        }
+        
+        console.log('   ✅ Cache invalidation events dispatched');
+      }
       
       // Generate follow-up questions
       const followUps = generateFollowUpQuestions(userMessage.content, responseText);
@@ -786,12 +882,12 @@ export default function AIChat() {
                             remarkPlugins={[remarkGfm]}
                             components={{
                               p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed whitespace-pre-wrap">{children}</p>,
-                              strong: ({ children }) => <strong className="font-bold text-neutral-950 bg-yellow-100 px-0.5">{children}</strong>,
+                              strong: ({ children }) => <strong className="font-bold text-neutral-950">{children}</strong>,
                               em: ({ children }) => <em className="italic text-neutral-700">{children}</em>,
                               ul: ({ children }) => <ul className="my-3 space-y-2 list-disc list-inside">{children}</ul>,
                               ol: ({ children }) => <ol className="my-3 space-y-2 list-decimal list-inside">{children}</ol>,
                               li: ({ children }) => <li className="leading-relaxed text-sm">{children}</li>,
-                              code: ({ children }) => <code className="bg-neutral-200 text-primary-900 px-1.5 py-0.5 rounded text-xs font-mono font-medium">{children}</code>,
+                              code: ({ children }) => <code className="bg-yellow-100 text-neutral-950 px-1.5 py-0.5 rounded text-xs font-medium">{children}</code>,
                               pre: ({ children }) => (
                                 <div className="relative group my-3">
                                   <pre className="bg-neutral-200 p-3 rounded text-xs font-mono overflow-x-auto border border-neutral-300">

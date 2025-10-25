@@ -163,13 +163,13 @@ export default function GlobalActivityFeed({ events, alerts, isLoading = false, 
       {/* Consolidated Event Log */}
       <div className="flex-1 overflow-hidden">
         <div className="px-6 py-4 h-full overflow-y-auto">
-          {events.length === 0 ? (
+          {events.length === 0 && alerts.length === 0 && !isLoading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center text-slate-600">
-                <p className="text-sm">No activity yet</p>
+              <div className="text-center text-neutral-400">
+                <p className="text-sm font-light">No recent activity</p>
               </div>
             </div>
-          ) : (
+          ) : events.length > 0 ? (
             <div className="space-y-2 font-mono text-xs">
               {events.map((event, index) => (
                 <motion.div
@@ -204,13 +204,13 @@ export default function GlobalActivityFeed({ events, alerts, isLoading = false, 
                 </motion.div>
               ))}
 
-              {/* Monitoring indicator */}
+              {/* Monitoring indicator - only show if there are events */}
               <div className="flex items-center gap-2 mt-4 text-green-500 border-l-2 border-green-500/30 pl-3 py-2">
                 <span className="animate-pulse">▊</span>
-                <span className="text-slate-600 text-xs">System monitoring active...</span>
+                <span className="text-neutral-500 text-xs">System monitoring active</span>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

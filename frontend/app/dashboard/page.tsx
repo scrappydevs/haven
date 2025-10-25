@@ -652,16 +652,11 @@ export default function DashboardPage() {
         </div> */}
 
         {viewMode === 'overview' ? (
-          // OVERVIEW MODE: Stacked management and monitoring + activity feed
+          // OVERVIEW MODE: Stacked monitoring and management + activity feed
           <div className="grid grid-cols-12 gap-6">
-            {/* Left Panel - Patient Management & Monitoring (8 columns) */}
+            {/* Left Panel - Patient Monitoring & Management (8 columns) */}
             <div className="col-span-8 space-y-6">
-              {/* Patient Management */}
-              <div className="h-[400px]">
-                <PatientManagement />
-              </div>
-
-              {/* Patient Monitoring */}
+              {/* Patient Monitoring - Top 60% */}
               <div>
                 <div className="mb-4">
                   <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">Patient Monitoring</h2>
@@ -729,17 +724,14 @@ export default function DashboardPage() {
             </div>
             </div>
 
-            {/* Right Column - Activity Feed & Manual Alerts (4 columns) */}
-            <div className="col-span-4 space-y-6">
+            {/* Right Column - Activity Feed (4 columns) */}
+            <div className="col-span-4">
               <GlobalActivityFeed
                 events={globalEventFeed}
                 alerts={alerts}
                 isLoading={isLoadingAlerts}
                 onPatientClick={onPatientClicked}
               />
-              
-              {/* Manual Alerts Panel */}
-              <ManualAlertsPanel />
             </div>
           </div>
         ) : (
@@ -809,6 +801,13 @@ export default function DashboardPage() {
                 />
               </div>
             </div>
+          </div>
+        )}
+        
+        {/* Manual Alerts - Full Width Below */}
+        {viewMode === 'overview' && (
+          <div className="mt-6">
+            <ManualAlertsPanel />
           </div>
         )}
       </div>

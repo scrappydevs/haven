@@ -275,3 +275,178 @@ This is a computer-generated report.
     except Exception as e:
         return f"Error generating report: {str(e)}"
 
+
+async def generate_clinical_summary_report(summary_data: dict) -> bytes:
+    """
+    Generate AI-powered clinical summary PDF
+    
+    Args:
+        summary_data: Dictionary from generate_patient_clinical_summary_tool
+        
+    Returns:
+        PDF bytes
+    """
+    if not REPORTLAB_AVAILABLE:
+        raise Exception("PDF generation not available - reportlab not installed")
+    
+    # Create PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                           topMargin=0.75*inch, bottomMargin=0.75*inch,
+                           leftMargin=0.75*inch, rightMargin=0.75*inch)
+    
+    story = []
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#1a1a1a'),
+        spaceAfter=12,
+        alignment=TA_CENTER
+    )
+    
+    section_style = ParagraphStyle(
+        'SectionHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#2d3748'),
+        spaceBefore=16,
+        spaceAfter=8,
+        textColor=colors.HexColor('#4a5568')
+    )
+    
+    # Header
+    story.append(Paragraph("HAVEN HOSPITAL", title_style))
+    story.append(Paragraph("AI-Powered Clinical Summary Report", styles['Heading2']))
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Patient Info
+    patient_data = [
+        ['Patient:', summary_data.get('patient_name', 'N/A')],
+        ['Patient ID:', summary_data.get('patient_id', 'N/A')],
+        ['Age / Gender:', f"{summary_data.get('age', 'N/A')} years / {summary_data.get('gender', 'N/A')}"],
+        ['Diagnosis:', summary_data.get('condition', 'N/A')],
+        ['Current Location:', summary_data.get('current_room', {}).get('room_name', 'Not assigned') if summary_data.get('current_room') else 'Not assigned'],
+        ['Enrollment Status:', summary_data.get('enrollment_status', 'N/A')],
+        ['Report Generated:', datetime.now().strftime('%B %d, %Y at %I:%M %p')],
+    ]
+    
+    patient_table = Table(patient_data, colWidths=[2*inch, 4*inch])
+    patient_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#4a5568')),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f7fafc')),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+    ]))
+    story.append(patient_table)
+    story.append(Spacer(1, 0.3*inch))
+    
+    # AI Insights Section
+    ai_insights = summary_data.get('ai_insights', {})
+    
+    # Key Concerns
+    story.append(Paragraph("KEY CLINICAL CONCERNS", section_style))
+    concerns_data = [[f"{i+1}. {concern}"] for i, concern in enumerate(ai_insights.get('key_concerns', []))]
+    if concerns_data:
+        concerns_table = Table(concerns_data, colWidths=[6.5*inch])
+        concerns_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fff5f5')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(concerns_table)
+    story.append(Spacer(1, 0.2*inch))
+    
+    # Risk Factors
+    story.append(Paragraph("RISK FACTORS TO MONITOR", section_style))
+    risks_data = [[f"{i+1}. {risk}"] for i, risk in enumerate(ai_insights.get('risk_factors', []))]
+    if risks_data:
+        risks_table = Table(risks_data, colWidths=[6.5*inch])
+        risks_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fffaf0')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(risks_table)
+    story.append(Spacer(1, 0.2*inch))
+    
+    # Recommendations
+    story.append(Paragraph("CLINICAL RECOMMENDATIONS", section_style))
+    recs_data = [[f"{i+1}. {rec}"] for i, rec in enumerate(ai_insights.get('recommendations', []))]
+    if recs_data:
+        recs_table = Table(recs_data, colWidths=[6.5*inch])
+        recs_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0fdf4')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(recs_table)
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Active Alerts
+    if summary_data.get('active_alerts'):
+        story.append(Paragraph("ACTIVE ALERTS", section_style))
+        
+        alerts_data = [['Severity', 'Type', 'Title', 'Time']]
+        for alert in summary_data['active_alerts']:
+            alerts_data.append([
+                alert.get('severity', '').upper(),
+                alert.get('alert_type', 'N/A'),
+                alert.get('title', 'N/A')[:40],
+                datetime.fromisoformat(alert['triggered_at'].replace('Z', '+00:00')).strftime('%m/%d %H:%M') if alert.get('triggered_at') else 'N/A'
+            ])
+        
+        alerts_table = Table(alerts_data, colWidths=[1*inch, 1.3*inch, 3*inch, 1.2*inch])
+        alerts_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2d3748')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(alerts_table)
+        story.append(Spacer(1, 0.2*inch))
+    
+    # Footer
+    story.append(Spacer(1, 0.4*inch))
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#a0aec0'),
+        alignment=TA_CENTER
+    )
+    story.append(Paragraph("AI-Powered Clinical Summary — Haven Hospital Management System", footer_style))
+    story.append(Paragraph(f"Generated by Haven AI | Report ID: {summary_data.get('patient_id')}-{datetime.now().strftime('%Y%m%d%H%M%S')}", footer_style))
+    story.append(Paragraph("This report includes AI-generated insights and recommendations. Always verify with clinical judgment.", footer_style))
+    
+    # Build PDF
+    doc.build(story)
+    
+    buffer.seek(0)
+    return buffer.getvalue()
+
