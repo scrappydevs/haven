@@ -9,15 +9,18 @@ from pydantic import BaseModel
 import json
 from pathlib import Path
 import os
-from app.websocket import manager
+from app.websocket import manager, process_frame_fast, process_frame_metrics
 from app.supabase_client import supabase
 from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
+from app.infisical_config import get_secret
 
 # Try to import anthropic for LLM recommendations
 try:
     import anthropic
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")
     anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+    if anthropic_client:
+        print("✅ Anthropic client initialized")
 except ImportError:
     anthropic_client = None
     print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
@@ -28,10 +31,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS for frontend - allows browser WebSocket connections from localhost:3000
+# CORS for frontend - allows browser WebSocket connections from production and localhost
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://use-haven.vercel.app",  # Production frontend
+        "http://localhost:3000",          # Local development
+        "http://localhost:3001",          # Alternative local port
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

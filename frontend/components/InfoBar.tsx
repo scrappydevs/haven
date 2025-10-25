@@ -22,59 +22,57 @@ export default function InfoBar({
   onClick
 }: InfoBarProps) {
 
-  // Determine status color based on CRS score
-  const getStatusColor = () => {
-    if (!crsScore) return 'bg-slate-500';
-    if (crsScore > 0.7) return 'bg-red-500';
-    if (crsScore > 0.4) return 'bg-yellow-500';
-    return 'bg-green-500';
+  // Determine border color based on CRS score
+  const getBorderColor = () => {
+    if (!crsScore) return 'border-neutral-300';
+    if (crsScore > 0.7) return 'border-accent-terra';
+    if (crsScore > 0.4) return 'border-primary-400';
+    return 'border-primary-700';
   };
 
-  const statusColor = getStatusColor();
+  const borderColor = getBorderColor();
 
   return (
     <motion.div
       onClick={onClick}
       className={`
-        px-3 py-2 cursor-pointer transition-all duration-200
-        border-t-2 font-mono text-xs
-        ${isSelected
-          ? 'bg-blue-900/50 border-blue-500 shadow-lg shadow-blue-500/30'
-          : 'bg-slate-900/80 border-slate-700 hover:bg-slate-800/80'
-        }
+        px-4 py-2.5 cursor-pointer transition-all
+        border-l-4 border border-neutral-200 bg-surface
+        ${isSelected ? 'border-l-primary-950' : borderColor}
+        hover:bg-neutral-50
       `}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
+      whileHover={{ x: 2 }}
+      whileTap={{ scale: 0.98 }}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-3">
         {/* Left: Patient Info */}
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-white font-semibold truncate">
-            {isLive ? '🔴 LIVE' : `P${patientId}`}
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="label-uppercase text-neutral-950">
+            {isLive ? 'LIVE' : `P${patientId}`}
           </span>
-          <span className="text-slate-400 truncate hidden sm:inline">
+          <span className="text-sm font-light text-neutral-700 truncate hidden sm:inline">
             {patientName}
           </span>
         </div>
 
         {/* Right: Vitals & Status */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-4 flex-shrink-0">
           {/* Heart Rate */}
           {heartRate !== undefined && (
-            <div className="flex items-center gap-1">
-              <span className="text-slate-400">HR:</span>
-              <span className="text-white font-semibold">{heartRate}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="label-uppercase text-neutral-500">HR</span>
+              <span className="text-sm font-light text-neutral-950">{heartRate}</span>
             </div>
           )}
 
           {/* CRS Score */}
           {crsScore !== undefined && (
-            <div className="flex items-center gap-1">
-              <span className="text-slate-400">CRS:</span>
-              <span className={`font-semibold ${
-                crsScore > 0.7 ? 'text-red-400' :
-                crsScore > 0.4 ? 'text-yellow-400' :
-                'text-green-400'
+            <div className="flex items-center gap-1.5">
+              <span className="label-uppercase text-neutral-500">CRS</span>
+              <span className={`text-sm font-normal ${
+                crsScore > 0.7 ? 'text-accent-terra' :
+                crsScore > 0.4 ? 'text-primary-400' :
+                'text-primary-700'
               }`}>
                 {(crsScore * 100).toFixed(0)}%
               </span>
@@ -82,19 +80,18 @@ export default function InfoBar({
           )}
 
           {/* Status Indicator */}
-          <div className="flex items-center gap-1">
+          {isLive && (
             <motion.div
-              className={`w-2 h-2 rounded-full ${statusColor}`}
+              className="w-2 h-2 bg-primary-700"
               animate={{
-                scale: isLive ? [1, 1.2, 1] : 1,
-                opacity: isLive ? [1, 0.7, 1] : 1
+                opacity: [1, 0.3, 1]
               }}
               transition={{
-                repeat: isLive ? Infinity : 0,
-                duration: 1.5
+                repeat: Infinity,
+                duration: 2
               }}
             />
-          </div>
+          )}
         </div>
       </div>
     </motion.div>

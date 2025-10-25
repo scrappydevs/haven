@@ -60,8 +60,8 @@ interface DetailPanelProps {
 export default function DetailPanel({ patient, cvData, isLive = false, monitoringConditions = [], events = [] }: DetailPanelProps) {
   if (!patient) {
     return (
-      <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-6">
-        <p className="text-slate-400 text-center text-sm">
+      <div className="bg-surface border border-neutral-200 p-8">
+        <p className="text-neutral-500 text-center text-sm font-light">
           Select a patient to view details
         </p>
       </div>
@@ -116,10 +116,10 @@ export default function DetailPanel({ patient, cvData, isLive = false, monitorin
     <motion.div
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="bg-slate-800/50 rounded-lg border border-slate-700 overflow-hidden"
+      className="bg-surface border border-neutral-200 overflow-hidden"
     >
       {/* Header */}
-      <div className="bg-slate-900/80 border-b border-slate-700 px-6 py-4">
+      <div className="bg-neutral-50 border-b border-neutral-200 px-8 py-6">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-xl font-bold text-white mb-1">

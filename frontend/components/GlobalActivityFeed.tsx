@@ -65,40 +65,38 @@ export default function GlobalActivityFeed({ events, alerts, onPatientClick }: G
   };
 
   return (
-    <div className="bg-slate-800/50 rounded-lg border border-slate-700 h-full flex flex-col">
+    <div className="bg-surface border border-neutral-200 h-full flex flex-col">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-700 flex-shrink-0">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-          <span className="text-2xl">📡</span>
-          Live Activity Feed
+      <div className="px-8 py-6 border-b-2 border-neutral-950 flex-shrink-0">
+        <h2 className="text-2xl font-light tracking-tight text-neutral-950">
+          LIVE ACTIVITY FEED
         </h2>
-        <p className="text-sm text-slate-400">All active streams • Real-time</p>
+        <p className="text-sm font-light text-neutral-500 mt-2">All active streams • Real-time</p>
       </div>
 
       {/* Alerts Section */}
       {alerts.length > 0 && (
-        <div className="px-6 py-4 border-b border-slate-700 bg-red-500/5 flex-shrink-0">
-          <h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2">
-            <span className="text-lg">🚨</span>
+        <div className="px-8 py-6 border-b border-neutral-200 bg-accent-terra/5 flex-shrink-0">
+          <h3 className="label-uppercase text-accent-terra mb-4 flex items-center gap-2">
             Active Alerts ({alerts.length})
           </h3>
-          <div className="space-y-2 max-h-32 overflow-y-auto">
+          <div className="space-y-3 max-h-32 overflow-y-auto">
             {alerts.map((alert, i) => (
               <div
                 key={i}
-                className="bg-red-500/10 border border-red-500/30 rounded p-3 cursor-pointer hover:bg-red-500/20 transition-colors"
+                className="bg-surface border-l-4 border-accent-terra border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
                 onClick={() => onPatientClick && onPatientClick(alert.patient_id)}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-red-400">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="label-uppercase text-neutral-950">
                     Patient #{alert.patient_id}
                   </span>
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs font-light text-neutral-500">
                     {formatTime(alert.timestamp)}
                   </span>
                 </div>
-                <p className="text-xs text-red-300">{alert.message}</p>
-                <div className="flex gap-3 mt-1 text-xs text-slate-400">
+                <p className="text-sm font-light text-neutral-700">{alert.message}</p>
+                <div className="flex gap-4 mt-2 text-xs font-light text-neutral-500">
                   <span>CRS: {(alert.crs_score * 100).toFixed(0)}%</span>
                   <span>HR: {alert.heart_rate} bpm</span>
                 </div>

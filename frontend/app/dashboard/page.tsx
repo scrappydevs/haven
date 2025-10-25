@@ -353,19 +353,18 @@ export default function DashboardPage() {
   // No longer need displayedPatients - we use boxAssignments instead
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-slate-700 bg-slate-900/50 backdrop-blur">
-        <div className="container mx-auto px-6 py-4">
+      <header className="border-b-2 border-neutral-950 bg-surface">
+        <div className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             {/* Logo */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <span className="text-2xl">👁️</span>
-              </div>
+            <div className="flex items-center gap-4">
               <div>
-                <h1 className="text-xl font-bold text-white">TrialSentinel AI</h1>
-                <p className="text-sm text-slate-400">Linvoseltamab Phase III - NCT04649359</p>
+                <h1 className="text-2xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent">
+                  TrialSentinel
+                </h1>
+                <p className="text-xs label-uppercase text-neutral-500 mt-1">Linvoseltamab Phase III - NCT04649359</p>
               </div>
             </div>
 
@@ -382,9 +381,9 @@ export default function DashboardPage() {
           <div className="grid grid-cols-12 gap-6">
             {/* Video Grid (Left - 8 columns) */}
             <div className="col-span-8">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-white">Patient Monitoring</h2>
-                <p className="text-sm text-slate-400">Click any feed to view detailed analysis</p>
+              <div className="mb-6">
+                <h2 className="text-2xl font-light tracking-tight text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">PATIENT MONITORING</h2>
+                <p className="text-sm font-light text-neutral-500 mt-3">Click any feed to view detailed analysis</p>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -393,18 +392,18 @@ export default function DashboardPage() {
                 if (!patient) {
                   return (
                     <div key={boxIndex} className="flex flex-col">
-                      <div className="relative rounded-t-lg overflow-hidden border-2 border-slate-700 bg-slate-900/50">
+                      <div className="relative overflow-hidden border border-neutral-200 bg-neutral-50">
                         <div className="w-full aspect-video flex items-center justify-center">
                           <button
                             onClick={() => openPatientSelectionForBox(boxIndex)}
-                            className="w-20 h-20 rounded-full bg-slate-800 hover:bg-blue-500 border-2 border-slate-600 hover:border-blue-400 text-slate-400 hover:text-white text-4xl transition-all duration-200 hover:scale-110"
+                            className="w-16 h-16 bg-surface hover:bg-primary-700 border-2 border-neutral-300 hover:border-primary-700 text-neutral-400 hover:text-white text-3xl transition-all hover:scale-105 font-light"
                           >
                             +
                           </button>
                         </div>
                       </div>
-                      <div className="bg-slate-800 border-2 border-t-0 border-slate-700 rounded-b-lg px-4 py-3">
-                        <p className="text-sm text-slate-500 text-center">Box {boxIndex + 1} - Empty</p>
+                      <div className="bg-surface border border-neutral-200 border-t-0 px-4 py-3">
+                        <p className="label-uppercase text-neutral-400 text-center">Box {boxIndex + 1} - Empty</p>
                       </div>
                     </div>
                   );
@@ -458,7 +457,7 @@ export default function DashboardPage() {
             <div className="mb-4">
               <button
                 onClick={onBackToOverview}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                className="flex items-center gap-2 border border-neutral-300 px-6 py-2 font-light text-xs uppercase tracking-wider text-neutral-700 hover:border-neutral-950 hover:text-neutral-950 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />

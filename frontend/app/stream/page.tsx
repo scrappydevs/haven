@@ -308,50 +308,50 @@ export default function StreamPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+    <div className="min-h-screen bg-neutral-50 p-6">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">
-            📹 Webcam Streamer
+        <div className="mb-8 border-b-2 border-neutral-950 pb-4">
+          <h1 className="heading-page text-neutral-950 mb-2">
+            Live Stream
           </h1>
-          <p className="text-slate-400">
+          <p className="body-large text-neutral-700">
             Stream your webcam to the dashboard for live CV analysis
           </p>
         </div>
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
-            <p className="text-red-400">❌ {error}</p>
+          <div className="bg-accent-terra/10 border-2 border-accent-terra p-4 mb-6">
+            <p className="body-default text-accent-terra font-medium">{error}</p>
           </div>
         )}
 
         {/* Selected Patient Card */}
         {selectedPatient ? (
-          <div className="bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700">
-            <div className="flex items-center gap-4">
+          <div className="bg-white border-2 border-neutral-950 p-6 mb-6 hover-lift">
+            <div className="flex items-center gap-6">
               <img
                 src={selectedPatient.photo_url}
                 alt={selectedPatient.name}
-                className="w-16 h-16 rounded-full object-cover border-2 border-blue-500"
+                className="w-20 h-20 object-cover border-2 border-neutral-950"
               />
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-lg font-semibold text-white">{selectedPatient.name}</h3>
-                  <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full">
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="heading-section text-neutral-950">{selectedPatient.name}</h3>
+                  <span className="label-uppercase bg-primary-700 text-white px-3 py-1">
                     {selectedPatient.patient_id}
                   </span>
                 </div>
-                <p className="text-sm text-slate-400">
+                <p className="body-default text-neutral-700 mb-1">
                   {selectedPatient.age}y/o • {selectedPatient.gender}
                 </p>
-                <p className="text-sm text-slate-300 mt-1">{selectedPatient.condition}</p>
+                <p className="body-default text-neutral-950 font-medium">{selectedPatient.condition}</p>
                 {monitoringConditions.length > 0 && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-slate-500">Monitoring:</span>
+                  <div className="flex items-center gap-2 mt-3">
+                    <span className="label-uppercase text-neutral-700">Monitoring:</span>
                     {monitoringConditions.map(condition => (
-                      <span key={condition} className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
+                      <span key={condition} className="label-uppercase bg-primary-100 text-primary-950 px-2 py-1 border border-primary-700">
                         {condition}
                       </span>
                     ))}
@@ -361,7 +361,7 @@ export default function StreamPage() {
               {!isStreaming && (
                 <button
                   onClick={openPatientSelection}
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors"
+                  className="px-6 py-3 bg-neutral-950 hover:bg-neutral-700 text-white label-uppercase transition-colors"
                 >
                   Change Patient
                 </button>
@@ -369,15 +369,17 @@ export default function StreamPage() {
             </div>
           </div>
         ) : (
-          <div className="bg-slate-800 rounded-lg p-8 mb-6 border border-slate-700 text-center">
-            <div className="mb-4">
-              <span className="text-6xl">👤</span>
+          <div className="bg-white border-2 border-neutral-950 p-12 mb-6 text-center">
+            <div className="mb-6">
+              <div className="w-24 h-24 mx-auto bg-neutral-100 border-2 border-neutral-950 flex items-center justify-center">
+                <span className="heading-section text-neutral-500">?</span>
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-white mb-2">No Patient Selected</h3>
-            <p className="text-slate-400 mb-4">Select a patient to start streaming</p>
+            <h3 className="heading-section text-neutral-950 mb-2">No Patient Selected</h3>
+            <p className="body-default text-neutral-700 mb-6">Select a patient to start streaming</p>
             <button
               onClick={openPatientSelection}
-              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors"
+              className="px-8 py-4 bg-primary-700 hover:bg-primary-900 text-white label-uppercase transition-colors hover-lift"
             >
               Select Patient
             </button>
@@ -385,8 +387,8 @@ export default function StreamPage() {
         )}
 
         {/* Video Preview */}
-        <div className="bg-slate-800 rounded-lg p-6 mb-6">
-          <div className="relative aspect-video bg-black rounded-lg overflow-hidden mb-4">
+        <div className="bg-white border-2 border-neutral-950 p-6 mb-6">
+          <div className="relative aspect-video bg-neutral-950 overflow-hidden mb-6 border-2 border-neutral-950">
             <video
               ref={videoRef}
               className="w-full h-full object-cover"
@@ -396,12 +398,12 @@ export default function StreamPage() {
             />
 
             {/* Status Overlay */}
-            <div className="absolute top-4 right-4 px-4 py-2 rounded-lg bg-black/70 backdrop-blur">
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${
-                  isStreaming ? 'bg-red-500 animate-pulse' : 'bg-gray-500'
+            <div className="absolute top-4 right-4 px-4 py-2 bg-neutral-950/90">
+              <div className="flex items-center gap-3">
+                <div className={`w-2 h-2 ${
+                  isStreaming ? 'bg-accent-terra animate-pulse' : 'bg-neutral-500'
                 }`} />
-                <span className="text-white font-semibold">
+                <span className="label-uppercase text-white">
                   {isStreaming ? 'LIVE' : 'OFFLINE'}
                 </span>
               </div>
@@ -409,8 +411,8 @@ export default function StreamPage() {
 
             {/* FPS Counter */}
             {isStreaming && (
-              <div className="absolute top-4 left-4 px-3 py-1 rounded bg-black/70 backdrop-blur">
-                <span className="text-green-400 font-mono text-sm">
+              <div className="absolute top-4 left-4 px-3 py-2 bg-neutral-950/90 border border-primary-700">
+                <span className="label-uppercase text-primary-400">
                   {fps} FPS
                 </span>
               </div>
@@ -423,46 +425,61 @@ export default function StreamPage() {
               <button
                 onClick={startStreaming}
                 disabled={!selectedPatient}
-                className={`flex-1 font-semibold py-3 rounded-lg transition-colors ${
+                className={`flex-1 label-uppercase py-4 transition-all border-2 ${
                   selectedPatient
-                    ? 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
-                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                    ? 'bg-primary-700 hover:bg-primary-900 text-white border-primary-700 hover:border-primary-900 cursor-pointer hover-lift'
+                    : 'bg-neutral-100 text-neutral-400 border-neutral-200 cursor-not-allowed'
                 }`}
               >
-                🎥 Start Streaming {selectedPatient ? `as ${selectedPatient.patient_id}` : ''}
+                Start Streaming {selectedPatient ? `as ${selectedPatient.patient_id}` : ''}
               </button>
             ) : isConnecting ? (
               <button
                 disabled
-                className="flex-1 bg-yellow-500 text-white font-semibold py-3 rounded-lg opacity-75 cursor-not-allowed"
+                className="flex-1 bg-neutral-700 text-white label-uppercase py-4 border-2 border-neutral-700 opacity-75 cursor-not-allowed"
               >
-                ⏳ Connecting...
+                Connecting...
               </button>
             ) : (
               <button
                 onClick={stopStreaming}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-lg transition-colors"
+                className="flex-1 bg-accent-terra hover:bg-accent-terra/80 text-white label-uppercase py-4 border-2 border-accent-terra transition-all hover-lift"
               >
-                ⏹️ Stop Streaming
+                Stop Streaming
               </button>
             )}
           </div>
         </div>
 
         {/* Instructions */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-white mb-3">📋 How to Use</h2>
-          <ol className="space-y-2 text-slate-300 text-sm">
-            <li>1. Click &quot;Start Streaming&quot; button above</li>
-            <li>2. Allow camera permissions when prompted</li>
-            <li>3. On another computer, open the dashboard</li>
-            <li>4. Look for &quot;LIVE DEMO&quot; patient (6th video feed)</li>
-            <li>5. Try rubbing your face to simulate CRS → Alert fires!</li>
+        <div className="bg-white border-2 border-neutral-950 p-8">
+          <h2 className="heading-section text-neutral-950 mb-6 border-b-2 border-neutral-950 pb-3">How to Use</h2>
+          <ol className="space-y-4 body-default text-neutral-950">
+            <li className="flex gap-4">
+              <span className="label-uppercase text-neutral-700 flex-shrink-0">01</span>
+              <span>Click "Start Streaming" button above</span>
+            </li>
+            <li className="flex gap-4">
+              <span className="label-uppercase text-neutral-700 flex-shrink-0">02</span>
+              <span>Allow camera permissions when prompted</span>
+            </li>
+            <li className="flex gap-4">
+              <span className="label-uppercase text-neutral-700 flex-shrink-0">03</span>
+              <span>On another computer, open the dashboard</span>
+            </li>
+            <li className="flex gap-4">
+              <span className="label-uppercase text-neutral-700 flex-shrink-0">04</span>
+              <span>Look for your patient in the live feed section</span>
+            </li>
+            <li className="flex gap-4">
+              <span className="label-uppercase text-neutral-700 flex-shrink-0">05</span>
+              <span>Try rubbing your face to simulate CRS → Alert fires!</span>
+            </li>
           </ol>
 
-          <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-            <p className="text-blue-400 text-sm">
-              💡 <strong>Tip:</strong> Make sure both computers are on the same network and backend is running!
+          <div className="mt-6 p-4 bg-primary-100 border-l-4 border-primary-700">
+            <p className="body-default text-neutral-950">
+              <span className="font-semibold">Note:</span> Make sure both computers are on the same network and backend is running!
             </p>
           </div>
         </div>
@@ -488,7 +505,7 @@ export default function StreamPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-neutral-950/80"
             onClick={() => setShowConditionSelector(false)}
           />
 

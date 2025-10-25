@@ -4,18 +4,73 @@
 
 @layer base {
   :root {
-    --background: 222 47% 11%;
-    --foreground: 0 0% 100%;
-    --card: 222 47% 15%;
-    --card-foreground: 0 0% 100%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    /* PRIMARY PALETTE - Tropical Green Medical */
+    --color-primary-950: #1e293b;
+    --color-primary-900: #334155;
+    --color-primary-700: #6b9080;
+    --color-primary-400: #a4c3b2;
+    --color-primary-100: #eaf4f4;
+
+    /* ACCENT PALETTE - Terracotta & Earth */
+    --color-accent-terra: #c97064;
+    --color-accent-sand: #f4e8d8;
+    --color-accent-clay: #e8cebf;
+
+    /* NEUTRAL PALETTE - Sophisticated Grays */
+    --color-neutral-950: #0f172a;
+    --color-neutral-700: #475569;
+    --color-neutral-500: #94a3b8;
+    --color-neutral-400: #cbd5e1;
+    --color-neutral-300: #cbd5e1;
+    --color-neutral-200: #e2e8f0;
+    --color-neutral-100: #f1f5f9;
+    --color-neutral-50: #fafafa;
+
+    /* SEMANTIC COLORS */
+    --color-background: #fafafa;
+    --color-surface: #ffffff;
+    --color-border: #e2e8f0;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-neutral-950 font-inter font-light antialiased;
+  }
+
+  /* BRUTALIST/EDITORIAL ELEMENTS */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-light tracking-tight;
+  }
+
+  /* Remove default styles */
+  button {
+    @apply font-inter;
+  }
+
+  input, textarea, select {
+    @apply font-inter font-light;
   }
 }
 
-body {
-  @apply bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white;
+@layer utilities {
+  /* Custom brutalist utilities */
+  .text-editorial {
+    @apply font-extralight tracking-tight leading-tight;
+  }
+
+  .label-uppercase {
+    @apply text-xs font-normal uppercase tracking-wider;
+  }
+
+  .border-brutalist {
+    @apply border-2 border-neutral-950;
+  }
+
+  .no-round {
+    @apply rounded-none;
+  }
 }
 

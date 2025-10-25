@@ -343,7 +343,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     >
       {/* Video Element - 30 FPS video + persistent canvas overlays */}
       {isLive ? (
-        <div className={`relative w-full bg-black ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
+        <div className={`relative w-full bg-neutral-950 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
           <img
             ref={imgRef}
             className="w-full h-full object-cover"
@@ -367,8 +367,8 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
           className={`w-full object-cover ${fullscreenMode ? 'h-full' : 'aspect-video'}`}
         />
       ) : (
-        <div className={`w-full bg-black flex items-center justify-center text-slate-500 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
-          No video available
+        <div className={`w-full bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-400 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
+          <span className="label-uppercase">No video available</span>
         </div>
       )}
 
@@ -377,21 +377,21 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold"
+          className="absolute top-3 right-3 bg-accent-terra text-white px-3 py-1.5 label-uppercase"
         >
-          🚨 ALERT
+          ALERT
         </motion.div>
       )}
 
       {/* Loading State - only show if no metrics data yet */}
       {!cvData?.metrics && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+        <div className="absolute inset-0 flex items-center justify-center bg-neutral-950/50">
           <div className="text-center">
-            <div className="text-white text-sm mb-2">
-              {isLive ? '⏳ Waiting for live stream...' : 'Loading CV analysis...'}
+            <div className="text-white text-sm font-light mb-2">
+              {isLive ? 'Waiting for live stream...' : 'Loading CV analysis...'}
             </div>
             {isLive && (
-              <div className="text-slate-400 text-xs">
+              <div className="text-neutral-300 text-xs font-light">
                 Make sure streaming is active on /stream page
               </div>
             )}

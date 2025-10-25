@@ -8,21 +8,21 @@ interface StatsBarProps {
 
 export default function StatsBar({ stats, alertCount }: StatsBarProps) {
   return (
-    <div className="flex gap-6">
+    <div className="flex gap-8">
       <StatCard
         label="Patients Monitored"
         value={stats.patients_monitored.toString()}
-        color="blue"
+        accentColor="primary"
       />
       <StatCard
         label="Active Alerts"
         value={alertCount.toString()}
-        color={alertCount > 0 ? "red" : "green"}
+        accentColor={alertCount > 0 ? "alert" : "primary"}
       />
       <StatCard
         label="Daily Savings"
         value={`$${(stats.daily_cost_savings / 1000).toFixed(1)}K`}
-        color="green"
+        accentColor="primary"
       />
     </div>
   );
@@ -31,20 +31,18 @@ export default function StatsBar({ stats, alertCount }: StatsBarProps) {
 interface StatCardProps {
   label: string;
   value: string;
-  color: "blue" | "red" | "green";
+  accentColor: "primary" | "alert";
 }
 
-function StatCard({ label, value, color }: StatCardProps) {
-  const colorClasses = {
-    blue: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-    red: "bg-red-500/10 text-red-400 border-red-500/30",
-    green: "bg-green-500/10 text-green-400 border-green-500/30",
-  };
+function StatCard({ label, value, accentColor }: StatCardProps) {
+  const borderClass = accentColor === "alert" 
+    ? "border-l-4 border-accent-terra" 
+    : "border-l-4 border-primary-700";
 
   return (
-    <div className={`px-4 py-2 rounded-lg border ${colorClasses[color]}`}>
-      <p className="text-xs opacity-80">{label}</p>
-      <p className="text-lg font-bold">{value}</p>
+    <div className={`bg-surface border border-neutral-200 ${borderClass} px-6 py-4`}>
+      <p className="label-uppercase text-neutral-500 mb-1">{label}</p>
+      <p className="text-3xl font-extralight tracking-tight text-neutral-950">{value}</p>
     </div>
   );
 }
