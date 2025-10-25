@@ -75,4 +75,6 @@ if __name__ == "__main__":
     import sys
     sys.path.insert(0, str(backend_dir))
     
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    # Use reload=False to avoid multiprocessing issues with mediapipe
+    # For auto-reload during development, use: uvicorn app.main:app --reload
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
