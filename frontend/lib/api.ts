@@ -8,12 +8,20 @@
  * Works in both development and production
  */
 export function getApiUrl(): string {
-  // In production (Vercel), use environment variable
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
   }
-  
-  // In development, use localhost
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    // Allow overriding the port without requiring the full URL
+    const port = process.env.NEXT_PUBLIC_API_PORT || '8000';
+    const apiProtocol = protocol === 'https:' ? 'https:' : 'http:';
+    return `${apiProtocol}//${hostname}:${port}`;
+  }
+
+  // Server-side fallback (build-time)
   return 'http://localhost:8000';
 }
 
@@ -24,11 +32,23 @@ export function getApiUrl(): string {
  */
 export function getWsUrl(path?: string): string {
   const apiUrl = getApiUrl();
-  const baseWsUrl = apiUrl.replace('http', 'ws');
-  return path ? `${baseWsUrl}${path}` : baseWsUrl;
+  try {
+    const url = new URL(apiUrl);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+
+    if (path) {
+      // Ensure we don't end up with a double slash when appending paths
+      url.pathname = `${url.pathname.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+    }
+
+    return url.toString();
+  } catch {
+    // Fallback for legacy strings
+    const baseWsUrl = apiUrl.replace(/^http/i, 'ws');
+    return path ? `${baseWsUrl}${path}` : baseWsUrl;
+  }
 }
 
 // Export constants for convenience
 export const API_URL = getApiUrl();
 export const WS_URL = getWsUrl();
-

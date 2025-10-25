@@ -68,7 +68,7 @@ export default function GlobalActivityFeed({ events, alerts, onPatientClick }: G
     <div className="bg-surface border border-neutral-200 h-full flex flex-col rounded-lg overflow-hidden">
       {/* Header */}
       <div className="px-8 py-6 border-b-2 border-neutral-950 flex-shrink-0">
-        <h2 className="text-2xl font-light tracking-tight text-neutral-950">
+        <h2 className="text-lg font-normal uppercase tracking-wider text-neutral-950">
           LIVE ACTIVITY FEED
         </h2>
         {/* <p className="text-sm font-light text-neutral-500 mt-2">All active streams • Real-time</p> */}

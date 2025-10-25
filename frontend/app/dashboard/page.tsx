@@ -567,7 +567,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-surface">
+      <header className="border-b-2 border-neutral-950 bg-surface">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Left: Logo */}
@@ -632,7 +632,7 @@ export default function DashboardPage() {
             {/* Video Grid (Left - 8 columns) */}
             <div className="col-span-8">
               <div className="mb-6">
-                <h2 className="text-2xl font-light tracking-tight text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">PATIENT MONITORING</h2>
+                <h2 className="text-lg font-normal uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">PATIENT MONITORING</h2>
                 {/* <p className="text-sm font-light text-neutral-500 mt-3">Click any feed to view detailed analysis</p> */}
               </div>
 

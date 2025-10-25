@@ -903,7 +903,14 @@ async def trigger_agent_analysis(patient_id: str):
 async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""
 
-    # Verify patient exists in Supabase before accepting connection
+    supabase_warning = None
+    print(f"🎯 Incoming WebSocket connection for patient {patient_id}")
+
+    # Accept connection immediately so client receives deterministic feedback
+    await websocket.accept()
+    print(f"✅ WebSocket connection accepted for patient {patient_id}")
+
+    # Verify patient exists in Supabase (non-blocking for client)
     if supabase:
         try:
             patient = supabase.table("patients") \
@@ -913,24 +920,25 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                 .execute()
 
             if not patient.data:
-                print(f"❌ Connection rejected: Patient {patient_id} not found")
-                # Don't accept invalid connections - FastAPI handles rejection
-                return
+                supabase_warning = f"Patient {patient_id} not found in Supabase. Allowing connection."
+                print(f"⚠️ {supabase_warning}")
         except Exception as e:
-            print(f"❌ Database error verifying patient {patient_id}: {e}")
-            # Don't accept on database errors
-            return
+            supabase_warning = f"Database error verifying patient {patient_id}: {e}"
+            print(f"⚠️ {supabase_warning}")
 
-    # Check if patient is already streaming
+    # Check if patient is already streaming (after accept so we can notify client)
     if patient_id in manager.streamers:
         print(
             f"❌ Connection rejected: Patient {patient_id} already has an active stream")
-        # Don't accept duplicate streams
+        await websocket.send_json({
+            "type": "error",
+            "message": "This patient already has an active stream. Please stop the other stream before starting a new one."
+        })
+        await websocket.close(
+            code=4090,
+            reason="This patient already has an active stream. Please stop the other stream before starting a new one."
+        )
         return
-
-    # Accept connection and register streamer
-    await websocket.accept()
-    print(f"✅ WebSocket connection accepted for patient {patient_id}")
 
     # Wait for initial handshake with monitoring conditions
     try:
@@ -951,7 +959,9 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         await websocket.send_json({
             "type": "connected",
             "patient_id": patient_id,
-            "monitoring_conditions": monitoring_conditions
+            "monitoring_conditions": monitoring_conditions,
+            "supabase_verified": supabase_warning is None,
+            "warning": supabase_warning
         })
         print(f"📤 Sent acknowledgment to patient {patient_id}")
     except Exception as e:

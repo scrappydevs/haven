@@ -162,6 +162,10 @@ export default function StreamPage() {
           setIsStreaming(true);
           setIsConnecting(false);
 
+          if (data.warning) {
+            console.warn('⚠️ WebSocket warning:', data.warning);
+          }
+
           // Start capturing and sending frames
           const cleanup = startCapture();
           captureCleanupRef.current = cleanup;
@@ -173,6 +177,12 @@ export default function StreamPage() {
         console.log('❌ Disconnected from server. Code:', event.code, 'Reason:', event.reason);
         setIsStreaming(false);
         setIsConnecting(false);
+
+        if (event.reason) {
+          setError(event.reason);
+        } else if (event.code === 4090) {
+          setError('This patient already has an active stream. Please stop the other stream before starting a new one.');
+        }
 
         if (event.code === 1006) {
           setError('Connection failed. Make sure backend is running: cd backend && uvicorn app.main:app --reload');
