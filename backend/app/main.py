@@ -31,7 +31,8 @@ from app.rooms import (
 try:
     import anthropic
     ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")
-    anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+    anthropic_client = anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
     if anthropic_client:
         print("✅ Anthropic client initialized")
 except ImportError:
@@ -89,18 +90,24 @@ else:
     print("⚠️  Warning: nct04649359.json not found. Run scripts/pull_trial_data.py first!")
 
 # Print secret manager status after all imports
+
+
 @app.on_event("startup")
 async def startup_event():
     """Print configuration status on startup"""
     secret_manager.print_status()
-    
+
     # Print service status
     print("🏥 Haven Backend Services:")
-    print(f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
-    print(f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
+    print(
+        f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
+    print(
+        f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
     print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
-    print(f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
-    print(f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
+    print(
+        f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
+    print(
+        f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
     print("\n✅ Haven ready!\n")
 
 # In-memory alert storage
@@ -144,17 +151,18 @@ async def trigger_sms_alert(request: SMSAlertRequest):
     Send SMS alert via Vonage (Nexmo)
     For MVP: Manual alerts from dashboard
     Future: Automatically triggered by AI agent
-    
+
     No A2P registration needed - works immediately for global numbers
     """
     try:
         # Get Vonage credentials from secrets
         VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
         VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
-        
+
         if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
             # Mock mode for demos without credentials
-            print(f"⚠️  Vonage not configured - mock sending SMS to {request.phone_number}")
+            print(
+                f"⚠️  Vonage not configured - mock sending SMS to {request.phone_number}")
             print(f"   Message: {request.message}")
             return {
                 "status": "success",
@@ -162,29 +170,31 @@ async def trigger_sms_alert(request: SMSAlertRequest):
                 "mock_sent": True,
                 "to": request.phone_number
             }
-        
+
         # Import Vonage client (v4+ API)
         from vonage import Auth, Vonage
         from vonage_sms import SmsMessage
-        
+
         # Create auth and client
         auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
         client = Vonage(auth=auth)
-        
+
         # Create and send SMS message (v4 API)
         # Use your Vonage phone number as sender for U.S. SMS compliance
         message = SmsMessage(
             to=request.phone_number,
-            from_="12178020876",  # Your Vonage number (supports SMS, Voice & MMS)
+            # Your Vonage number (supports SMS, Voice & MMS)
+            from_="12178020876",
             text=f"[Haven Alert] {request.message}"
         )
         response_obj = client.sms.send(message)
-        
+
         # Check response status (v4 API uses underscores, not hyphens)
         first_message = response_obj.messages[0]
         if first_message.status == "0":
-            print(f"✅ SMS sent to {request.phone_number}: {first_message.message_id}")
-            
+            print(
+                f"✅ SMS sent to {request.phone_number}: {first_message.message_id}")
+
             return {
                 "status": "success",
                 "message": "Alert sent successfully",
@@ -201,10 +211,11 @@ async def trigger_sms_alert(request: SMSAlertRequest):
                 "status": "error",
                 "message": f"SMS failed: {error_msg}"
             }
-        
+
     except ImportError:
         # Vonage not installed - return mock success
-        print(f"⚠️  Vonage library not installed - mock sending SMS to {request.phone_number}")
+        print(
+            f"⚠️  Vonage library not installed - mock sending SMS to {request.phone_number}")
         return {
             "status": "success",
             "message": "Alert sent (mock mode - Vonage not installed)",
@@ -224,7 +235,7 @@ async def trigger_voice_alert(request: SMSAlertRequest):
     """
     Make voice call with TTS alert via Vonage
     No 10DLC registration required - works immediately!
-    
+
     Voice calls bypass SMS carrier restrictions
     """
     try:
@@ -232,10 +243,11 @@ async def trigger_voice_alert(request: SMSAlertRequest):
         VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
         VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
         VONAGE_APPLICATION_ID = get_secret("VONAGE_APPLICATION_ID")
-        
+
         if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
             # Mock mode for demos without credentials
-            print(f"⚠️  Vonage not configured - mock calling {request.phone_number}")
+            print(
+                f"⚠️  Vonage not configured - mock calling {request.phone_number}")
             print(f"   Message: {request.message}")
             return {
                 "status": "success",
@@ -244,14 +256,14 @@ async def trigger_voice_alert(request: SMSAlertRequest):
                 "to": request.phone_number,
                 "note": "Voice API requires Vonage Application setup - see dashboard"
             }
-        
+
         # Import Vonage client (v4+ API)
         from vonage import Auth, Vonage
-        
+
         # Create auth and client
         auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
         client = Vonage(auth=auth)
-        
+
         # Create voice call with TTS
         # NCCO = Nexmo Call Control Objects
         ncco = [
@@ -262,18 +274,21 @@ async def trigger_voice_alert(request: SMSAlertRequest):
                 "bargeIn": False  # Don't allow user to interrupt
             }
         ]
-        
+
         # Remove '+' from phone numbers for Voice API
-        to_number = request.phone_number.replace("+", "").replace("-", "").replace(" ", "")
-        
+        to_number = request.phone_number.replace(
+            "+", "").replace("-", "").replace(" ", "")
+
         response = client.voice.create_call({
             "to": [{"type": "phone", "number": to_number}],
-            "from_": {"type": "phone", "number": "12178020876"},  # Your Vonage number
+            # Your Vonage number
+            "from_": {"type": "phone", "number": "12178020876"},
             "ncco": ncco
         })
-        
-        print(f"✅ Voice call placed to {request.phone_number}: {response.get('uuid')}")
-        
+
+        print(
+            f"✅ Voice call placed to {request.phone_number}: {response.get('uuid')}")
+
         return {
             "status": "success",
             "message": "Voice call placed successfully",
@@ -281,10 +296,11 @@ async def trigger_voice_alert(request: SMSAlertRequest):
             "to": request.phone_number,
             "type": "voice"
         }
-        
+
     except ImportError:
         # Vonage not installed - return mock success
-        print(f"⚠️  Vonage library not installed - mock calling {request.phone_number}")
+        print(
+            f"⚠️  Vonage library not installed - mock calling {request.phone_number}")
         return {
             "status": "success",
             "message": "Voice call placed (mock mode - Vonage not installed)",
@@ -486,22 +502,31 @@ async def search_patients(q: str = ""):
             response = supabase.table("patients") \
                 .select("*") \
                 .ilike("name", f"%{q}%") \
-                .eq("enrollment_status", "active") \
                 .order("name") \
                 .execute()
         else:
-            # Return all active patients if no search query
-            print("📋 Fetching all active patients")
+            # Return all patients if no search query
+            print("📋 Fetching all patients")
             response = supabase.table("patients") \
                 .select("*") \
-                .eq("enrollment_status", "active") \
                 .order("name") \
                 .limit(50) \
                 .execute()
 
         result_count = len(response.data) if response.data else 0
         print(f"✅ Found {result_count} patients")
-        return response.data if response.data else []
+
+        # Filter to active patients if enrollment_status field exists, otherwise return all
+        if response.data:
+            # Only filter by enrollment_status if the field exists and has a value
+            filtered_data = [
+                p for p in response.data
+                if p.get('enrollment_status') in ['active', None] or 'enrollment_status' not in p
+            ]
+            print(
+                f"📊 After enrollment_status filter: {len(filtered_data)} patients")
+            return filtered_data
+        return []
     except Exception as e:
         print(f"❌ Error searching patients: {e}")
         import traceback
@@ -522,7 +547,8 @@ async def debug_patients():
 
     try:
         # Get all patients (no filter)
-        all_response = supabase.table("patients").select("*").limit(10).execute()
+        all_response = supabase.table(
+            "patients").select("*").limit(10).execute()
 
         # Get active patients
         active_response = supabase.table("patients") \
@@ -597,10 +623,13 @@ async def get_cv_data(patient_id: int, timestamp: str):
     try:
         timestamp_float = float(timestamp)
         available_times = [float(t) for t in patient_data.keys()]
-        closest_time = min(available_times, key=lambda t: abs(t - timestamp_float))
-        closest_time_str = str(closest_time) if closest_time == int(closest_time) else f"{closest_time:.1f}"
+        closest_time = min(
+            available_times, key=lambda t: abs(t - timestamp_float))
+        closest_time_str = str(closest_time) if closest_time == int(
+            closest_time) else f"{closest_time:.1f}"
 
-        data = patient_data.get(closest_time_str, patient_data.get(str(int(closest_time))))
+        data = patient_data.get(
+            closest_time_str, patient_data.get(str(int(closest_time))))
 
         # If alert, store it
         if data and data.get("alert"):
@@ -803,7 +832,8 @@ Only recommend protocols that are clearly relevant based on the patient's condit
                 raise ValueError("Could not parse LLM response")
 
         except Exception as e:
-            print(f"LLM recommendation error: {e}, falling back to keyword matching")
+            print(
+                f"LLM recommendation error: {e}, falling back to keyword matching")
             # Fall through to keyword matching
 
     # Keyword-based fallback
@@ -819,7 +849,7 @@ Only recommend protocols that are clearly relevant based on the patient's condit
 async def get_floors():
     """
     Get all floor definitions
-    
+
     Returns:
         List of floor definitions with Smplrspace references
     """
@@ -831,10 +861,10 @@ async def get_rooms(floor_id: str = None):
     """
     Get all rooms with their current patient assignments
     Optionally filter by floor_id
-    
+
     Args:
         floor_id: Optional floor ID to filter rooms
-    
+
     Returns:
         List of rooms with optional patient information
     """
@@ -846,7 +876,7 @@ async def get_room_assignments():
     """
     DEPRECATED: Use /rooms instead
     Get all rooms with their current patient assignments
-    
+
     Returns:
         List of rooms with optional patient information
     """
@@ -857,10 +887,10 @@ async def get_room_assignments():
 async def assign_patient(request: AssignPatientRequest):
     """
     Assign a patient to a room
-    
+
     Args:
         request: Room ID, patient ID, and optional notes
-    
+
     Returns:
         Patient-room assignment record
     """
@@ -878,11 +908,11 @@ async def assign_patient(request: AssignPatientRequest):
 async def unassign_patient(room_id: str, patient_id: str = None):
     """
     Remove patient from a room
-    
+
     Args:
         room_id: Room identifier
         patient_id: Optional patient ID to remove specific patient
-    
+
     Returns:
         Success message
     """
@@ -896,10 +926,10 @@ async def unassign_patient(room_id: str, patient_id: str = None):
 async def get_patient_room(patient_id: str):
     """
     Get the current room assignment for a patient
-    
+
     Args:
         patient_id: Patient identifier
-    
+
     Returns:
         Room info if assigned, None otherwise
     """
@@ -921,10 +951,10 @@ class SyncRoomsRequest(BaseModel):
 async def sync_rooms_from_smplrspace(request: SyncRoomsRequest):
     """
     Sync rooms from Smplrspace automatic room detection
-    
+
     Args:
         request: { rooms: [...], floor_id: 'floor-1' } from smplrClient.getRoomsOnLevel()
-    
+
     Returns:
         { synced_count: number, rooms: [...] }
     """
@@ -933,8 +963,9 @@ async def sync_rooms_from_smplrspace(request: SyncRoomsRequest):
         for room_item in request.rooms:
             room = sync_room_from_smplrspace(room_item, request.floor_id)
             synced_rooms.append(room)
-        
-        print(f"✅ Synced {len(synced_rooms)} rooms to floor {request.floor_id}")
+
+        print(
+            f"✅ Synced {len(synced_rooms)} rooms to floor {request.floor_id}")
         return {
             "synced_count": len(synced_rooms),
             "rooms": synced_rooms,
@@ -985,7 +1016,8 @@ async def set_enhanced_monitoring(
     reason: str = "Agent detected concerning metrics"
 ):
     """Agent tool: Activate enhanced monitoring (tremor, attention tracking)"""
-    config = monitoring_manager.set_enhanced_monitoring(patient_id, duration_minutes, reason)
+    config = monitoring_manager.set_enhanced_monitoring(
+        patient_id, duration_minutes, reason)
 
     # Broadcast state change to dashboard
     await manager.broadcast_frame({
@@ -1063,6 +1095,7 @@ class PatientBaseline(BaseModel):
     respiratory_rate: int = 14
     crs_score: float = 0.0
 
+
 @app.post("/agent/set-baseline")
 async def set_patient_baseline(baseline: PatientBaseline):
     """Set baseline vitals for a patient (used by agent for deviation calculations)"""
@@ -1084,6 +1117,7 @@ async def set_patient_baseline(baseline: PatientBaseline):
         }
     }
 
+
 @app.get("/agent/alert-history/{patient_id}")
 async def get_alert_history(patient_id: str):
     """Get agent alert history for a patient"""
@@ -1093,6 +1127,7 @@ async def get_alert_history(patient_id: str):
         "alerts": history,
         "count": len(history)
     }
+
 
 @app.post("/agent/analyze/{patient_id}")
 async def trigger_agent_analysis(patient_id: str):
@@ -1115,7 +1150,14 @@ async def trigger_agent_analysis(patient_id: str):
 async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""
 
-    # Verify patient exists in Supabase before accepting connection
+    supabase_warning = None
+    print(f"🎯 Incoming WebSocket connection for patient {patient_id}")
+
+    # Accept connection immediately so client receives deterministic feedback
+    await websocket.accept()
+    print(f"✅ WebSocket connection accepted for patient {patient_id}")
+
+    # Verify patient exists in Supabase (non-blocking for client)
     if supabase:
         try:
             patient = supabase.table("patients") \
@@ -1125,23 +1167,25 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                 .execute()
 
             if not patient.data:
-                print(f"❌ Connection rejected: Patient {patient_id} not found")
-                # Don't accept invalid connections - FastAPI handles rejection
-                return
+                supabase_warning = f"Patient {patient_id} not found in Supabase. Allowing connection."
+                print(f"⚠️ {supabase_warning}")
         except Exception as e:
-            print(f"❌ Database error verifying patient {patient_id}: {e}")
-            # Don't accept on database errors
-            return
+            supabase_warning = f"Database error verifying patient {patient_id}: {e}"
+            print(f"⚠️ {supabase_warning}")
 
-    # Check if patient is already streaming
+    # Check if patient is already streaming (after accept so we can notify client)
     if patient_id in manager.streamers:
-        print(f"❌ Connection rejected: Patient {patient_id} already has an active stream")
-        # Don't accept duplicate streams
+        print(
+            f"❌ Connection rejected: Patient {patient_id} already has an active stream")
+        await websocket.send_json({
+            "type": "error",
+            "message": "This patient already has an active stream. Please stop the other stream before starting a new one."
+        })
+        await websocket.close(
+            code=4090,
+            reason="This patient already has an active stream. Please stop the other stream before starting a new one."
+        )
         return
-
-    # Accept connection and register streamer
-    await websocket.accept()
-    print(f"✅ WebSocket connection accepted for patient {patient_id}")
 
     # Wait for initial handshake with monitoring conditions
     try:
@@ -1150,17 +1194,21 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         print(f"📨 Received handshake data: {initial_data}")
 
         monitoring_conditions = initial_data.get("monitoring_conditions", [])
-        print(f"📋 Registering streamer for patient {patient_id} with conditions: {monitoring_conditions}")
+        print(
+            f"📋 Registering streamer for patient {patient_id} with conditions: {monitoring_conditions}")
 
         manager.register_streamer(patient_id, websocket, monitoring_conditions)
         print(f"✅ Streamer registered successfully for patient {patient_id}")
-        print(f"📊 Total active streamers: {len(manager.streamers)} - {list(manager.streamers.keys())}")
+        print(
+            f"📊 Total active streamers: {len(manager.streamers)} - {list(manager.streamers.keys())}")
 
         # Send acknowledgment
         await websocket.send_json({
             "type": "connected",
             "patient_id": patient_id,
-            "monitoring_conditions": monitoring_conditions
+            "monitoring_conditions": monitoring_conditions,
+            "supabase_verified": supabase_warning is None,
+            "warning": supabase_warning
         })
         print(f"📤 Sent acknowledgment to patient {patient_id}")
     except Exception as e:
@@ -1192,7 +1240,8 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                 # Step 2: QUEUE FOR PROCESSING - Worker thread will handle CV processing
                 # Queue every 3rd frame (10 FPS) for better performance on limited CPU
                 if frame_count % 3 == 0:
-                    manager.queue_frame_for_processing(patient_id, raw_frame, frame_count)
+                    manager.queue_frame_for_processing(
+                        patient_id, raw_frame, frame_count)
 
     except WebSocketDisconnect:
         print(f"❌ Patient {patient_id} stream disconnected")
