@@ -161,18 +161,21 @@ export default function StreamPage() {
       }
 
       try {
-        // Set canvas size to match video (only if changed)
-        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          console.log(`📐 Canvas sized to ${canvas.width}x${canvas.height}`);
+        // Downscale to 640x360 for streaming performance (4x less data)
+        const targetWidth = 640;
+        const targetHeight = 360;
+
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          console.log(`📐 Canvas sized to ${canvas.width}x${canvas.height} (downscaled)`);
         }
 
-        // Draw current video frame to canvas
-        ctx.drawImage(video, 0, 0);
+        // Draw current video frame to canvas (scaled down)
+        ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
 
-        // Convert canvas to base64 JPEG
-        const frameData = canvas.toDataURL('image/jpeg', 0.8);
+        // Convert canvas to base64 JPEG (lower quality for streaming)
+        const frameData = canvas.toDataURL('image/jpeg', 0.7);
 
         // Send to backend via WebSocket
         wsRef.current.send(JSON.stringify({

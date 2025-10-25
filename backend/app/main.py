@@ -226,15 +226,39 @@ async def websocket_stream(websocket: WebSocket):
 
     try:
         frame_count = 0
+        last_cv_result = None
+
         while True:
             data = await websocket.receive_json()
             frame_count += 1
 
             if data.get("type") == "frame":
-                result = process_frame(data.get("frame"))
+                # Process every 3rd frame with full CV, skip others for performance
+                if frame_count % 3 == 0:
+                    result = process_frame(data.get("frame"))
+                    last_cv_result = result
 
-                if frame_count % 30 == 0:
-                    print(f"📦 Frame #{frame_count}, CRS: {result.get('crs_score')}, viewers: {len(manager.viewers)}, streamers: {len(manager.streamers)}")
+                    if frame_count % 30 == 0:
+                        print(f"📦 Frame #{frame_count} [PROCESSED], CRS: {result.get('crs_score')}, viewers: {len(manager.viewers)}")
+                else:
+                    # Use cached CV data for skipped frames, just update the image
+                    if last_cv_result:
+                        result = {
+                            "frame": data.get("frame"),  # Use raw frame
+                            "crs_score": last_cv_result["crs_score"],
+                            "heart_rate": last_cv_result["heart_rate"],
+                            "respiratory_rate": last_cv_result["respiratory_rate"],
+                            "alert": last_cv_result["alert"]
+                        }
+                    else:
+                        # First frame(s), use defaults
+                        result = {
+                            "frame": data.get("frame"),
+                            "crs_score": 0.0,
+                            "heart_rate": 75,
+                            "respiratory_rate": 14,
+                            "alert": False
+                        }
 
                 await manager.broadcast_frame({
                     "type": "live_frame",

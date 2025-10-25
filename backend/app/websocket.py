@@ -120,13 +120,16 @@ def process_frame(frame_base64: str) -> Dict:
             heart_rate = int(75 + (crs_score * 30))  # 75-105 bpm range
             respiratory_rate = int(14 + (crs_score * 10))  # 14-24 breaths/min
 
-            # Draw face landmarks (makes it look impressive!)
-            for landmark in landmarks.landmark:
-                x, y = int(landmark.x * w), int(landmark.y * h)
-                cv2.circle(frame, (x, y), 1, (0, 255, 0), -1)
+            # Draw minimal landmarks (only key points for performance)
+            # Draw cheeks (the CRS indicators)
+            key_indices = [205, 425]  # Just the 2 cheek points we analyze
+            for idx in key_indices:
+                lm = landmarks.landmark[idx]
+                x, y = int(lm.x * w), int(lm.y * h)
+                cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)
 
-        # Encode frame back to base64
-        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        # Encode frame back to base64 (quality 65 for streaming performance)
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
         frame_base64_out = base64.b64encode(buffer).decode('utf-8')
 
         return {
