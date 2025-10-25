@@ -4,7 +4,5 @@
       "source": "/api/:path*",
       "destination": "https://haven-new.onrender.com/:path*"
     }
-  ],
-  "buildCommand": "npm run build",
-  "installCommand": "npm install"
+  ]
 }
