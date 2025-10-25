@@ -119,7 +119,7 @@ export default function StreamPage() {
       }
 
       // Connect to patient-specific WebSocket
-      const wsUrl = `${getWsUrl()}/ws/stream/${selectedPatient.patient_id}`;
+      const wsUrl = getWsUrl(`/ws/stream/${selectedPatient.patient_id}`);
       console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
 
       const ws = new WebSocket(wsUrl);
@@ -185,7 +185,7 @@ export default function StreamPage() {
         }
 
         if (event.code === 1006) {
-          setError('Connection failed. Make sure backend is running: cd backend && uvicorn app.main:app --reload');
+          setError('Connection failed. Make sure backend is running: cd backend && python3 main.py');
         }
       };
 

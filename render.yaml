@@ -16,5 +16,12 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Smplrspace credentials for 3D floor plan
+      - key: SMPLR_ORG_ID
+        sync: false
+      - key: SMPLR_CLIENT_TOKEN
+        sync: false
+      - key: SMPLR_SPACE_ID
+        sync: false
     healthCheckPath: /health
     rootDir: backend

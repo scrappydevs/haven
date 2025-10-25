@@ -546,12 +546,16 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                     forehead_lm = landmarks.landmark[10]
                     fx, fy = int(forehead_lm.x * w), int(forehead_lm.y * h)
                     forehead_roi = frame[max(0, fy-30):min(h, fy+10), max(0, fx-40):min(w, fx+40)]
+                    print(f"❤️ HR Debug: Calling tracker with forehead_roi shape={forehead_roi.shape if forehead_roi.size > 0 else 'EMPTY'}")
                     heart_rate = trackers.heart_rate.process_frame(frame, forehead_roi)
+                    print(f"❤️ HR Result: {heart_rate}")
 
                 # Respiratory rate (FFT on nose movement)
                 if "respiratory_rate" in enabled_metrics:
                     nose_y = landmarks.landmark[1].y
+                    print(f"🫁 RR Debug: Calling tracker with nose_y={nose_y:.4f}")
                     respiratory_rate = trackers.respiratory_rate.process_frame(nose_y)
+                    print(f"🫁 RR Result: {respiratory_rate}")
 
                 # Face touching detection
                 if "face_touching_frequency" in enabled_metrics:
