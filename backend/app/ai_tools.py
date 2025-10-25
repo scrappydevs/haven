@@ -130,21 +130,6 @@ HAVEN_TOOLS = [
         }
     },
     {
-        "name": "get_crs_monitoring_protocol",
-        "description": "Get the Cytokine Release Syndrome (CRS) monitoring protocol with grade-specific guidelines.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "grade": {
-                    "type": "string",
-                    "description": "CRS grade (1, 2, 3, or 4)",
-                    "enum": ["1", "2", "3", "4"]
-                }
-            },
-            "required": []
-        }
-    },
-    {
         "name": "remove_patient_from_room",
         "description": "Remove a patient from a room. Can use either patient_id OR room_id - will auto-detect patient if only room is provided.",
         "input_schema": {
@@ -382,9 +367,6 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
                 tool_input.get("room_id", "")
             )
         
-        elif tool_name == "get_crs_monitoring_protocol":
-            return await get_crs_monitoring_protocol(tool_input.get("grade"))
-        
         elif tool_name == "remove_patient_from_room":
             return await remove_patient_from_room_tool(
                 tool_input.get("patient_id"),
@@ -484,11 +466,13 @@ async def search_patients(query: str) -> Dict[str, Any]:
 
 
 async def get_patient_details(patient_id: str) -> Dict[str, Any]:
-    """Get complete patient details"""
+    """Get complete patient details including medical history and latest vitals"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
+        print(f"\n📋 Fetching comprehensive details for {patient_id}")
+        
         # Get patient info
         patient_response = supabase.table("patients").select("*").eq("patient_id", patient_id).single().execute()
         
@@ -506,13 +490,44 @@ async def get_patient_details(patient_id: str) -> Dict[str, Any]:
                 patient["current_room"] = room_data.data[0]
                 patient["assigned_at"] = room_assignment.data[0]["assigned_at"]
         
-        # Get active alerts for this patient
+        # Get active alerts
         alerts_response = supabase.table("alerts").select("*").eq("patient_id", patient_id).eq("status", "active").execute()
         patient["active_alerts"] = alerts_response.data or []
+        
+        # Get latest vitals from vital_signs table
+        try:
+            latest_vitals = supabase.table("vital_signs").select("*").eq("patient_id", patient_id).order("recorded_at", desc=True).limit(1).execute()
+            if latest_vitals.data:
+                patient["latest_vitals"] = latest_vitals.data[0]
+                print(f"   → Latest vitals: HR {latest_vitals.data[0].get('heart_rate')}, Temp {latest_vitals.data[0].get('temperature')}")
+        except:
+            patient["latest_vitals"] = None
+        
+        # Get critical medical history items
+        try:
+            # Allergies
+            allergies = supabase.table("medical_history").select("title, description, metadata").eq("patient_id", patient_id).eq("entry_type", "allergy").eq("status", "active").execute()
+            patient["allergies"] = allergies.data or []
+            
+            # Current medications
+            medications = supabase.table("medical_history").select("title, description, metadata").eq("patient_id", patient_id).eq("entry_type", "medication").eq("status", "active").execute()
+            patient["current_medications"] = medications.data or []
+            
+            # Recent diagnoses
+            diagnoses = supabase.table("medical_history").select("title, description, entry_date").eq("patient_id", patient_id).eq("entry_type", "diagnosis").order("entry_date", desc=True).limit(3).execute()
+            patient["diagnoses"] = diagnoses.data or []
+            
+            print(f"   → {len(patient['allergies'])} allergies, {len(patient['current_medications'])} active medications")
+            
+        except:
+            patient["allergies"] = []
+            patient["current_medications"] = []
+            patient["diagnoses"] = []
         
         return patient
     
     except Exception as e:
+        print(f"   ❌ Error: {e}")
         return {"error": str(e)}
 
 
@@ -712,79 +727,64 @@ async def get_patients_by_condition(condition: str) -> Dict[str, Any]:
 
 
 async def assign_patient_to_room_tool(patient_id: str, room_id: str) -> Dict[str, Any]:
-    """Assign patient to room (write operation)"""
+    """Assign patient to room (write operation) - uses fuzzy matching for room names"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
+        print(f"\n🔄 Assigning {patient_id} to room '{room_id}'")
+        
+        # Fuzzy match room name to get actual room_id UUID
+        all_rooms = supabase.table("rooms").select("room_id, room_name").execute()
+        
+        if not all_rooms.data:
+            return {"error": "No rooms found in database"}
+        
+        matched_room = fuzzy_match_room(room_id, all_rooms.data)
+        
+        if not matched_room:
+            return {"error": f"Room '{room_id}' not found. Available rooms: {', '.join([r['room_name'] for r in all_rooms.data[:5]])}"}
+        
+        actual_room_id = matched_room['room_id']
+        room_name = matched_room['room_name']
+        
+        print(f"  → Matched '{room_id}' to {room_name} (UUID: {actual_room_id})")
+        
         # Check if room is available
-        existing = supabase.table("patients_room").select("*").eq("room_id", room_id).execute()
+        existing = supabase.table("patients_room").select("*").eq("room_id", actual_room_id).execute()
         if existing.data:
-            return {"error": f"Room {room_id} is already occupied"}
+            return {"error": f"{room_name} is already occupied"}
         
         # Check if patient exists
         patient = supabase.table("patients").select("name").eq("patient_id", patient_id).execute()
         if not patient.data:
             return {"error": f"Patient {patient_id} not found"}
         
+        patient_name = patient.data[0]['name']
+        
         # Create assignment
         result = supabase.table("patients_room").insert({
-            "room_id": room_id,
+            "room_id": actual_room_id,
             "patient_id": patient_id,
             "assigned_by": "Haven AI"
         }).execute()
         
+        print(f"  ✅ Assigned {patient_name} to {room_name}")
+        
         return {
             "success": True,
-            "message": f"Assigned {patient_id} to {room_id}",
+            "message": f"Assigned {patient_name} ({patient_id}) to {room_name}",
             "patient_id": patient_id,
-            "room_id": room_id
+            "patient_name": patient_name,
+            "room_id": actual_room_id,
+            "room_name": room_name
         }
     
     except Exception as e:
+        print(f"  ❌ Error: {e}")
         return {"error": str(e)}
 
 
-async def get_crs_monitoring_protocol(grade: Optional[str] = None) -> Dict[str, Any]:
-    """Get CRS monitoring protocol"""
-    
-    protocol = {
-        "overview": "Cytokine Release Syndrome (CRS) monitoring protocol for CAR-T therapy patients",
-        "grades": {
-            "1-2": {
-                "vitals": "q4h monitoring",
-                "labs": "q24h (CBC, CMP, LDH, ferritin)",
-                "interventions": ["Acetaminophen for fever", "Aggressive fluid management", "Close observation"]
-            },
-            "3-4": {
-                "vitals": "Continuous monitoring",
-                "location": "ICU transfer required",
-                "labs": "q6h labs + coagulation panel",
-                "interventions": ["Tocilizumab ± steroids", "Vasopressor support", "Mechanical ventilation standby"]
-            }
-        },
-        "key_triggers": [
-            "Fever >38.5°C",
-            "Hypotension",
-            "Tachycardia",
-            "Respiratory distress",
-            "Altered mental status"
-        ],
-        "discharge_criteria": [
-            "Afebrile × 24h",
-            "Stable vitals",
-            "Improving labs",
-            "No active interventions"
-        ]
-    }
-    
-    if grade:
-        if grade in ["1", "2"]:
-            return {"grade": "1-2", "protocol": protocol["grades"]["1-2"], "triggers": protocol["key_triggers"]}
-        elif grade in ["3", "4"]:
-            return {"grade": "3-4", "protocol": protocol["grades"]["3-4"], "triggers": protocol["key_triggers"]}
-    
-    return protocol
 
 
 async def remove_patient_from_room_tool(patient_id: Optional[str] = None, room_id: Optional[str] = None, generate_report: bool = True) -> Dict[str, Any]:

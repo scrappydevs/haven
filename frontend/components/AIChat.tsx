@@ -34,7 +34,7 @@ export default function AIChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [showSessions, setShowSessions] = useState(false);
-  const [panelSize, setPanelSize] = useState({ width: 550, height: 750 });
+  const [panelSize, setPanelSize] = useState({ width: 550, height: 900 });
   const [isResizing, setIsResizing] = useState(false);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteItems, setAutocompleteItems] = useState<any[]>([]);
