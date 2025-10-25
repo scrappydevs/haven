@@ -20,14 +20,25 @@ interface Room {
   }>;
 }
 
+interface AvailablePatient {
+  id: string;
+  patient_id: string;
+  name: string;
+  age: number;
+  gender: string;
+  photo_url: string;
+  condition: string;
+}
+
 interface RoomDetailsPanelProps {
   room: Room | null;
   onClose: () => void;
   onUnassignPatient: () => void;
-  onAssignClick: () => void;
+  availablePatients: AvailablePatient[];
+  onAssignPatient: (patient: AvailablePatient) => void;
 }
 
-export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, onAssignClick }: RoomDetailsPanelProps) {
+export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, availablePatients, onAssignPatient }: RoomDetailsPanelProps) {
   if (!room) return null;
 
   return (
@@ -62,11 +73,19 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, onA
           {room.assignedPatient ? (
             <div className="border border-neutral-200 p-4">
               <div className="flex items-start gap-3 mb-4">
-                <img
-                  src={room.assignedPatient.photo_url}
-                  alt={room.assignedPatient.name}
-                  className="w-16 h-16 object-cover border border-neutral-950"
-                />
+                {room.assignedPatient.photo_url ? (
+                  <img
+                    src={room.assignedPatient.photo_url}
+                    alt={room.assignedPatient.name}
+                    className="w-16 h-16 object-cover border border-neutral-950"
+                  />
+                ) : (
+                  <div className="w-16 h-16 border border-neutral-950 bg-primary-100 flex items-center justify-center">
+                    <span className="text-xl font-light text-primary-700">
+                      {room.assignedPatient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex-1">
                   <h5 className="font-light text-neutral-950 mb-1">
                     {room.assignedPatient.name}
@@ -95,16 +114,52 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, onA
               </button>
             </div>
           ) : (
-            <div className="border border-neutral-200 bg-neutral-50 p-6 text-center">
-              <p className="text-sm font-light text-neutral-500 mb-4">
-                No patient assigned
+            <div>
+              <p className="text-xs font-light text-neutral-500 mb-3 pb-2 border-b border-neutral-200">
+                Available Patients ({availablePatients.length})
               </p>
-              <button
-                onClick={onAssignClick}
-                className="border-2 border-primary-700 px-6 py-2 font-normal text-xs uppercase tracking-wider text-primary-700 hover:bg-primary-700 hover:text-white transition-all"
-              >
-                Assign Patient
-              </button>
+              {availablePatients.length === 0 ? (
+                <div className="text-center py-6 text-neutral-400 text-xs">
+                  No available patients
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {availablePatients.map((patient) => (
+                    <div
+                      key={patient.id}
+                      className="flex items-center gap-3 p-2 hover:bg-neutral-50 transition-colors border-b border-neutral-100 last:border-b-0"
+                    >
+                      {patient.photo_url ? (
+                        <img
+                          src={patient.photo_url}
+                          alt={patient.name}
+                          className="w-10 h-10 object-cover border border-neutral-300"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 border border-neutral-300 bg-primary-100 flex items-center justify-center">
+                          <span className="text-xs font-light text-primary-700">
+                            {patient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-light text-neutral-950 text-xs truncate">{patient.name}</p>
+                        <p className="text-[10px] font-light text-neutral-500">
+                          {patient.age}y/o • {patient.patient_id}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => onAssignPatient(patient)}
+                        className="w-7 h-7 flex items-center justify-center border border-primary-700 text-primary-700 hover:bg-primary-700 hover:text-white transition-colors flex-shrink-0"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

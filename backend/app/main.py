@@ -912,6 +912,62 @@ async def websocket_view(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
+
+@app.post("/ai/chat")
+async def ai_chat(request: ChatRequest):
+    """
+    AI chat endpoint using Anthropic Claude
+    """
+    if not anthropic_client:
+        return {
+            "response": "AI assistant is not available. Please configure ANTHROPIC_API_KEY.",
+            "error": "anthropic_not_configured"
+        }
+    
+    try:
+        # Convert messages to Anthropic format
+        anthropic_messages = [
+            {"role": msg.role, "content": msg.content}
+            for msg in request.messages
+        ]
+        
+        # System prompt with context about Haven
+        system_prompt = """You are Haven AI, an intelligent assistant for a hospital patient monitoring system. 
+You help clinical staff with:
+- Patient information and room assignments
+- Clinical protocols and monitoring guidelines
+- Real-time patient data and alerts
+- Hospital operations and logistics
+
+Provide helpful, concise, and accurate responses. When you don't have specific information, guide users on how to find it in the system."""
+        
+        # Call Anthropic API
+        message = anthropic_client.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=anthropic_messages
+        )
+        
+        return {
+            "response": message.content[0].text,
+            "model": "claude-3-5-sonnet"
+        }
+        
+    except Exception as e:
+        print(f"❌ Error in AI chat: {e}")
+        return {
+            "response": "I'm having trouble processing your request. Please try again.",
+            "error": str(e)
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

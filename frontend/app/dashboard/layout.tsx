@@ -2,6 +2,7 @@
 
 import AppSidebar from '@/components/AppSidebar';
 import AppHeader from '@/components/AppHeader';
+import AIChat from '@/components/AIChat';
 
 export default function DashboardLayout({
   children,
@@ -23,6 +24,9 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+
+      {/* AI Chat - Fixed Position Bottom Right */}
+      <AIChat />
     </div>
   );
 }

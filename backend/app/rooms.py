@@ -257,17 +257,19 @@ def sync_room_from_smplrspace(room_data: Dict, floor_id: str = 'floor-1') -> Roo
         room_id = room_data.get('id')
         room_name = room_data.get('name', room_id)
         
-        # Determine room type from name
-        room_type = 'patient'  # default
-        name_lower = room_name.lower()
-        if 'nurse' in name_lower or 'station' in name_lower:
-            room_type = 'nurse_station'
-        elif 'icu' in name_lower:
-            room_type = 'icu'
-        elif 'surgery' in name_lower or 'operating' in name_lower:
-            room_type = 'surgery'
-        elif 'lab' in name_lower:
-            room_type = 'lab'
+        # Use room_type from frontend if provided, otherwise determine from name
+        room_type = room_data.get('room_type', 'patient')  # default to patient
+        if not room_data.get('room_type'):
+            # Fallback: determine room type from name if not provided
+            name_lower = room_name.lower()
+            if 'nurse' in name_lower or 'station' in name_lower:
+                room_type = 'nurse_station'
+            elif 'icu' in name_lower:
+                room_type = 'icu'
+            elif 'surgery' in name_lower or 'operating' in name_lower:
+                room_type = 'surgery'
+            elif 'lab' in name_lower:
+                room_type = 'lab'
         
         # Store full room data including polygon boundaries
         metadata = {
