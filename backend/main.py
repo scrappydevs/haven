@@ -25,6 +25,10 @@ def restart_with_infisical():
     print("🔐 Loading secrets from Infisical...")
     print()
     
+    # Set environment variable to prevent infinite loop
+    env = os.environ.copy()
+    env['_INFISICAL_WRAPPER'] = '1'
+    
     # Prepare the command
     infisical_cmd = [
         'infisical', 'run', '--env=dev', '--',
@@ -34,11 +38,28 @@ def restart_with_infisical():
     # Execute with Infisical (from repo root where .infisical.json is)
     backend_dir = Path(__file__).parent
     os.chdir(backend_dir.parent)
-    os.execvp('infisical', infisical_cmd)
+    
+    # Use subprocess instead of execvp to avoid exec issues
+    try:
+        subprocess.run(infisical_cmd, env=env, check=True)
+    except KeyboardInterrupt:
+        print("\n\n👋 Shutting down...")
+        sys.exit(0)
+    except subprocess.CalledProcessError as e:
+        sys.exit(e.returncode)
 
 # Check if we need to restart with Infisical
-if __name__ == "__main__" and not os.getenv("INFISICAL_PROJECT_ID") and check_infisical_cli():
+# Only do this if:
+# 1. Running as main script
+# 2. Not already wrapped (check for our flag)
+# 3. No Infisical project ID in env (not running with infisical run)
+# 4. Infisical CLI is available
+if (__name__ == "__main__" and 
+    not os.getenv("_INFISICAL_WRAPPER") and
+    not os.getenv("INFISICAL_PROJECT_ID") and 
+    check_infisical_cli()):
     restart_with_infisical()
+    sys.exit(0)  # Exit after restart
 
 # If we get here, either we're running with Infisical or it's not available
 from app.main import app
