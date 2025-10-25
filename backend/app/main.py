@@ -13,6 +13,15 @@ from app.websocket import manager, process_frame_fast, process_frame_metrics
 from app.supabase_client import supabase
 from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
 from app.infisical_config import get_secret
+from app.rooms import (
+    get_all_assignments,
+    assign_patient_to_room,
+    unassign_patient_from_room,
+    assign_nurse_to_station,
+    unassign_nurse_from_station,
+    AssignPatientRequest,
+    AssignNurseRequest
+)
 
 # Try to import anthropic for LLM recommendations
 try:
@@ -419,6 +428,98 @@ Only recommend protocols that are clearly relevant based on the patient's condit
         "reasoning": f"Keyword matching detected relevant terms in patient condition: {request.condition}",
         "method": "keyword"
     }
+
+
+@app.get("/rooms/assignments")
+async def get_room_assignments():
+    """
+    Get all room assignments
+    
+    Returns:
+        List of room assignments with patient and nurse information
+    """
+    return get_all_assignments()
+
+
+@app.post("/rooms/assign-patient")
+async def assign_patient(request: AssignPatientRequest):
+    """
+    Assign a patient to a room
+    
+    Args:
+        request: Room ID and patient ID
+    
+    Returns:
+        Updated room assignment
+    """
+    try:
+        # Get patient details from Supabase
+        if supabase:
+            patient = supabase.table("patients") \
+                .select("*") \
+                .eq("patient_id", request.patient_id) \
+                .single() \
+                .execute()
+            
+            patient_name = patient.data.get("name", "Unknown") if patient.data else "Unknown"
+        else:
+            patient_name = request.patient_id
+        
+        return assign_patient_to_room(request.room_id, request.patient_id, patient_name)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.delete("/rooms/unassign-patient/{room_id}")
+async def unassign_patient(room_id: str):
+    """
+    Remove patient from a room
+    
+    Args:
+        room_id: Room identifier
+    
+    Returns:
+        Updated room assignment
+    """
+    try:
+        return unassign_patient_from_room(room_id)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/rooms/assign-nurse")
+async def assign_nurse(request: AssignNurseRequest):
+    """
+    Assign a nurse to a station
+    
+    Args:
+        request: Room ID and nurse ID
+    
+    Returns:
+        Updated room assignment
+    """
+    try:
+        return assign_nurse_to_station(request.room_id, request.nurse_id)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.delete("/rooms/unassign-nurse/{room_id}/{nurse_id}")
+async def unassign_nurse(room_id: str, nurse_id: str):
+    """
+    Remove nurse from a station
+    
+    Args:
+        room_id: Room identifier
+        nurse_id: Nurse identifier
+    
+    Returns:
+        Updated room assignment
+    """
+    try:
+        return unassign_nurse_from_station(room_id, nurse_id)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.websocket("/ws/stream/{patient_id}")

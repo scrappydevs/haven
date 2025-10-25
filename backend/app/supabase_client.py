@@ -15,5 +15,10 @@ if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     print("⚠️  Configure secrets in Infisical or add to .env file")
     supabase: Client | None = None
 else:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    print(f"✅ Supabase client initialized: {SUPABASE_URL}")
+    try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        print(f"✅ Supabase client initialized: {SUPABASE_URL}")
+    except Exception as e:
+        print(f"⚠️  Failed to initialize Supabase client: {e}")
+        print("⚠️  Backend will run in limited mode without database")
+        supabase: Client | None = None
