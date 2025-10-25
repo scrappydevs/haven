@@ -250,7 +250,8 @@ async def trigger_voice_alert(request: SMSAlertRequest):
 
         if not all([VONAGE_API_KEY, VONAGE_API_SECRET, VONAGE_APPLICATION_ID, VONAGE_PRIVATE_KEY]):
             # Mock mode for demos without credentials
-            print(f"⚠️  Vonage Voice not fully configured - mock calling {request.phone_number}")
+            print(
+                f"⚠️  Vonage Voice not fully configured - mock calling {request.phone_number}")
             print(f"   Message: {request.message}")
             return {
                 "status": "success",
@@ -265,7 +266,7 @@ async def trigger_voice_alert(request: SMSAlertRequest):
 
         # Import Vonage client (v4+ API)
         from vonage import Auth, Vonage
-        
+
         # Create auth with application credentials for Voice API
         auth = Auth(
             api_key=VONAGE_API_KEY,
@@ -298,7 +299,8 @@ async def trigger_voice_alert(request: SMSAlertRequest):
         })
 
         # Extract call UUID from response object
-        call_uuid = response.uuid if hasattr(response, 'uuid') else str(response)
+        call_uuid = response.uuid if hasattr(
+            response, 'uuid') else str(response)
         print(f"✅ Voice call placed to {request.phone_number}: {call_uuid}")
 
         return {
@@ -337,23 +339,24 @@ class MessengerAlertRequest(BaseModel):
 async def trigger_messenger_alert(request: MessengerAlertRequest):
     """
     Send alert via WhatsApp, Facebook Messenger, Viber, or MMS
-    
+
     NO 10DLC REGISTRATION REQUIRED FOR:
     - WhatsApp Business API
     - Facebook Messenger
     - Viber Business Messages
     - International MMS
-    
+
     These channels work immediately and bypass U.S. SMS carrier restrictions!
     """
     try:
         # Get Vonage credentials from secrets
         VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
         VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
-        
+
         if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
             # Mock mode for demos without credentials
-            print(f"⚠️  Vonage not configured - mock sending {request.channel} to {request.phone_number}")
+            print(
+                f"⚠️  Vonage not configured - mock sending {request.channel} to {request.phone_number}")
             print(f"   Message: {request.message}")
             return {
                 "status": "success",
@@ -362,31 +365,34 @@ async def trigger_messenger_alert(request: MessengerAlertRequest):
                 "to": request.phone_number,
                 "channel": request.channel
             }
-        
+
         # Import Vonage Messages API (v4+ API)
         from vonage import Auth, Vonage
         from vonage_messages import MessagesClient
-        
+
         # Create auth and client
         auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
         client = Vonage(auth=auth)
-        
+
         # Format phone number (remove + and spaces)
-        to_number = request.phone_number.replace("+", "").replace("-", "").replace(" ", "")
-        
+        to_number = request.phone_number.replace(
+            "+", "").replace("-", "").replace(" ", "")
+
         # Build message based on channel
         message_data = {
             "to": to_number,
             "message_type": "text",
             "text": f"🚨 Haven Alert: {request.message}"
         }
-        
+
         # Channel-specific configuration
         if request.channel == "whatsapp":
-            message_data["from"] = "14157386102"  # WhatsApp Business number (Vonage sandbox)
+            # WhatsApp Business number (Vonage sandbox)
+            message_data["from"] = "14157386102"
             message_data["channel"] = "whatsapp"
         elif request.channel == "messenger":
-            message_data["from"] = "107083064136738"  # Facebook Page ID (get from Vonage dashboard)
+            # Facebook Page ID (get from Vonage dashboard)
+            message_data["from"] = "107083064136738"
             message_data["channel"] = "messenger"
         elif request.channel == "viber":
             message_data["from"] = "HavenAI"  # Viber Service ID
@@ -399,12 +405,12 @@ async def trigger_messenger_alert(request: MessengerAlertRequest):
                 "status": "error",
                 "message": f"Unsupported channel: {request.channel}"
             }
-        
+
         # Send message via Vonage Messages API
         response = client.messages.send_message(message_data)
-        
+
         print(f"✅ {request.channel.title()} message sent to {request.phone_number}: {response.get('message_uuid')}")
-        
+
         return {
             "status": "success",
             "message": f"{request.channel.title()} message sent successfully",
@@ -412,10 +418,11 @@ async def trigger_messenger_alert(request: MessengerAlertRequest):
             "to": request.phone_number,
             "channel": request.channel
         }
-        
+
     except ImportError:
         # Vonage not installed - return mock success
-        print(f"⚠️  Vonage Messages API not installed - mock sending {request.channel} to {request.phone_number}")
+        print(
+            f"⚠️  Vonage Messages API not installed - mock sending {request.channel} to {request.phone_number}")
         return {
             "status": "success",
             "message": f"{request.channel.title()} message sent (mock mode - Vonage not installed)",
@@ -438,13 +445,14 @@ async def vonage_inbound_messages(request: dict):
     Receive inbound messages from WhatsApp/Messenger/Viber
     Nurses can reply to alerts directly!
     """
-    print(f"📩 Inbound message from {request.get('from')}: {request.get('message', {}).get('content', {}).get('text')}")
-    
+    print(
+        f"📩 Inbound message from {request.get('from')}: {request.get('message', {}).get('content', {}).get('text')}")
+
     # TODO: Process inbound replies from nurses
     # - Store in database
     # - Notify dashboard
     # - Update alert status
-    
+
     return {"status": "received"}
 
 
@@ -454,13 +462,14 @@ async def vonage_message_status(request: dict):
     Receive delivery status updates for sent messages
     Track if nurse received/read the alert
     """
-    print(f"📊 Message status update: {request.get('status')} for message {request.get('message_uuid')}")
-    
+    print(
+        f"📊 Message status update: {request.get('status')} for message {request.get('message_uuid')}")
+
     # TODO: Update alert delivery status in database
     # - delivered
     # - read
     # - failed
-    
+
     return {"status": "received"}
 
 
@@ -672,17 +681,18 @@ async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
     if not supabase:
         # Fallback to in-memory alerts if no database
         return alerts
-    
+
     try:
         query = supabase.table("alerts").select("*")
-        
+
         if status:
             query = query.eq("status", status)
         if severity:
             query = query.eq("severity", severity)
-        
-        response = query.order("triggered_at", desc=True).limit(limit).execute()
-        
+
+        response = query.order(
+            "triggered_at", desc=True).limit(limit).execute()
+
         return response.data or []
     except Exception as e:
         print(f"⚠️ Error fetching alerts from database: {e}")
@@ -717,7 +727,7 @@ async def create_alert(
         }
         alerts.append(alert)
         return alert
-    
+
     try:
         result = supabase.table("alerts").insert({
             "alert_type": alert_type,
@@ -729,10 +739,49 @@ async def create_alert(
             "triggered_by": triggered_by,
             "status": "active"
         }).execute()
-        
+
         return result.data[0] if result.data else {}
     except Exception as e:
         print(f"❌ Error creating alert: {e}")
+        return {"error": str(e)}
+
+
+@app.patch("/alerts/{alert_id}")
+async def update_alert_status(alert_id: str, status: str = "resolved"):
+    """
+    Update alert status (e.g., mark as resolved/acknowledged)
+    """
+    from datetime import datetime
+
+    if not supabase:
+        # Fallback to in-memory
+        global alerts
+        for alert in alerts:
+            if alert.get("id") == alert_id:
+                alert["status"] = status
+                if status == "resolved":
+                    alert["resolved_at"] = datetime.now().isoformat()
+                return alert
+        return {"error": "Alert not found"}
+
+    try:
+        update_data = {
+            "status": status
+        }
+        if status == "resolved":
+            update_data["resolved_at"] = datetime.now().isoformat()
+
+        result = supabase.table("alerts").update(
+            update_data).eq("id", alert_id).execute()
+
+        if result.data and len(result.data) > 0:
+            print(f"✅ Alert {alert_id} marked as {status}")
+            return result.data[0]
+        else:
+            print(f"⚠️ Alert {alert_id} not found")
+            return {"error": "Alert not found"}
+    except Exception as e:
+        print(f"❌ Error updating alert: {e}")
         return {"error": str(e)}
 
 
@@ -999,10 +1048,11 @@ async def unassign_patient(room_id: str, patient_id: str = None, generate_report
     try:
         # Get patient ID if not provided
         if not patient_id:
-            assignment = supabase.table("patients_room").select("patient_id").eq("room_id", room_id).execute()
+            assignment = supabase.table("patients_room").select(
+                "patient_id").eq("room_id", room_id).execute()
             if assignment.data:
                 patient_id = assignment.data[0]['patient_id']
-        
+
         # Generate PDF report if requested
         report_generated = False
         if generate_report and patient_id:
@@ -1010,18 +1060,19 @@ async def unassign_patient(room_id: str, patient_id: str = None, generate_report
                 from app.pdf_generator import generate_patient_discharge_report
                 pdf_bytes = await generate_patient_discharge_report(patient_id, room_id)
                 # Store PDF or trigger download
-                print(f"✅ Generated discharge report for {patient_id} from {room_id}")
+                print(
+                    f"✅ Generated discharge report for {patient_id} from {room_id}")
                 report_generated = True
             except Exception as pdf_error:
                 print(f"⚠️ Failed to generate PDF: {pdf_error}")
-        
+
         # Remove patient from room
         result = unassign_patient_from_room(room_id, patient_id)
-        
+
         if report_generated:
             result['report_generated'] = True
             result['report_message'] = 'Discharge report generated successfully'
-        
+
         return result
     except Exception as e:
         return {"error": str(e)}
@@ -1377,11 +1428,13 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     user_id: str = "default_user"
     chat_state: Optional[Dict] = None
+
 
 @app.post("/ai/chat")
 async def ai_chat(request: ChatRequest):
@@ -1393,13 +1446,13 @@ async def ai_chat(request: ChatRequest):
             "response": "AI assistant is not available. Please configure ANTHROPIC_API_KEY.",
             "error": "anthropic_not_configured"
         }
-    
+
     try:
         from app.chat_context import (
             create_session, read_context, write_context, build_system_prompt
         )
         from app.ai_tools import HAVEN_TOOLS, execute_tool
-        
+
         # Get or create session
         session_title = None
         if request.session_id:
@@ -1407,7 +1460,8 @@ async def ai_chat(request: ChatRequest):
                 context = await read_context(request.session_id)
                 session_id = request.session_id
                 # Get session title
-                session_data = supabase.table("chat_sessions").select("title").eq("id", session_id).single().execute()
+                session_data = supabase.table("chat_sessions").select(
+                    "title").eq("id", session_id).single().execute()
                 if session_data.data:
                     session_title = session_data.data.get("title")
             except Exception as e:
@@ -1423,26 +1477,26 @@ async def ai_chat(request: ChatRequest):
             session_id = session["id"]
             session_title = session["title"]
             context = await read_context(session_id)
-        
+
         # Update context state with current info
         if request.chat_state:
             context.state.update(request.chat_state)
-        
+
         # Add user message to context
         context.messages.append({
             "role": "user",
             "content": request.message
         })
-        
+
         # Convert messages to Anthropic format
         anthropic_messages = [
             {"role": msg["role"], "content": msg["content"]}
             for msg in context.messages
         ]
-        
+
         # Build context-aware system prompt
         system_prompt = await build_system_prompt(context)
-        
+
         # Call Anthropic API with tool use capability
         message = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -1451,11 +1505,11 @@ async def ai_chat(request: ChatRequest):
             tools=HAVEN_TOOLS,  # Enable tool calling
             messages=anthropic_messages
         )
-        
+
         # Handle tool use
         assistant_response = ""
         tool_results = []
-        
+
         # Check if Claude wants to use tools
         if message.stop_reason == "tool_use":
             # Execute tool calls
@@ -1501,7 +1555,7 @@ Previous tool calls may have changed the state - ONLY trust the latest tool resu
                 "role": "user",
                 "content": tool_results
             })
-            
+
             # Get final response with tool results
             final_message = anthropic_client.messages.create(
                 model="claude-haiku-4-5-20251001",
@@ -1510,7 +1564,7 @@ Previous tool calls may have changed the state - ONLY trust the latest tool resu
                 tools=HAVEN_TOOLS,
                 messages=anthropic_messages
             )
-            
+
             # Extract final text response
             for content_block in final_message.content:
                 if content_block.type == "text":
@@ -1520,13 +1574,13 @@ Previous tool calls may have changed the state - ONLY trust the latest tool resu
             for content_block in message.content:
                 if content_block.type == "text":
                     assistant_response = content_block.text
-        
+
         # Add assistant response to context
         context.messages.append({
             "role": "assistant",
             "content": assistant_response
         })
-        
+
         # Save updated context
         await write_context(session_id, context)
         
@@ -1563,7 +1617,7 @@ Previous tool calls may have changed the state - ONLY trust the latest tool resu
             "invalidate_cache": invalidate_cache,
             "cache_keys": cache_keys_list
         }
-        
+
     except Exception as e:
         print(f"❌ Error in AI chat: {e}")
         import traceback
@@ -1572,6 +1626,7 @@ Previous tool calls may have changed the state - ONLY trust the latest tool resu
             "response": "I'm having trouble processing your request. Please try again.",
             "error": str(e)
         }
+
 
 @app.get("/ai/sessions")
 async def get_sessions(user_id: str = "default_user"):
@@ -1585,6 +1640,7 @@ async def get_sessions(user_id: str = "default_user"):
     except Exception as e:
         print(f"❌ Error fetching sessions: {e}")
         return {"sessions": [], "error": str(e)}
+
 
 @app.get("/ai/sessions/{session_id}")
 async def get_session(session_id: str):
@@ -1601,6 +1657,7 @@ async def get_session(session_id: str):
     except Exception as e:
         print(f"❌ Error fetching session {session_id}: {e}")
         return {"messages": [], "error": str(e)}
+
 
 @app.get("/reports/discharge/{patient_id}/{room_id}")
 async def download_discharge_report(patient_id: str, room_id: str):
@@ -1620,9 +1677,9 @@ async def download_discharge_report(patient_id: str, room_id: str):
                     "Content-Disposition": f"attachment; filename=discharge-report-{patient_id}-{datetime.now().strftime('%Y%m%d')}.txt"
                 }
             )
-        
+
         pdf_bytes = await generate_patient_discharge_report(patient_id, room_id)
-        
+
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

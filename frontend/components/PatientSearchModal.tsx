@@ -19,15 +19,37 @@ interface PatientSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (patient: Patient) => void;
-  activeStreams: string[];  // List of patient_ids currently streaming
+  activeStreams: string[];  // List of patient_ids currently streaming (will be refreshed internally)
   assignedPatients?: string[];  // List of patient_ids already assigned to boxes (optional)
   mode?: 'start-stream' | 'assign-stream';  // Mode: start-stream = select to start streaming, assign-stream = select from active streams
 }
 
-export default function PatientSearchModal({ isOpen, onClose, onSelect, activeStreams, assignedPatients = [], mode = 'start-stream' }: PatientSearchModalProps) {
+export default function PatientSearchModal({ isOpen, onClose, onSelect, activeStreams: initialActiveStreams, assignedPatients = [], mode = 'start-stream' }: PatientSearchModalProps) {
   const [search, setSearch] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeStreams, setActiveStreams] = useState<string[]>(initialActiveStreams);
+
+  // Auto-refresh active streams when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const fetchActiveStreams = async () => {
+      try {
+        const apiUrl = getApiUrl();
+        const res = await fetch(`${apiUrl}/streams/active`);
+        const data = await res.json();
+        const freshStreams = data.active_streams || [];
+        console.log('🔄 Refreshed active streams:', freshStreams);
+        setActiveStreams(freshStreams);
+      } catch (error) {
+        console.error('❌ Error refreshing active streams:', error);
+        // Keep using the initial/existing activeStreams if fetch fails
+      }
+    };
+
+    fetchActiveStreams();
+  }, [isOpen]);
 
   // Fetch patients based on search query
   useEffect(() => {

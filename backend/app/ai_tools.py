@@ -1042,7 +1042,7 @@ async def get_patient_room_tool(patient_id: str) -> Dict[str, Any]:
 
 
 def fuzzy_match_room(query: str, rooms: List[Dict]) -> Optional[Dict]:
-    """Fuzzy match room name - finds closest match"""
+    """Fuzzy match room name - finds BEST match with priority"""
     if not rooms:
         return None
     
@@ -1052,21 +1052,35 @@ def fuzzy_match_room(query: str, rooms: List[Dict]) -> Optional[Dict]:
     import re
     query_num = re.search(r'\d+', query)
     
+    # Priority 1: Exact match (case-insensitive)
     for room in rooms:
         room_name = room['room_name'].lower()
         room_id = room['room_id'].lower()
         
-        # Exact match
         if query_lower == room_name or query_lower == room_id:
             return room
-        
-        # Number match (e.g., "1" matches "Room 1")
-        if query_num:
-            room_num = re.search(r'\d+', room_name)
-            if room_num and query_num.group() == room_num.group():
+    
+    # Priority 2: Exact number match ("5" → "Room 5", not "Room 2")
+    if query_num:
+        query_number = query_num.group()
+        for room in rooms:
+            room_name = room['room_name']
+            # Match ONLY if the exact number is in the name
+            # "5" should match "Room 5" but NOT "Room 2" or "Room 25"
+            if f"Room {query_number}" in room_name or f"room {query_number}" in room_name.lower():
                 return room
+            # Also check for exact match in room ID
+            room_num = re.search(r'\d+', room_name)
+            if room_num and room_num.group() == query_number:
+                # Double-check it's the right match
+                if query_number in room_name:
+                    return room
+    
+    # Priority 3: Partial match (last resort)
+    for room in rooms:
+        room_name = room['room_name'].lower()
+        room_id = room['room_id'].lower()
         
-        # Partial match
         if query_lower in room_name or query_lower in room_id:
             return room
     

@@ -110,6 +110,9 @@ export default function DashboardPage() {
 
   // Agent alerts (for toast notifications)
   const [agentAlerts, setAgentAlerts] = useState<any[]>([]);
+  
+  // Manual alerts modal state
+  const [showManualAlerts, setShowManualAlerts] = useState(false);
 
   // Patient selection modal (one-step flow)
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -625,8 +628,16 @@ export default function DashboardPage() {
               </a>
             </nav>
 
-            {/* Right side: Alerts & User */}
+            {/* Right side: Manual Alerts, Notifications & User */}
             <div className="flex items-center gap-4">
+              {/* Manual Alert Button */}
+              <button 
+                onClick={() => setShowManualAlerts(true)}
+                className="px-4 py-2 border border-primary-700 text-primary-700 hover:bg-primary-700 hover:text-white transition-all text-xs uppercase tracking-wider font-light"
+              >
+                Send Alert
+              </button>
+              
               {/* Notifications */}
               <button className="relative p-2 text-neutral-500 hover:text-neutral-950 transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -656,7 +667,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-12 gap-6">
             {/* Left Panel - Patient Monitoring & Management (8 columns) */}
             <div className="col-span-8 space-y-6">
-              {/* Patient Monitoring - Top 60% */}
+              {/* Patient Monitoring - Top */}
               <div>
                 <div className="mb-4">
                   <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">Patient Monitoring</h2>
@@ -715,21 +726,23 @@ export default function DashboardPage() {
                       onClick={() => {
                         onPatientClicked(boxIndex);
                       }}
-                      monitoringLevel={boxMonitoringLevels[boxIndex] || 'BASELINE'}
                     />
                   </div>
                   );
                 })}
               </div>
-            </div>
+              </div>
+
+              {/* Patient Management - Below Monitoring */}
+              <div className="h-[400px]">
+                <PatientManagement />
+              </div>
             </div>
 
             {/* Right Column - Activity Feed (4 columns) */}
             <div className="col-span-4">
               <GlobalActivityFeed
                 events={globalEventFeed}
-                alerts={alerts}
-                isLoading={isLoadingAlerts}
                 onPatientClick={onPatientClicked}
               />
             </div>
@@ -803,14 +816,13 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-        
-        {/* Manual Alerts - Full Width Below */}
-        {viewMode === 'overview' && (
-          <div className="mt-6">
-            <ManualAlertsPanel />
-          </div>
-        )}
       </div>
+
+      {/* Manual Alerts Modal */}
+      <ManualAlertsPanel 
+        isOpen={showManualAlerts}
+        onClose={() => setShowManualAlerts(false)}
+      />
 
       {/* Patient Search Modal */}
       <PatientSearchModal
