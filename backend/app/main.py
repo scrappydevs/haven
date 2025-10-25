@@ -163,18 +163,23 @@ async def trigger_sms_alert(request: SMSAlertRequest):
                 "to": request.phone_number
             }
         
-        # Import Vonage client (v3+ API)
-        from vonage import Client, Sms
+        # Import Vonage client (v4+ API)
+        from vonage import Auth, Vonage
+        from vonage_sms import SmsMessage
         
-        client = Client(key=VONAGE_API_KEY, secret=VONAGE_API_SECRET)
-        sms = Sms(client)
+        # Create auth and client
+        auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
+        client = Vonage(auth=auth)
         
-        # Send SMS
-        response = sms.send_message({
-            "from": "HavenAI",  # Sender ID (max 11 chars, alphanumeric)
-            "to": request.phone_number,
-            "text": f"[Haven Alert] {request.message}"
-        })
+        # Create and send SMS message (v4 API)
+        # Note: For U.S. SMS, you typically need a numeric sender or verified alphanumeric ID
+        message = SmsMessage(
+            to=request.phone_number,
+            from_="HavenAI",  # Vonage will try to use this as sender ID
+            text=f"[Haven Alert] {request.message}"
+        )
+        response_obj = client.sms.send(message)
+        response = response_obj.model_dump()  # Convert to dict for compatibility
         
         # Check response status
         if response["messages"][0]["status"] == "0":
