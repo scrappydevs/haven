@@ -1,54 +1,49 @@
-name: Deploy to Render
+name: Backend Health Monitor
 
 on:
   push:
     branches: [main]
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *' # Check every 30 minutes
 
 jobs:
-  deploy:
+  health-check:
     runs-on: ubuntu-latest
-    permissions:
-      deployments: write # Required for GitHub deployment status
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Deploy to Render
-        uses: johnbeynon/render-deploy-action@v0.0.8
-        with:
-          service-id: ${{ secrets.RENDER_SERVICE_ID }}
-          api-key: ${{ secrets.RENDER_API_KEY }}
-          wait-for-success: true
-      
-      - name: Verify Backend Health
+      - name: Wait for Deployment
+        if: github.event_name == 'push'
         run: |
-          echo "🔍 Verifying backend health..."
-          MAX_ATTEMPTS=10
+          echo "⏱️  Waiting 2 minutes for Render auto-deploy to start..."
+          sleep 120
+      
+      - name: Check Backend Health
+        run: |
+          echo "🔍 Checking backend health at https://haven-new.onrender.com/health"
+          
+          MAX_ATTEMPTS=5
           ATTEMPT=0
           
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://haven-new.onrender.com/health || echo "000")
             
             if [ "$STATUS_CODE" = "200" ]; then
-              echo "✅ Backend is healthy and responding!"
+              echo "✅ Backend is healthy!"
               exit 0
             fi
             
-            echo "⏳ Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS: Status $STATUS_CODE, waiting..."
-            sleep 10
+            echo "⏳ Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS: Status $STATUS_CODE"
+            sleep 15
             ATTEMPT=$((ATTEMPT+1))
           done
           
-          echo "⚠️  Health check timed out, but deployment may still be starting"
-          exit 0
+          echo "❌ Backend health check failed"
+          exit 1
       
-      - name: Notify Success
+      - name: Success Notification
         if: success()
-        run: |
-          echo "::notice::✅ Backend deployed and healthy at https://haven-new.onrender.com"
+        run: echo "::notice::Backend is healthy at https://haven-new.onrender.com"
       
-      - name: Notify Failure
+      - name: Failure Notification
         if: failure()
-        run: |
-          echo "::error::❌ Render deployment failed. Check dashboard: https://dashboard.render.com"
+        run: echo "::error::Backend health check failed - check Render dashboard"
