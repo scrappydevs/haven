@@ -65,6 +65,28 @@ export default function FloorPlanPage() {
   const [roomsLoaded, setRoomsLoaded] = useState(false);
   const [legendCollapsed, setLegendCollapsed] = useState(false);
   const [roomsListCollapsed, setRoomsListCollapsed] = useState(false);
+  const [smplrConfig, setSmplrConfig] = useState<{
+    organizationId: string;
+    clientToken: string;
+    spaceId: string;
+  } | null>(null);
+
+  // Fetch Smplrspace config from backend
+  useEffect(() => {
+    const fetchSmplrConfig = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/smplrspace/config`);
+        const config = await res.json();
+        console.log('🔑 Fetched Smplrspace config from backend');
+        setSmplrConfig(config);
+      } catch (error) {
+        console.error('❌ Failed to fetch Smplrspace config:', error);
+        setViewerError('Failed to load floor plan configuration');
+        setUseDemoMode(true);
+      }
+    };
+    fetchSmplrConfig();
+  }, []);
 
   // Reset states on mount to ensure clean initialization
   useEffect(() => {
@@ -81,7 +103,7 @@ export default function FloorPlanPage() {
 
   // Initialize Smplrspace viewer
   useEffect(() => {
-    if (!containerRef.current || !smplrLoaded || !window.smplr) return;
+    if (!containerRef.current || !smplrLoaded || !window.smplr || !smplrConfig) return;
 
     console.log('🎬 Initializing Smplrspace viewer...');
     let space: any = null;
@@ -90,18 +112,18 @@ export default function FloorPlanPage() {
       try {
         const smplr = window.smplr;
 
-        // Get credentials from environment or use demo mode
-        const spaceId = process.env.NEXT_PUBLIC_SMPLR_SPACE_ID || 'spc_demo';
-        const clientToken = process.env.NEXT_PUBLIC_SMPLR_CLIENT_TOKEN || 'pub_demo';
+        // Use credentials from backend
+        const spaceId = smplrConfig.spaceId || 'spc_demo';
+        const clientToken = smplrConfig.clientToken || 'pub_demo';
 
-        console.log('🔑 Smplrspace Config:', {
+        console.log('🔑 Smplrspace Config (from backend):', {
           spaceId,
           clientToken: clientToken.substring(0, 10) + '...',
-          hasSpaceId: !!process.env.NEXT_PUBLIC_SMPLR_SPACE_ID,
-          hasToken: !!process.env.NEXT_PUBLIC_SMPLR_CLIENT_TOKEN,
+          hasSpaceId: !!smplrConfig.spaceId,
+          hasToken: !!smplrConfig.clientToken,
         });
 
-        // Initialize space with your Smplrspace credentials
+        // Initialize space with credentials from backend
         space = new smplr.Space({
           spaceId,
           clientToken,
@@ -120,13 +142,12 @@ export default function FloorPlanPage() {
             setViewerError(null);
             
             // Sync rooms from Smplrspace walls
-            const spaceId = process.env.NEXT_PUBLIC_SMPLR_SPACE_ID || '';
-            if (spaceId) {
-              await syncRoomsFromSmplrspace(spaceId);
+            if (smplrConfig.spaceId) {
+              await syncRoomsFromSmplrspace(smplrConfig.spaceId);
               // Refetch rooms to get synced data
               await fetchRoomAssignments();
             } else {
-              console.log('⚠️ NEXT_PUBLIC_SMPLR_SPACE_ID not configured');
+              console.log('⚠️ Smplrspace space ID not configured');
             }
           },
           onError: (error: string) => {
@@ -168,7 +189,7 @@ export default function FloorPlanPage() {
         }
       }
     };
-  }, [smplrLoaded]);
+  }, [smplrLoaded, smplrConfig]);
 
   // Update furniture colors when rooms change (patient assignment status)
   useEffect(() => {
@@ -272,9 +293,14 @@ export default function FloorPlanPage() {
         return;
       }
 
+      if (!smplrConfig) {
+        console.error('❌ Smplrspace config not loaded from backend');
+        return;
+      }
+
       const smplrClient = new window.smplr.QueryClient({
-        organizationId: process.env.NEXT_PUBLIC_SMPLR_ORG_ID || '',
-        clientToken: process.env.NEXT_PUBLIC_SMPLR_CLIENT_TOKEN || '',
+        organizationId: smplrConfig.organizationId,
+        clientToken: smplrConfig.clientToken,
       });
 
       console.log('🔄 Detecting rooms from walls using Smplrspace API...');

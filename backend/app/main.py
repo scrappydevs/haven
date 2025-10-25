@@ -129,6 +129,19 @@ async def health_check():
     }
 
 
+@app.get("/smplrspace/config")
+async def get_smplrspace_config():
+    """
+    Get Smplrspace configuration (credentials)
+    This keeps sensitive tokens on the backend instead of frontend
+    """
+    return {
+        "organizationId": get_secret("SMPLR_ORG_ID") or os.getenv("SMPLR_ORG_ID"),
+        "clientToken": get_secret("SMPLR_CLIENT_TOKEN") or os.getenv("SMPLR_CLIENT_TOKEN"),
+        "spaceId": get_secret("SMPLR_SPACE_ID") or os.getenv("SMPLR_SPACE_ID"),
+    }
+
+
 @app.get("/patients")
 async def get_patients():
     """Get list of all patients (first 47) - LEGACY"""
