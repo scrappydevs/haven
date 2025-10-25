@@ -172,34 +172,34 @@ async def trigger_sms_alert(request: SMSAlertRequest):
         client = Vonage(auth=auth)
         
         # Create and send SMS message (v4 API)
-        # Note: For U.S. SMS, you typically need a numeric sender or verified alphanumeric ID
+        # Use your Vonage phone number as sender for U.S. SMS compliance
         message = SmsMessage(
             to=request.phone_number,
-            from_="HavenAI",  # Vonage will try to use this as sender ID
+            from_="12178020876",  # Your Vonage number (supports SMS, Voice & MMS)
             text=f"[Haven Alert] {request.message}"
         )
         response_obj = client.sms.send(message)
-        response = response_obj.model_dump()  # Convert to dict for compatibility
         
-        # Check response status
-        if response["messages"][0]["status"] == "0":
-            message_id = response["messages"][0]["message-id"]
-            print(f"✅ SMS sent to {request.phone_number}: {message_id}")
+        # Check response status (v4 API uses underscores, not hyphens)
+        first_message = response_obj.messages[0]
+        if first_message.status == "0":
+            print(f"✅ SMS sent to {request.phone_number}: {first_message.message_id}")
             
             return {
                 "status": "success",
                 "message": "Alert sent successfully",
-                "message_id": message_id,
+                "message_id": first_message.message_id,
                 "to": request.phone_number,
-                "remaining_balance": response["messages"][0].get("remaining-balance"),
-                "price": response["messages"][0].get("message-price")
+                "remaining_balance": first_message.remaining_balance,
+                "price": first_message.message_price
             }
         else:
-            error_text = response["messages"][0].get("error-text", "Unknown error")
-            print(f"❌ Vonage SMS failed: {error_text}")
+            # Status != "0" means error
+            error_msg = f"Vonage error (status {first_message.status})"
+            print(f"❌ Vonage SMS failed: {error_msg}")
             return {
                 "status": "error",
-                "message": f"SMS failed: {error_text}"
+                "message": f"SMS failed: {error_msg}"
             }
         
     except ImportError:
