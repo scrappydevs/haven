@@ -373,7 +373,7 @@ async def entrypoint(ctx: agents.JobContext):
         # Create agent session with OpenAI Realtime API (simpler: STT+LLM+TTS in one)
         session = AgentSession(
             # OpenAI Realtime Model (handles speech-to-speech directly)
-            realtime_model=openai.RealtimeModel(
+            realtime_model=openai.realtime.RealtimeModel(
                 model="gpt-4o-realtime-preview-2024-12-17",
                 voice="alloy",  # Options: alloy, echo, shimmer
                 temperature=0.7,
