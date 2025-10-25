@@ -5,17 +5,20 @@ services:
     region: oregon
     plan: starter
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120"
+    startCommand: "bash start.sh"
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
-      # Add your secrets here or configure them in Render dashboard
+      # Secrets - set these in Render Dashboard
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Infisical (optional - for CLI method)
+      - key: INFISICAL_PROJECT_ID
+        value: 14641fd2-4afc-48b6-a138-c18fd6d65181
     healthCheckPath: /health
     rootDir: backend
 
