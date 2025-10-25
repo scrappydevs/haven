@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import VideoPlayer from '@/components/VideoPlayer';
 import InfoBar from '@/components/InfoBar';
 import DetailPanel from '@/components/DetailPanel';
@@ -28,11 +28,20 @@ export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
+  const [selectedCvData, setSelectedCvData] = useState<any>(null);
   const [stats, setStats] = useState({
     patients_monitored: 47,
     active_alerts: 0,
     daily_cost_savings: 17550
   });
+
+  // Stable callback for CV data updates
+  const handleCvDataUpdate = useCallback((patientId: number, data: any) => {
+    // Only update if this is the selected patient
+    if (patientId === selectedPatientId) {
+      setSelectedCvData(data);
+    }
+  }, [selectedPatientId]);
 
   useEffect(() => {
     // Fetch patients from backend
@@ -123,6 +132,7 @@ export default function DashboardPage() {
                         patient={patient}
                         isLive={isLive}
                         isSelected={selectedPatientId === patient.id}
+                        onCvDataUpdate={handleCvDataUpdate}
                       />
                       <InfoBar
                         patientId={isLive ? 'LIVE' : patient.id}
@@ -150,7 +160,7 @@ export default function DashboardPage() {
             </div>
             <DetailPanel
               patient={selectedPatient}
-              cvData={null}
+              cvData={selectedCvData}
               isLive={selectedPatient?.id === 999}
             />
           </div>

@@ -15,6 +15,7 @@ interface VideoPlayerProps {
   };
   isLive?: boolean;
   isSelected?: boolean;
+  onCvDataUpdate?: (patientId: number, data: CVData) => void;
 }
 
 interface CVData {
@@ -22,15 +23,28 @@ interface CVData {
   heart_rate: number;
   respiratory_rate: number;
   alert?: boolean;
+  head_pitch?: number;
+  head_yaw?: number;
+  head_roll?: number;
+  eye_openness?: number;
+  attention_score?: number;
 }
 
-export default function VideoPlayer({ patient, isLive = false, isSelected = false }: VideoPlayerProps) {
+export default function VideoPlayer({ patient, isLive = false, isSelected = false, onCvDataUpdate }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [cvData, setCvData] = useState<CVData | null>(null);
   const [alertFired, setAlertFired] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // CV data callback effect - notify parent when data changes and player is selected
+  useEffect(() => {
+    if (isSelected && cvData && onCvDataUpdate) {
+      onCvDataUpdate(patient.id, cvData);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cvData, isSelected]); // Intentionally excluding onCvDataUpdate and patient.id to avoid infinite loops
 
   // WebSocket effect for live feed only - separate from pre-recorded
   useEffect(() => {
@@ -78,7 +92,8 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       console.log('🧹 Cleaning up WebSocket');
       ws.close();
     };
-  }, [isLive]); // Only depend on isLive, not alertFired
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive]); // Intentionally excluding alertFired - don't reconnect WebSocket when alert fires
 
   // Pre-recorded video polling effect - separate from live
   useEffect(() => {

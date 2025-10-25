@@ -337,10 +337,10 @@ export default function StreamPage() {
         <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
           <h2 className="text-lg font-semibold text-white mb-3">📋 How to Use</h2>
           <ol className="space-y-2 text-slate-300 text-sm">
-            <li>1. Click "Start Streaming" button above</li>
+            <li>1. Click &quot;Start Streaming&quot; button above</li>
             <li>2. Allow camera permissions when prompted</li>
             <li>3. On another computer, open the dashboard</li>
-            <li>4. Look for "LIVE DEMO" patient (6th video feed)</li>
+            <li>4. Look for &quot;LIVE DEMO&quot; patient (6th video feed)</li>
             <li>5. Try rubbing your face to simulate CRS → Alert fires!</li>
           </ol>
 

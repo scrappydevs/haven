@@ -16,6 +16,11 @@ interface DetailPanelProps {
     temperature?: number;
     spo2?: number;
     alert?: boolean;
+    head_pitch?: number;
+    head_yaw?: number;
+    head_roll?: number;
+    eye_openness?: number;
+    attention_score?: number;
   } | null;
   isLive?: boolean;
 }
@@ -158,6 +163,65 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
             <p className={`text-xs mt-2 font-semibold ${crsStatus.color}`}>
               {crsStatus.label}
             </p>
+          </div>
+
+          {/* Attention Level */}
+          <div className="bg-slate-900/50 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-slate-400">Attention Level</span>
+              <span className={`text-lg font-bold ${
+                (cvData?.attention_score ?? 0) > 0.7 ? 'text-green-400' :
+                (cvData?.attention_score ?? 0) > 0.4 ? 'text-yellow-400' :
+                'text-red-400'
+              }`}>
+                {cvData?.attention_score ? `${(cvData.attention_score * 100).toFixed(0)}%` : '--'}
+              </span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+              <motion.div
+                className={`h-full ${
+                  (cvData?.attention_score ?? 0) > 0.7 ? 'bg-green-500' :
+                  (cvData?.attention_score ?? 0) > 0.4 ? 'bg-yellow-500' :
+                  'bg-red-500'
+                }`}
+                initial={{ width: 0 }}
+                animate={{ width: `${(cvData?.attention_score ?? 0) * 100}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-slate-400">Eye Openness:</span>
+              <span className="text-xs text-slate-300 font-semibold">
+                {cvData?.eye_openness ? `${cvData.eye_openness.toFixed(1)}%` : '--'}
+              </span>
+            </div>
+          </div>
+
+          {/* Head Orientation */}
+          <div className="bg-slate-900/50 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-slate-400">Head Orientation</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center">
+                <p className="text-xs text-slate-400 mb-1">Pitch</p>
+                <p className="text-lg font-bold text-white">
+                  {cvData?.head_pitch ? `${cvData.head_pitch.toFixed(1)}°` : '--'}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-slate-400 mb-1">Yaw</p>
+                <p className="text-lg font-bold text-white">
+                  {cvData?.head_yaw ? `${cvData.head_yaw.toFixed(1)}°` : '--'}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-slate-400 mb-1">Roll</p>
+                <p className="text-lg font-bold text-white">
+                  {cvData?.head_roll ? `${cvData.head_roll.toFixed(1)}°` : '--'}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* AI Status */}
