@@ -22,9 +22,10 @@ export interface TerminalLogEntry {
 
 interface TerminalLogProps {
   entries: TerminalLogEntry[];
+  analysisMode?: 'normal' | 'enhanced';
 }
 
-export default function TerminalLog({ entries }: TerminalLogProps) {
+export default function TerminalLog({ entries, analysisMode = 'enhanced' }: TerminalLogProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new entries added
@@ -164,11 +165,26 @@ export default function TerminalLog({ entries }: TerminalLogProps) {
           ))}
         </AnimatePresence>
 
-        {/* Empty state */}
+        {/* Empty state or Analysis Disabled */}
         {entries.length === 0 && (
           <div className="text-neutral-500 text-center py-4">
-            <div className="mb-1 text-xs">$ waiting for events...</div>
-            <div className="animate-pulse text-xs">_</div>
+            {analysisMode === 'normal' ? (
+              <>
+                <div className="mb-2">
+                  <svg className="w-6 h-6 mx-auto text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                </div>
+                <div className="mb-1 text-xs font-semibold text-neutral-600">Analysis Disabled</div>
+                <div className="text-xs text-neutral-500">Stream is in Normal Mode</div>
+                <div className="text-xs text-neutral-500 mt-2">No AI/CV analysis active</div>
+              </>
+            ) : (
+              <>
+                <div className="mb-1 text-xs">$ waiting for events...</div>
+                <div className="animate-pulse text-xs">_</div>
+              </>
+            )}
           </div>
         )}
 

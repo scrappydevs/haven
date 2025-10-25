@@ -856,17 +856,30 @@ async def get_stats():
 @app.get("/streams/active")
 async def get_active_streams():
     """
-    Get list of patient IDs currently streaming
+    Get list of patient IDs currently streaming with their analysis modes
 
     Returns:
         {
             "active_streams": ["P-001", "P-003"],
+            "stream_details": {
+                "P-001": {"analysis_mode": "enhanced"},
+                "P-003": {"analysis_mode": "normal"}
+            },
             "count": 2
         }
     """
     active_patient_ids = list(manager.streamers.keys())
+    stream_details = {}
+
+    for patient_id in active_patient_ids:
+        trackers = manager.get_trackers(patient_id)
+        stream_details[patient_id] = {
+            "analysis_mode": trackers.analysis_mode if trackers else "normal"
+        }
+
     return {
         "active_streams": active_patient_ids,
+        "stream_details": stream_details,
         "count": len(active_patient_ids)
     }
 
@@ -1343,17 +1356,26 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         )
         return
 
-    # Wait for initial handshake with monitoring conditions
+    # Wait for initial handshake with analysis mode
     try:
         print(f"⏳ Waiting for handshake from patient {patient_id}...")
         initial_data = await websocket.receive_json()
         print(f"📨 Received handshake data: {initial_data}")
 
-        monitoring_conditions = initial_data.get("monitoring_conditions", [])
-        print(
-            f"📋 Registering streamer for patient {patient_id} with conditions: {monitoring_conditions}")
+        # Support both new format (analysis_mode) and legacy format (monitoring_conditions)
+        analysis_mode = initial_data.get("analysis_mode", "normal")
+        if "monitoring_conditions" in initial_data and not "analysis_mode" in initial_data:
+            # Legacy: if conditions present, use enhanced mode
+            monitoring_conditions = initial_data.get(
+                "monitoring_conditions", [])
+            analysis_mode = "enhanced" if monitoring_conditions else "normal"
+            print(
+                f"⚠️ Legacy format detected. Converting monitoring_conditions to analysis_mode: {analysis_mode}")
 
-        manager.register_streamer(patient_id, websocket, monitoring_conditions)
+        print(
+            f"📋 Registering streamer for patient {patient_id} with analysis mode: {analysis_mode}")
+
+        manager.register_streamer(patient_id, websocket, analysis_mode)
         print(f"✅ Streamer registered successfully for patient {patient_id}")
         print(
             f"📊 Total active streamers: {len(manager.streamers)} - {list(manager.streamers.keys())}")
@@ -1362,7 +1384,7 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         await websocket.send_json({
             "type": "connected",
             "patient_id": patient_id,
-            "monitoring_conditions": monitoring_conditions,
+            "analysis_mode": analysis_mode,
             "supabase_verified": supabase_warning is None,
             "warning": supabase_warning
         })
@@ -1371,8 +1393,8 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         print(f"❌ Handshake error for patient {patient_id}: {e}")
         import traceback
         traceback.print_exc()
-        manager.register_streamer(patient_id, websocket, [])
-        print(f"✅ Registered streamer with empty conditions as fallback")
+        manager.register_streamer(patient_id, websocket, "normal")
+        print(f"✅ Registered streamer with normal mode as fallback")
 
     try:
         frame_count = 0

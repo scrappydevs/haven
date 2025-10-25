@@ -39,6 +39,7 @@ interface DetailPanelProps {
   } | null;
   isLive?: boolean;
   monitoringConditions?: string[];
+  analysisMode?: 'normal' | 'enhanced';
   events?: Array<{
     timestamp: string;
     type: string;
@@ -69,6 +70,7 @@ export default function DetailPanel({
   cvData,
   isLive = false,
   monitoringConditions = [],
+  analysisMode = 'enhanced',
   events = [],
   monitoringLevel = 'BASELINE',
   monitoringExpiresAt,
@@ -295,7 +297,7 @@ export default function DetailPanel({
 
       {/* ========== TERMINAL LOG (MAIN FEATURE - 80% OF SPACE) ========== */}
       <div className="flex-1 overflow-hidden min-h-0">
-        <TerminalLog entries={terminalEntries} />
+        <TerminalLog entries={terminalEntries} analysisMode={analysisMode} />
       </div>
 
       {/* ========== MINIMAL FOOTER WITH QUICK VITALS ========== */}
