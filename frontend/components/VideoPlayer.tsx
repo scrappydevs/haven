@@ -14,6 +14,8 @@ interface VideoPlayerProps {
     };
   };
   isLive?: boolean;
+  onCvDataUpdate?: (data: CVData | null) => void;
+  isSelected?: boolean;
 }
 
 interface CVData {
@@ -23,7 +25,7 @@ interface CVData {
   alert?: boolean;
 }
 
-export default function VideoPlayer({ patient, isLive = false }: VideoPlayerProps) {
+export default function VideoPlayer({ patient, isLive = false, onCvDataUpdate, isSelected = false }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -111,15 +113,26 @@ export default function VideoPlayer({ patient, isLive = false }: VideoPlayerProp
     return () => clearInterval(interval);
   }, [patient.id, isLive, alertFired]);
 
+  // Notify parent of CV data updates
+  useEffect(() => {
+    if (onCvDataUpdate) {
+      onCvDataUpdate(cvData);
+    }
+  }, [cvData, onCvDataUpdate]);
+
   return (
     <motion.div
-      className={`relative rounded-lg overflow-hidden border-2 transition-colors ${
-        alertFired ? 'border-red-500 shadow-lg shadow-red-500/50' : 'border-slate-700'
+      className={`relative rounded-t-lg overflow-hidden border-2 transition-all duration-200 ${
+        alertFired
+          ? 'border-red-500 shadow-lg shadow-red-500/50'
+          : isSelected
+          ? 'border-blue-500 shadow-lg shadow-blue-500/30'
+          : 'border-slate-700'
       }`}
       animate={alertFired ? { scale: [1, 1.02, 1] } : {}}
       transition={{ repeat: alertFired ? Infinity : 0, duration: 1 }}
     >
-      {/* Video Element */}
+      {/* Video Element - Clean, no overlays */}
       {isLive ? (
         <img
           ref={imgRef}
@@ -139,47 +152,14 @@ export default function VideoPlayer({ patient, isLive = false }: VideoPlayerProp
         />
       )}
 
-      {/* Patient Info Overlay */}
-      <div className="absolute top-2 left-2 bg-black/70 backdrop-blur px-3 py-2 rounded-lg">
-        <p className="text-white font-semibold text-sm">{patient.name}</p>
-        <p className="text-slate-300 text-xs">
-          {isLive ? '🔴 LIVE' : `Patient #${patient.id}`}
-        </p>
-      </div>
-
-      {/* CV Metrics Overlay */}
-      {cvData && (
-        <div className="absolute bottom-2 left-2 right-2 bg-black/70 backdrop-blur p-2 rounded-lg">
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <p className="text-slate-400">Heart Rate</p>
-              <p className="text-white font-bold">{cvData.heart_rate} bpm</p>
-            </div>
-            <div>
-              <p className="text-slate-400">CRS Risk</p>
-              <p className={`font-bold ${
-                cvData.crs_score > 0.7 ? 'text-red-400' :
-                cvData.crs_score > 0.4 ? 'text-yellow-400' :
-                'text-green-400'
-              }`}>
-                {(cvData.crs_score * 100).toFixed(0)}%
-              </p>
-            </div>
-          </div>
-          <div className="mt-1 text-xs text-slate-400">
-            RR: {cvData.respiratory_rate} breaths/min
-          </div>
-        </div>
-      )}
-
-      {/* Alert Banner */}
+      {/* Alert Pulse Indicator (minimal corner badge) */}
       {alertFired && (
         <motion.div
-          initial={{ y: -100, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="absolute top-0 left-0 right-0 bg-red-500 text-white px-3 py-2 text-center font-bold text-sm"
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold"
         >
-          🚨 CRS Grade 2 Detected
+          🚨 ALERT
         </motion.div>
       )}
 
