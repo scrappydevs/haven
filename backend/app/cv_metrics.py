@@ -114,7 +114,11 @@ class RespiratoryRateMonitor:
 
             # Convert to numpy and detrend
             signal = np.array(self.position_buffer)
-            signal = signal - np.mean(signal)
+            signal_mean = np.mean(signal)
+            signal = signal - signal_mean
+
+            # Check signal strength (movement amplitude)
+            signal_std = np.std(signal)
 
             # Apply window
             window = np.hamming(len(signal))
@@ -130,23 +134,39 @@ class RespiratoryRateMonitor:
             fft_freq_masked = fft_freq[mask]
 
             if len(fft_data_masked) == 0:
+                print(f"⚠️ RR: No frequencies in breathing range")
                 return self.last_respiratory_rate
 
             # Find peak
             peak_idx = np.argmax(fft_data_masked)
             peak_freq = fft_freq_masked[peak_idx]
+            peak_magnitude = fft_data_masked[peak_idx]
 
             # Convert to breaths/min
             respiratory_rate = int(peak_freq * 60)
 
+            # Diagnostic logging
+            print(f"🫁 RR Debug: nose_y={nose_y:.4f}, signal_std={signal_std:.6f}, peak_freq={peak_freq:.3f}Hz, raw_rr={respiratory_rate}, peak_mag={peak_magnitude:.2f}")
+
+            # Require minimum signal strength to avoid noise-based detection
+            if signal_std < 0.001:  # Very small movement threshold
+                print(f"⚠️ RR: Signal too weak (std={signal_std:.6f}), using previous: {self.last_respiratory_rate}")
+                return self.last_respiratory_rate
+
             # Sanity check
             if 8 <= respiratory_rate <= 30:
+                prev_rr = self.last_respiratory_rate
                 self.last_respiratory_rate = int(0.7 * self.last_respiratory_rate + 0.3 * respiratory_rate)
+                print(f"✅ RR: Updated from {prev_rr} to {self.last_respiratory_rate} (raw: {respiratory_rate})")
+            else:
+                print(f"⚠️ RR: Out of range ({respiratory_rate}), keeping: {self.last_respiratory_rate}")
 
             return self.last_respiratory_rate
 
         except Exception as e:
-            print(f"Respiratory rate error: {e}")
+            print(f"❌ Respiratory rate error: {e}")
+            import traceback
+            traceback.print_exc()
             return self.last_respiratory_rate
 
 
