@@ -1,8 +1,8 @@
 # Haven AI 🏥
 
-[![Frontend](https://vercelbadge.vercel.app/api/scrappydevs/haven)](https://use-haven.vercel.app)
-[![Backend](https://img.shields.io/website?url=https%3A%2F%2Fhaven-new.onrender.com%2Fhealth&label=Backend&style=flat-square)](https://haven-new.onrender.com/health)
-[![Deployments](https://img.shields.io/github/deployments/scrappydevs/haven/production-backend?label=Render&style=flat-square)](https://github.com/scrappydevs/haven/deployments)
+[![Frontend Deploy](https://img.shields.io/github/deployments/scrappydevs/haven/Production?label=Frontend&logo=vercel&style=flat-square)](https://use-haven.vercel.app)
+[![Backend Deploy](https://img.shields.io/github/deployments/scrappydevs/haven/production-backend?label=Backend&logo=render&style=flat-square)](https://haven-new.onrender.com)
+[![Backend Health](https://img.shields.io/website?url=https%3A%2F%2Fhaven-new.onrender.com%2Fhealth&label=API&up_message=online&down_message=offline&style=flat-square)](https://haven-new.onrender.com/health)
 
 Real-time computer vision monitoring for clinical trial safety - detect adverse events 2-4 hours earlier
 

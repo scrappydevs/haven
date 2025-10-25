@@ -22,28 +22,36 @@ jobs:
       
       - name: Wait for Render Deploy
         run: |
-          echo "Waiting for Render deployment..."
-          sleep 30
+          echo "🚀 Waiting for Render deployment to complete..."
+          echo "⏱️  Initial wait: 90 seconds (Render typically takes 60-120s)"
+          sleep 90
           
-          # Check if backend is healthy
-          MAX_ATTEMPTS=20
+          # Health check with extended timeout
+          MAX_ATTEMPTS=30
           ATTEMPT=0
           
+          echo ""
+          echo "🔍 Starting health checks..."
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://haven-new.onrender.com/health || echo "000")
             
             if [ "$STATUS_CODE" = "200" ]; then
-              echo "✅ Backend is healthy!"
+              echo ""
+              echo "✅ Backend is healthy and responding!"
+              echo "🎉 Deployment verified successfully"
               echo "DEPLOY_STATUS=success" >> $GITHUB_ENV
               exit 0
             fi
             
-            echo "Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS: Status $STATUS_CODE, waiting..."
-            sleep 15
+            ELAPSED=$((90 + ATTEMPT * 20))
+            echo "⏳ Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS (${ELAPSED}s elapsed): Status $STATUS_CODE"
+            sleep 20
             ATTEMPT=$((ATTEMPT+1))
           done
           
-          echo "❌ Deployment check timed out"
+          echo ""
+          echo "❌ Deployment health check timed out after 690 seconds"
+          echo "⚠️  Backend may still be deploying - check Render dashboard"
           echo "DEPLOY_STATUS=failure" >> $GITHUB_ENV
           exit 1
       
