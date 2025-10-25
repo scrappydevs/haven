@@ -119,7 +119,7 @@ export default function StreamPage() {
       }
 
       // Connect to patient-specific WebSocket
-      const wsUrl = `${getWsUrl()}/ws/stream/${selectedPatient.patient_id}`;
+      const wsUrl = getWsUrl(`/ws/stream/${selectedPatient.patient_id}`);
       console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
 
       const ws = new WebSocket(wsUrl);
