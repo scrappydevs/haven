@@ -21,7 +21,7 @@ export default function AlertPanel({ alerts }: AlertPanelProps) {
       <div className="flex items-center justify-between mb-8 border-b-2 border-neutral-950 pb-4">
         <h2 className="text-2xl font-light tracking-tight text-neutral-950">LIVE ALERTS</h2>
         <div className="px-4 py-1.5 border border-accent-terra bg-accent-terra/5">
-          <span className="label-uppercase text-accent-terra">{alerts.length} Active</span>
+          <span className="text-accent-terra text-sm font-medium">{alerts.length} Active</span>
         </div>
       </div>
 
@@ -52,9 +52,9 @@ export default function AlertPanel({ alerts }: AlertPanelProps) {
                       {alert.message}
                     </p>
                     <div className="flex items-center gap-6 text-xs text-neutral-500 font-light">
-                      <span className="label-uppercase">CRS: {(alert.crs_score * 100).toFixed(0)}%</span>
+                      <span className="text-sm">CRS: {(alert.crs_score * 100).toFixed(0)}%</span>
                       <span>•</span>
-                      <span className="label-uppercase">HR: {alert.heart_rate} BPM</span>
+                      <span className="text-sm">HR: {alert.heart_rate} BPM</span>
                     </div>
                   </div>
                 </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { getApiUrl, getWsUrl } from '@/lib/api';
 
 interface VideoPlayerProps {
   patient: {
@@ -208,8 +209,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   useEffect(() => {
     if (!isLive) return;
 
-    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-    const wsUrl = API_URL.replace('http', 'ws') + '/ws/view';
+    const wsUrl = getWsUrl('/ws/view');
     console.log('🔌 Viewer connecting to:', wsUrl);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -292,9 +292,9 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       const time = video.currentTime;
       setCurrentTime(time);
 
-      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+      const apiUrl = getApiUrl();
       const timestamp = time.toFixed(1);
-      fetch(`${API_URL}/cv-data/${patient.id}/${timestamp}`)
+      fetch(`${apiUrl}/cv-data/${patient.id}/${timestamp}`)
         .then(res => res.json())
         .then(data => {
           // Normalize data structure to match live feed format
@@ -331,14 +331,14 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
 
   return (
     <motion.div
-      className={`relative rounded-t-lg overflow-hidden border-2 transition-all duration-200 ${
+      className={`relative rounded-lg overflow-hidden border transition-all duration-200 ${
         fullscreenMode ? 'h-full' : ''
       } ${
         alertFired
           ? 'border-red-500 shadow-lg shadow-red-500/50'
           : isSelected
           ? 'border-blue-500 shadow-lg shadow-blue-500/30'
-          : 'border-slate-700'
+          : 'border-neutral-200'
       }`}
       animate={alertFired ? { scale: [1, 1.02, 1] } : {}}
       transition={{ repeat: alertFired ? Infinity : 0, duration: 1 }}
@@ -370,7 +370,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         />
       ) : (
         <div className={`w-full bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-400 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
-          <span className="label-uppercase">No video available</span>
+          <span className="text-sm">No video available</span>
         </div>
       )}
 
@@ -379,7 +379,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          className="absolute top-3 right-3 bg-accent-terra text-white px-3 py-1.5 label-uppercase"
+          className="absolute top-3 right-3 bg-accent-terra text-white px-3 py-1.5 text-sm font-medium rounded"
         >
           ALERT
         </motion.div>
@@ -403,4 +403,3 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     </motion.div>
   );
 }
-

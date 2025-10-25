@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { getApiUrl } from '@/lib/api';
 
 interface Patient {
   id: string;
@@ -34,10 +35,10 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
   const [protocols, setProtocols] = useState<Record<string, Protocol>>({});
 
   useEffect(() => {
-    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-    
+    const apiUrl = getApiUrl();
+
     // Fetch available protocols
-    fetch(`${API_URL}/monitoring/protocols`)
+    fetch(`${apiUrl}/monitoring/protocols`)
       .then(res => res.json())
       .then(data => {
         setProtocols(data);
@@ -46,7 +47,7 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
 
     // Get AI recommendations
     setLoading(true);
-    fetch(`${API_URL}/monitoring/recommend`, {
+    fetch(`${apiUrl}/monitoring/recommend`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -81,11 +82,11 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
   };
 
   return (
-    <div className="bg-white border-4 border-neutral-950 p-8">
+    <div className="bg-white border border-neutral-200 p-8 rounded-lg">
       {/* Back Button */}
       <button
         onClick={onBack}
-        className="mb-6 text-neutral-700 hover:text-neutral-950 transition-colors flex items-center gap-3 label-uppercase"
+        className="mb-6 text-neutral-700 hover:text-neutral-950 transition-colors flex items-center gap-3 text-sm font-medium"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="square" strokeLinejoin="miter" d="M15 19l-7-7 7-7" />
@@ -94,63 +95,30 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
       </button>
 
       {/* Patient Card */}
-      <div className="bg-neutral-50 border-2 border-neutral-950 p-6 mb-8">
-        <div className="flex items-center gap-6">
+      <div className="bg-neutral-50 border border-neutral-200 p-4 mb-6 rounded-lg">
+        <div className="flex items-center gap-4">
           <img
             src={patient.photo_url}
             alt={patient.name}
-            className="w-20 h-20 object-cover border-2 border-neutral-950"
+            className="w-16 h-16 object-cover rounded-lg"
           />
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className="heading-section text-neutral-950">{patient.name}</h3>
-              <span className="label-uppercase bg-primary-700 text-white px-3 py-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-lg font-medium text-neutral-950">{patient.name}</h3>
+              <span className="bg-primary-700 text-white px-2 py-1 rounded text-xs">
                 {patient.patient_id}
               </span>
             </div>
-            <p className="body-default text-neutral-700 mb-1">
-              {patient.age}y/o • {patient.gender}
-            </p>
-            <p className="body-default text-neutral-950 font-medium">{patient.condition}</p>
+            <p className="text-sm text-neutral-700">{patient.age}y/o • {patient.gender}</p>
+            <p className="text-sm text-neutral-950 font-medium">{patient.condition}</p>
           </div>
         </div>
       </div>
 
-      {/* AI Recommendations */}
-      {loading ? (
-        <div className="bg-primary-100 border-2 border-primary-700 p-4 mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-5 h-5 border-2 border-primary-700 border-t-transparent animate-spin" />
-            <span className="label-uppercase text-primary-950">AI is analyzing patient condition...</span>
-          </div>
-        </div>
-      ) : aiRecommendations.length > 0 ? (
-        <div className="bg-primary-100 border-l-4 border-primary-700 p-6 mb-8">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-primary-700 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-lg">✓</span>
-            </div>
-            <div className="flex-1">
-              <h4 className="heading-subsection text-neutral-950 mb-2">
-                AI Recommendation {aiMethod === 'llm' && '(Claude)'}
-              </h4>
-              <p className="body-default text-neutral-950 mb-3">{aiReasoning}</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="label-uppercase text-neutral-700">Suggested:</span>
-                {aiRecommendations.map(rec => (
-                  <span key={rec} className="label-uppercase bg-primary-700 text-white px-3 py-1">
-                    {protocols[rec]?.label || rec}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {/* Monitoring Protocol Selection */}
       <div className="mb-8">
-        <h4 className="heading-section text-neutral-950 mb-6 border-b-2 border-neutral-950 pb-3">Select Monitoring Protocols</h4>
+        <h4 className="text-base font-medium text-neutral-950 mb-6 border-b-2 border-neutral-950 pb-3">Select Monitoring Protocols</h4>
         <div className="space-y-4">
           {Object.entries(protocols).map(([key, protocol]) => {
             const isRecommended = aiRecommendations.includes(key);
@@ -160,18 +128,18 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
               <motion.button
                 key={key}
                 onClick={() => toggleCondition(key)}
-                className={`w-full text-left p-6 border-2 transition-all ${
+                className={`w-full text-left p-6 border transition-all rounded-lg ${
                   isSelected
                     ? 'bg-primary-100 border-primary-700'
-                    : 'bg-neutral-50 border-neutral-950 hover:border-neutral-700'
+                    : 'bg-neutral-50 border-neutral-200 hover:border-neutral-400'
                 }`}
                 whileHover={{ scale: 1.005 }}
                 whileTap={{ scale: 0.995 }}
               >
                 <div className="flex items-start gap-4">
                   {/* Checkbox */}
-                  <div className={`w-6 h-6 border-2 flex items-center justify-center flex-shrink-0 mt-1 ${
-                    isSelected ? 'bg-primary-700 border-primary-700' : 'border-neutral-950'
+                  <div className={`w-6 h-6 border-2 flex items-center justify-center flex-shrink-0 mt-1 rounded ${
+                    isSelected ? 'bg-primary-700 border-primary-700' : 'border-neutral-300'
                   }`}>
                     {isSelected && (
                       <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
@@ -182,22 +150,22 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
 
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h5 className="heading-subsection text-neutral-950">{protocol.label}</h5>
+                      <h5 className="text-base font-medium text-neutral-950">{protocol.label}</h5>
                       {isRecommended && (
-                        <span className="label-uppercase bg-accent-terra text-white px-2 py-1">
+                        <span className="text-white px-2 py-1 rounded text-xs" style={{backgroundColor: '#334155'}}>
                           AI Recommended
                         </span>
                       )}
                     </div>
-                    <p className="body-default text-neutral-700 mb-3">{protocol.description}</p>
+                    <p className="text-sm text-neutral-700 mb-3">{protocol.description}</p>
                     <div className="flex flex-wrap gap-2">
                       {protocol.metrics.slice(0, 3).map(metric => (
-                        <span key={metric} className="label-uppercase bg-neutral-100 text-neutral-700 px-2 py-1 border border-neutral-950">
-                          {metric.replace(/_/g, ' ')}
+                        <span key={metric} className="bg-neutral-100 text-neutral-700 px-2 py-1 border border-neutral-200 rounded text-xs">
+                          {metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                         </span>
                       ))}
                       {protocol.metrics.length > 3 && (
-                        <span className="label-uppercase text-neutral-500">
+                        <span className="text-neutral-500 text-xs">
                           +{protocol.metrics.length - 3} more
                         </span>
                       )}
@@ -213,7 +181,7 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
       {/* Info Message */}
       {selectedConditions.length === 0 && (
         <div className="bg-accent-sand border-l-4 border-accent-terra p-4 mb-6">
-          <p className="body-default text-neutral-950">
+          <p className="text-sm text-neutral-950">
             <span className="font-semibold">Note:</span> No monitoring protocols selected. Basic vitals will still be tracked.
           </p>
         </div>
@@ -222,7 +190,7 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
       {/* Confirm Button */}
       <button
         onClick={() => onConfirm(selectedConditions)}
-        className="w-full py-4 bg-primary-700 hover:bg-primary-900 text-white label-uppercase transition-all border-2 border-primary-700 hover:border-primary-900 hover-lift"
+        className="w-full py-4 bg-primary-700 hover:bg-primary-900 text-white label-uppercase transition-all border border-primary-700 hover:border-primary-900 hover-lift rounded-lg"
       >
         Start Streaming with Selected Protocols
       </button>

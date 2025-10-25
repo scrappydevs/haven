@@ -7,6 +7,7 @@ import DetailPanel from '@/components/DetailPanel';
 import StatsBar from '@/components/StatsBar';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import GlobalActivityFeed from '@/components/GlobalActivityFeed';
+import { getApiUrl } from '@/lib/api';
 
 interface Patient {
   id: number;
@@ -83,8 +84,8 @@ export default function DashboardPage() {
 
     // Fetch active streams
     try {
-      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-      const res = await fetch(`${API_URL}/streams/active`);
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/streams/active`);
       const data = await res.json();
       setActiveStreams(data.active_streams || []);
     } catch (error) {
@@ -324,10 +325,10 @@ export default function DashboardPage() {
   }, [selectedPatientId, selectedCvData, addPatientEvent, addGlobalEvent, boxAssignments]);
 
   useEffect(() => {
-    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+    const apiUrl = getApiUrl();
     
     // Fetch patients from backend
-    fetch(`${API_URL}/patients`)
+    fetch(`${apiUrl}/patients`)
       .then(res => res.json())
       .then(data => {
         setPatients(data);
@@ -340,14 +341,14 @@ export default function DashboardPage() {
 
     // Poll for alerts every 2 seconds
     const alertInterval = setInterval(() => {
-      fetch(`${API_URL}/alerts`)
+      fetch(`${apiUrl}/alerts`)
         .then(res => res.json())
         .then(data => setAlerts(data))
         .catch(err => console.error('Error fetching alerts:', err));
     }, 2000);
 
     // Fetch stats
-    fetch(`${API_URL}/stats`)
+    fetch(`${apiUrl}/stats`)
       .then(res => res.json())
       .then(data => setStats(data))
       .catch(err => console.error('Error fetching stats:', err));
@@ -366,10 +367,10 @@ export default function DashboardPage() {
             {/* Logo */}
             <div className="flex items-center gap-4">
               <div>
-                <h1 className="text-2xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent">
+                <h1 className="text-4xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent">
                   Haven
                 </h1>
-                <p className="text-xs label-uppercase text-neutral-500 mt-1">Linvoseltamab Phase III - NCT04649359</p>
+                <p className="text-sm label-uppercase text-neutral-500 mt-1">Linvoseltamab Phase III - NCT04649359</p>
               </div>
             </div>
 
@@ -388,27 +389,31 @@ export default function DashboardPage() {
             <div className="col-span-8">
               <div className="mb-6">
                 <h2 className="text-2xl font-light tracking-tight text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">PATIENT MONITORING</h2>
-                <p className="text-sm font-light text-neutral-500 mt-3">Click any feed to view detailed analysis</p>
+                {/* <p className="text-sm font-light text-neutral-500 mt-3">Click any feed to view detailed analysis</p> */}
               </div>
 
               <div className="grid grid-cols-3 gap-4">
               {boxAssignments.map((patient, boxIndex) => {
-                // Empty box - show + button
+                // Empty box - show + button (only show if it's the last empty box)
                 if (!patient) {
+                  // Check if this is the last empty box (should be the only one)
+                  const isLastEmptyBox = boxIndex === boxAssignments.length - 1;
+                  if (!isLastEmptyBox) return null; // Skip rendering if not the last empty box
+                  
                   return (
                     <div key={boxIndex} className="flex flex-col">
-                      <div className="relative overflow-hidden border border-neutral-200 bg-neutral-50">
+                      <div className="relative overflow-hidden border border-neutral-200 bg-neutral-50 rounded-lg">
                         <div className="w-full aspect-video flex items-center justify-center">
                           <button
                             onClick={() => openPatientSelectionForBox(boxIndex)}
-                            className="w-16 h-16 bg-surface hover:bg-primary-700 border-2 border-neutral-300 hover:border-primary-700 text-neutral-400 hover:text-white text-3xl transition-all hover:scale-105 font-light"
+                            className="w-16 h-16 bg-surface hover:bg-primary-700 border border-neutral-300 hover:border-primary-700 text-neutral-400 hover:text-white text-3xl transition-all hover:scale-105 font-light rounded-lg"
                           >
                             +
                           </button>
                         </div>
                       </div>
-                      <div className="bg-surface border border-neutral-200 border-t-0 px-4 py-3">
-                        <p className="label-uppercase text-neutral-400 text-center">Box {boxIndex + 1} - Empty</p>
+                      <div className="bg-surface border border-neutral-200 border-t-0 px-4 py-3 rounded-b-lg">
+                        <p className="label-uppercase text-neutral-400 text-center">Empty</p>
                       </div>
                     </div>
                   );

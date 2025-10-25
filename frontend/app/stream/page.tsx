@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import MonitoringConditionSelector from '@/components/MonitoringConditionSelector';
+import { getApiUrl, getWsUrl } from '@/lib/api';
 
 interface Patient {
   id: string;
@@ -43,8 +44,8 @@ export default function StreamPage() {
   // Fetch active streams and open patient selection modal
   const openPatientSelection = async () => {
     try {
-      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-      const res = await fetch(`${API_URL}/streams/active`);
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/streams/active`);
       const data = await res.json();
       setActiveStreams(data.active_streams || []);
       setShowPatientModal(true);
@@ -118,11 +119,11 @@ export default function StreamPage() {
       }
 
       // Connect to patient-specific WebSocket
-      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-      const wsUrl = API_URL.replace('http', 'ws') + `/ws/stream/${selectedPatient.patient_id}`;
+      const apiUrl = getApiUrl();
+      const wsUrl = getWsUrl(`/ws/stream/${selectedPatient.patient_id}`);
       console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
 
-      const ws = new WebSocket(wsUrl || `ws://localhost:8000/ws/stream/${selectedPatient.patient_id}`);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       // Set a connection timeout
@@ -149,6 +150,14 @@ export default function StreamPage() {
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
+        if (data.type === 'error') {
+          console.error('❌ Server error:', data.message);
+          setError(data.message);
+          setIsConnecting(false);
+          ws.close();
+          return;
+        }
+
         if (data.type === 'connected') {
           console.log('✅ Handshake confirmed, starting stream');
           setIsStreaming(true);
@@ -171,11 +180,65 @@ export default function StreamPage() {
         }
       };
 
-      ws.onerror = (error) => {
+      ws.onerror = (event) => {
         clearTimeout(connectionTimeout);
-        console.error('❌ WebSocket error:', error);
-        setError('Failed to connect to server. Make sure backend is running on port 8000.');
+        const errorEvent = event as ErrorEvent & {
+          message?: string;
+          reason?: string;
+          error?: unknown;
+        };
+
+        const detailedMessage =
+          (errorEvent instanceof ErrorEvent && errorEvent.message) ||
+          errorEvent.message ||
+          (errorEvent.error instanceof Error && errorEvent.error.message) ||
+          (typeof errorEvent.reason === 'string' ? errorEvent.reason : undefined);
+
+        const fallbackMessage = `Failed to connect to server at ${apiUrl}. Make sure the backend is reachable.`;
+        let userMessage = detailedMessage ? `WebSocket error: ${detailedMessage}` : fallbackMessage;
+
+        const hints: string[] = [];
+        if (typeof window !== 'undefined') {
+          if (!navigator.onLine) {
+            hints.push('You appear to be offline.');
+          }
+          try {
+            const apiOrigin = new URL(apiUrl);
+            if (window.location.protocol === 'https:' && apiOrigin.protocol === 'http:') {
+              hints.push('Browsers block insecure ws:// connections from an HTTPS page. Use an HTTPS backend or wss:// URL.');
+            }
+          } catch {
+            // Ignore URL parsing issues
+          }
+        }
+
+        if (!detailedMessage && hints.length > 0) {
+          userMessage = `${fallbackMessage} ${hints.join(' ')}`.trim();
+        }
+
+        console.error('❌ WebSocket error:', detailedMessage || 'unknown issue', {
+          event,
+          url: ws.url,
+          readyState: ws.readyState,
+        });
+
+        setError(userMessage);
         setIsConnecting(false);
+        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        }
+        if (captureCleanupRef.current) {
+          captureCleanupRef.current();
+          captureCleanupRef.current = null;
+        }
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+        setIsStreaming(false);
       };
 
     } catch (err: any) {
@@ -331,12 +394,12 @@ export default function StreamPage() {
 
         {/* Selected Patient Card */}
         {selectedPatient ? (
-          <div className="bg-white border-2 border-neutral-950 p-6 mb-6 hover-lift">
+          <div className="bg-white border border-neutral-200 p-6 mb-6 hover-lift rounded-lg">
             <div className="flex items-center gap-6">
               <img
                 src={selectedPatient.photo_url}
                 alt={selectedPatient.name}
-                className="w-20 h-20 object-cover border-2 border-neutral-950"
+                className="w-20 h-20 object-cover rounded-lg"
               />
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
@@ -371,9 +434,9 @@ export default function StreamPage() {
             </div>
           </div>
         ) : (
-          <div className="bg-white border-2 border-neutral-950 p-12 mb-6 text-center">
+          <div className="bg-white border border-neutral-200 p-12 mb-6 text-center rounded-lg">
             <div className="mb-6">
-              <div className="w-24 h-24 mx-auto bg-neutral-100 border-2 border-neutral-950 flex items-center justify-center">
+              <div className="w-24 h-24 mx-auto bg-neutral-100 border border-neutral-200 flex items-center justify-center rounded-lg">
                 <span className="heading-section text-neutral-500">?</span>
               </div>
             </div>
@@ -389,8 +452,8 @@ export default function StreamPage() {
         )}
 
         {/* Video Preview */}
-        <div className="bg-white border-2 border-neutral-950 p-6 mb-6">
-          <div className="relative aspect-video bg-neutral-950 overflow-hidden mb-6 border-2 border-neutral-950">
+        <div className="bg-white border border-neutral-200 p-6 mb-6 rounded-lg">
+          <div className="relative aspect-video bg-neutral-950 overflow-hidden mb-6 border border-neutral-200 rounded-lg">
             <video
               ref={videoRef}
               className="w-full h-full object-cover"
@@ -454,8 +517,8 @@ export default function StreamPage() {
         </div>
 
         {/* Instructions */}
-        <div className="bg-white border-2 border-neutral-950 p-8">
-          <h2 className="heading-section text-neutral-950 mb-6 border-b-2 border-neutral-950 pb-3">How to Use</h2>
+        <div className="bg-white border border-neutral-200 p-8 rounded-lg">
+          <h2 className="heading-section text-neutral-950 mb-6 border-b border-neutral-200 pb-3">How to Use</h2>
           <ol className="space-y-4 body-default text-neutral-950">
             <li className="flex gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">01</span>
@@ -512,7 +575,7 @@ export default function StreamPage() {
           />
 
           {/* Modal */}
-          <div className="relative max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+          <div className="relative max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-lg">
             <MonitoringConditionSelector
               patient={tempPatient}
               onConfirm={(conditions) => {
@@ -543,4 +606,3 @@ export default function StreamPage() {
     </div>
   );
 }
-

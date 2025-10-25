@@ -71,13 +71,13 @@ export default function GlobalActivityFeed({ events, alerts, onPatientClick }: G
         <h2 className="text-2xl font-light tracking-tight text-neutral-950">
           LIVE ACTIVITY FEED
         </h2>
-        <p className="text-sm font-light text-neutral-500 mt-2">All active streams • Real-time</p>
+        {/* <p className="text-sm font-light text-neutral-500 mt-2">All active streams • Real-time</p> */}
       </div>
 
       {/* Alerts Section */}
       {alerts.length > 0 && (
         <div className="px-8 py-6 border-b border-neutral-200 bg-accent-terra/5 flex-shrink-0">
-          <h3 className="label-uppercase text-accent-terra mb-4 flex items-center gap-2">
+          <h3 className="text-accent-terra mb-4 flex items-center gap-2 text-sm font-medium">
             Active Alerts ({alerts.length})
           </h3>
           <div className="space-y-3 max-h-32 overflow-y-auto">
@@ -88,7 +88,7 @@ export default function GlobalActivityFeed({ events, alerts, onPatientClick }: G
                 onClick={() => onPatientClick && onPatientClick(alert.patient_id)}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="label-uppercase text-neutral-950">
+                  <span className="text-neutral-950 text-sm">
                     Patient #{alert.patient_id}
                   </span>
                   <span className="text-xs font-light text-neutral-500">
@@ -113,7 +113,6 @@ export default function GlobalActivityFeed({ events, alerts, onPatientClick }: G
             <div className="flex items-center justify-center h-full">
               <div className="text-center text-slate-600">
                 <p className="text-sm">No activity yet</p>
-                <p className="text-xs mt-1">Events will appear here when patients are monitored</p>
               </div>
             </div>
           ) : (
