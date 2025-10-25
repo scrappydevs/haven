@@ -91,6 +91,8 @@ def process_frame(frame_base64: str) -> Dict:
         head_roll = 0.0
         eye_openness = 1.0
         attention_score = 1.0
+        key_landmarks_data = []
+        head_pose_axes = None
 
         if results.multi_face_landmarks:
             landmarks = results.multi_face_landmarks[0]
@@ -190,47 +192,54 @@ def process_frame(frame_base64: str) -> Dict:
             heart_rate = int(75 + (crs_score * 30))  # 75-105 bpm range
             respiratory_rate = int(14 + (crs_score * 10))  # 14-24 breaths/min
 
-            # === DRAW KEY LANDMARKS ===
-            # Draw ~15 key points for visual feedback
-            key_landmarks = {
-                # Face outline
-                10: (255, 255, 0),    # Forehead
-                152: (255, 255, 0),   # Chin
-                234: (255, 255, 0),   # Left face
-                454: (255, 255, 0),   # Right face
-                # Eyes
-                33: (0, 255, 255),    # Right eye outer
-                133: (0, 255, 255),   # Right eye inner
-                263: (0, 255, 255),   # Left eye inner
-                362: (0, 255, 255),   # Left eye outer
-                # Nose
-                1: (255, 0, 255),     # Nose tip
-                # Mouth
-                61: (0, 255, 0),      # Upper lip
-                291: (0, 255, 0),     # Lower lip
-                # Cheeks (CRS indicators)
-                205: (0, 0, 255),     # Left cheek
-                425: (0, 0, 255),     # Right cheek
+            # === PREPARE LANDMARK DATA FOR FRONTEND ===
+            # Extract key landmarks with metadata (no drawing here)
+            key_landmarks_data = []
+            landmark_definitions = {
+                # Face outline (yellow)
+                10: {"type": "forehead", "color": "#FFFF00"},
+                152: {"type": "chin", "color": "#FFFF00"},
+                234: {"type": "left_face", "color": "#FFFF00"},
+                454: {"type": "right_face", "color": "#FFFF00"},
+                # Eyes (cyan)
+                33: {"type": "right_eye_outer", "color": "#00FFFF"},
+                133: {"type": "right_eye_inner", "color": "#00FFFF"},
+                263: {"type": "left_eye_inner", "color": "#00FFFF"},
+                362: {"type": "left_eye_outer", "color": "#00FFFF"},
+                # Nose (magenta)
+                1: {"type": "nose_tip", "color": "#FF00FF"},
+                # Mouth (green)
+                61: {"type": "upper_lip", "color": "#00FF00"},
+                291: {"type": "lower_lip", "color": "#00FF00"},
+                # Cheeks - CRS indicators (red)
+                205: {"type": "left_cheek", "color": "#FF0000"},
+                425: {"type": "right_cheek", "color": "#FF0000"},
             }
 
-            for idx, color in key_landmarks.items():
+            for idx, metadata in landmark_definitions.items():
                 lm = landmarks.landmark[idx]
-                x, y = int(lm.x * w), int(lm.y * h)
-                cv2.circle(frame, (x, y), 3, color, -1)
+                key_landmarks_data.append({
+                    "id": int(idx),
+                    "x": float(lm.x),  # Normalized 0-1
+                    "y": float(lm.y),  # Normalized 0-1
+                    "type": metadata["type"],
+                    "color": metadata["color"]
+                })
 
-            # Draw head pose axes
+            # Prepare head pose axis data for frontend drawing
+            head_pose_axes = None
             if success:
                 axis_length = 50
                 axis_3d = np.float32([[axis_length, 0, 0], [0, axis_length, 0], [0, 0, axis_length]])
                 axis_2d, _ = cv2.projectPoints(axis_3d, rotation_vec, translation_vec, camera_matrix, dist_coeffs)
 
-                nose_2d = tuple(image_points[0].astype(int))
-                # X axis (red)
-                cv2.line(frame, nose_2d, tuple(axis_2d[0].ravel().astype(int)), (0, 0, 255), 2)
-                # Y axis (green)
-                cv2.line(frame, nose_2d, tuple(axis_2d[1].ravel().astype(int)), (0, 255, 0), 2)
-                # Z axis (blue)
-                cv2.line(frame, nose_2d, tuple(axis_2d[2].ravel().astype(int)), (255, 0, 0), 2)
+                nose_2d = image_points[0].astype(int)
+                head_pose_axes = {
+                    "origin": {"x": int(nose_2d[0]), "y": int(nose_2d[1])},
+                    "x_axis": {"x": int(axis_2d[0].ravel()[0]), "y": int(axis_2d[0].ravel()[1]), "color": "#FF0000"},  # Red
+                    "y_axis": {"x": int(axis_2d[1].ravel()[0]), "y": int(axis_2d[1].ravel()[1]), "color": "#00FF00"},  # Green
+                    "z_axis": {"x": int(axis_2d[2].ravel()[0]), "y": int(axis_2d[2].ravel()[1]), "color": "#0000FF"}   # Blue
+                }
 
         # Encode frame back to base64 (quality 65 for streaming performance)
         _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
@@ -238,24 +247,36 @@ def process_frame(frame_base64: str) -> Dict:
 
         return {
             "frame": f"data:image/jpeg;base64,{frame_base64_out}",
-            "crs_score": float(round(crs_score, 2)),
-            "heart_rate": int(heart_rate),
-            "respiratory_rate": int(respiratory_rate),
-            "alert": bool(crs_score > 0.7),
-            # New pose/attention metrics
-            "head_pitch": float(round(head_pitch, 1)),
-            "head_yaw": float(round(head_yaw, 1)),
-            "head_roll": float(round(head_roll, 1)),
-            "eye_openness": float(round(eye_openness, 2)),
-            "attention_score": float(round(attention_score, 2))
+            "landmarks": key_landmarks_data,  # Array of {id, x, y, type, color}
+            "head_pose_axes": head_pose_axes,  # {origin, x_axis, y_axis, z_axis} or None
+            "metrics": {
+                "crs_score": float(round(crs_score, 2)),
+                "heart_rate": int(heart_rate),
+                "respiratory_rate": int(respiratory_rate),
+                "alert": bool(crs_score > 0.7),
+                "head_pitch": float(round(head_pitch, 1)),
+                "head_yaw": float(round(head_yaw, 1)),
+                "head_roll": float(round(head_roll, 1)),
+                "eye_openness": float(round(eye_openness, 2)),
+                "attention_score": float(round(attention_score, 2))
+            }
         }
 
     except Exception as e:
         return {
             "frame": frame_base64,
-            "crs_score": 0.0,
-            "heart_rate": 75,
-            "respiratory_rate": 14,
-            "alert": False
+            "landmarks": [],
+            "head_pose_axes": None,
+            "metrics": {
+                "crs_score": 0.0,
+                "heart_rate": 75,
+                "respiratory_rate": 14,
+                "alert": False,
+                "head_pitch": 0.0,
+                "head_yaw": 0.0,
+                "head_roll": 0.0,
+                "eye_openness": 0.0,
+                "attention_score": 0.0
+            }
         }
 

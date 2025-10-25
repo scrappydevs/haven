@@ -10,6 +10,18 @@ interface DetailPanelProps {
     condition?: string;
   } | null;
   cvData: {
+    metrics?: {
+      heart_rate?: number;
+      respiratory_rate?: number;
+      crs_score?: number;
+      alert?: boolean;
+      head_pitch?: number;
+      head_yaw?: number;
+      head_roll?: number;
+      eye_openness?: number;
+      attention_score?: number;
+    };
+    // Legacy flat format for backward compatibility
     heart_rate?: number;
     respiratory_rate?: number;
     crs_score?: number;
@@ -36,6 +48,11 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
     );
   }
 
+  // Helper to get value from either nested metrics or flat structure
+  const getValue = (key: string): any => {
+    return cvData?.metrics?.[key as keyof typeof cvData.metrics] ?? cvData?.[key as keyof typeof cvData];
+  };
+
   const getCRSStatus = (score?: number) => {
     if (!score) return { label: 'Unknown', color: 'text-slate-400' };
     if (score > 0.7) return { label: 'High Risk', color: 'text-red-400' };
@@ -43,7 +60,17 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
     return { label: 'Low Risk', color: 'text-green-400' };
   };
 
-  const crsStatus = getCRSStatus(cvData?.crs_score);
+  const crsScore = getValue('crs_score');
+  const heartRate = getValue('heart_rate');
+  const respiratoryRate = getValue('respiratory_rate');
+  const alert = getValue('alert');
+  const headPitch = getValue('head_pitch');
+  const headYaw = getValue('head_yaw');
+  const headRoll = getValue('head_roll');
+  const eyeOpenness = getValue('eye_openness');
+  const attentionScore = getValue('attention_score');
+
+  const crsStatus = getCRSStatus(crsScore);
 
   return (
     <motion.div
@@ -65,9 +92,9 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
             </div>
           </div>
           <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-            cvData?.alert ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
+            alert ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
           }`}>
-            {cvData?.alert ? '⚠️ Alert' : '✓ Stable'}
+            {alert ? '⚠️ Alert' : '✓ Stable'}
           </div>
         </div>
         {patient.condition && (
@@ -90,7 +117,7 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
               <span className="text-xs text-slate-400">Heart Rate</span>
             </div>
             <p className="text-2xl font-bold text-white">
-              {cvData?.heart_rate ?? '--'}
+              {heartRate ?? '--'}
             </p>
             <p className="text-xs text-slate-400 mt-1">bpm</p>
           </div>
@@ -102,7 +129,7 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
               <span className="text-xs text-slate-400">Resp. Rate</span>
             </div>
             <p className="text-2xl font-bold text-white">
-              {cvData?.respiratory_rate ?? '--'}
+              {respiratoryRate ?? '--'}
             </p>
             <p className="text-xs text-slate-400 mt-1">breaths/min</p>
           </div>
@@ -144,19 +171,19 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-slate-400">CRS Risk Score</span>
               <span className={`text-lg font-bold ${crsStatus.color}`}>
-                {cvData?.crs_score ? `${(cvData.crs_score * 100).toFixed(0)}%` : '--'}
+                {crsScore ? `${(crsScore * 100).toFixed(0)}%` : '--'}
               </span>
             </div>
             {/* Progress Bar */}
             <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
               <motion.div
                 className={`h-full ${
-                  (cvData?.crs_score ?? 0) > 0.7 ? 'bg-red-500' :
-                  (cvData?.crs_score ?? 0) > 0.4 ? 'bg-yellow-500' :
+                  (crsScore ?? 0) > 0.7 ? 'bg-red-500' :
+                  (crsScore ?? 0) > 0.4 ? 'bg-yellow-500' :
                   'bg-green-500'
                 }`}
                 initial={{ width: 0 }}
-                animate={{ width: `${(cvData?.crs_score ?? 0) * 100}%` }}
+                animate={{ width: `${(crsScore ?? 0) * 100}%` }}
                 transition={{ duration: 0.5 }}
               />
             </div>
@@ -170,29 +197,29 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-slate-400">Attention Level</span>
               <span className={`text-lg font-bold ${
-                (cvData?.attention_score ?? 0) > 0.7 ? 'text-green-400' :
-                (cvData?.attention_score ?? 0) > 0.4 ? 'text-yellow-400' :
+                (attentionScore ?? 0) > 0.7 ? 'text-green-400' :
+                (attentionScore ?? 0) > 0.4 ? 'text-yellow-400' :
                 'text-red-400'
               }`}>
-                {cvData?.attention_score ? `${(cvData.attention_score * 100).toFixed(0)}%` : '--'}
+                {attentionScore ? `${(attentionScore * 100).toFixed(0)}%` : '--'}
               </span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
               <motion.div
                 className={`h-full ${
-                  (cvData?.attention_score ?? 0) > 0.7 ? 'bg-green-500' :
-                  (cvData?.attention_score ?? 0) > 0.4 ? 'bg-yellow-500' :
+                  (attentionScore ?? 0) > 0.7 ? 'bg-green-500' :
+                  (attentionScore ?? 0) > 0.4 ? 'bg-yellow-500' :
                   'bg-red-500'
                 }`}
                 initial={{ width: 0 }}
-                animate={{ width: `${(cvData?.attention_score ?? 0) * 100}%` }}
+                animate={{ width: `${(attentionScore ?? 0) * 100}%` }}
                 transition={{ duration: 0.5 }}
               />
             </div>
             <div className="flex items-center gap-2 mt-2">
               <span className="text-xs text-slate-400">Eye Openness:</span>
               <span className="text-xs text-slate-300 font-semibold">
-                {cvData?.eye_openness ? `${cvData.eye_openness.toFixed(1)}%` : '--'}
+                {eyeOpenness ? `${eyeOpenness.toFixed(1)}%` : '--'}
               </span>
             </div>
           </div>
@@ -206,19 +233,19 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
               <div className="text-center">
                 <p className="text-xs text-slate-400 mb-1">Pitch</p>
                 <p className="text-lg font-bold text-white">
-                  {cvData?.head_pitch ? `${cvData.head_pitch.toFixed(1)}°` : '--'}
+                  {headPitch ? `${headPitch.toFixed(1)}°` : '--'}
                 </p>
               </div>
               <div className="text-center">
                 <p className="text-xs text-slate-400 mb-1">Yaw</p>
                 <p className="text-lg font-bold text-white">
-                  {cvData?.head_yaw ? `${cvData.head_yaw.toFixed(1)}°` : '--'}
+                  {headYaw ? `${headYaw.toFixed(1)}°` : '--'}
                 </p>
               </div>
               <div className="text-center">
                 <p className="text-xs text-slate-400 mb-1">Roll</p>
                 <p className="text-lg font-bold text-white">
-                  {cvData?.head_roll ? `${cvData.head_roll.toFixed(1)}°` : '--'}
+                  {headRoll ? `${headRoll.toFixed(1)}°` : '--'}
                 </p>
               </div>
             </div>
@@ -242,7 +269,7 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
           Recent Events
         </h4>
         <div className="space-y-2 max-h-48 overflow-y-auto">
-          {cvData?.alert ? (
+          {alert ? (
             <div className="flex gap-3 text-sm">
               <span className="text-slate-500 flex-shrink-0">
                 {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -250,7 +277,7 @@ export default function DetailPanel({ patient, cvData, isLive = false }: DetailP
               <div>
                 <span className="text-red-400 font-semibold">⚠️ CRS Alert Detected</span>
                 <p className="text-slate-400 text-xs mt-1">
-                  CRS risk elevated to {cvData.crs_score ? `${(cvData.crs_score * 100).toFixed(0)}%` : 'unknown'}
+                  CRS risk elevated to {crsScore ? `${(crsScore * 100).toFixed(0)}%` : 'unknown'}
                 </p>
               </div>
             </div>

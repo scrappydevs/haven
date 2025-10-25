@@ -239,25 +239,34 @@ async def websocket_stream(websocket: WebSocket):
                     last_cv_result = result
 
                     if frame_count % 30 == 0:
-                        print(f"📦 Frame #{frame_count} [PROCESSED], CRS: {result.get('crs_score')}, viewers: {len(manager.viewers)}")
+                        crs = result.get('metrics', {}).get('crs_score', 0)
+                        print(f"📦 Frame #{frame_count} [PROCESSED], CRS: {crs}, viewers: {len(manager.viewers)}")
                 else:
                     # Use cached CV data for skipped frames, just update the image
                     if last_cv_result:
                         result = {
-                            "frame": data.get("frame"),  # Use raw frame
-                            "crs_score": last_cv_result["crs_score"],
-                            "heart_rate": last_cv_result["heart_rate"],
-                            "respiratory_rate": last_cv_result["respiratory_rate"],
-                            "alert": last_cv_result["alert"]
+                            "frame": data.get("frame"),  # Use raw frame (no overlays)
+                            "landmarks": last_cv_result["landmarks"],  # Cached landmark positions
+                            "head_pose_axes": last_cv_result["head_pose_axes"],  # Cached pose axes
+                            "metrics": last_cv_result["metrics"]  # Cached metrics
                         }
                     else:
                         # First frame(s), use defaults
                         result = {
                             "frame": data.get("frame"),
-                            "crs_score": 0.0,
-                            "heart_rate": 75,
-                            "respiratory_rate": 14,
-                            "alert": False
+                            "landmarks": [],
+                            "head_pose_axes": None,
+                            "metrics": {
+                                "crs_score": 0.0,
+                                "heart_rate": 75,
+                                "respiratory_rate": 14,
+                                "alert": False,
+                                "head_pitch": 0.0,
+                                "head_yaw": 0.0,
+                                "head_roll": 0.0,
+                                "eye_openness": 0.0,
+                                "attention_score": 0.0
+                            }
                         }
 
                 await manager.broadcast_frame({

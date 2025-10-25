@@ -18,10 +18,40 @@ interface VideoPlayerProps {
   onCvDataUpdate?: (patientId: number, data: CVData) => void;
 }
 
+interface Landmark {
+  id: number;
+  x: number;  // Normalized 0-1
+  y: number;  // Normalized 0-1
+  type: string;
+  color: string;
+}
+
+interface HeadPoseAxes {
+  origin: { x: number; y: number };
+  x_axis: { x: number; y: number; color: string };
+  y_axis: { x: number; y: number; color: string };
+  z_axis: { x: number; y: number; color: string };
+}
+
 interface CVData {
-  crs_score: number;
-  heart_rate: number;
-  respiratory_rate: number;
+  frame?: string;
+  landmarks?: Landmark[];
+  head_pose_axes?: HeadPoseAxes | null;
+  metrics?: {
+    crs_score: number;
+    heart_rate: number;
+    respiratory_rate: number;
+    alert: boolean;
+    head_pitch?: number;
+    head_yaw?: number;
+    head_roll?: number;
+    eye_openness?: number;
+    attention_score?: number;
+  };
+  // Legacy flat format for backward compatibility with pre-recorded videos
+  crs_score?: number;
+  heart_rate?: number;
+  respiratory_rate?: number;
   alert?: boolean;
   head_pitch?: number;
   head_yaw?: number;
@@ -33,6 +63,7 @@ interface CVData {
 export default function VideoPlayer({ patient, isLive = false, isSelected = false, onCvDataUpdate }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [cvData, setCvData] = useState<CVData | null>(null);
   const [alertFired, setAlertFired] = useState(false);
@@ -45,6 +76,79 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cvData, isSelected]); // Intentionally excluding onCvDataUpdate and patient.id to avoid infinite loops
+
+  // Canvas overlay drawing effect - runs whenever CV data updates
+  useEffect(() => {
+    if (!cvData || !isLive) return;  // Only draw overlays for live feeds
+
+    const canvas = overlayCanvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Match canvas size to image display size
+    const rect = img.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    // Clear previous frame
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw landmarks
+    if (cvData.landmarks && cvData.landmarks.length > 0) {
+      cvData.landmarks.forEach((lm) => {
+        ctx.fillStyle = lm.color;
+        ctx.beginPath();
+        ctx.arc(
+          lm.x * canvas.width,   // Scale normalized coords to canvas size
+          lm.y * canvas.height,
+          3,  // Radius
+          0,
+          2 * Math.PI
+        );
+        ctx.fill();
+      });
+    }
+
+    // Draw head pose axes
+    if (cvData.head_pose_axes) {
+      const axes = cvData.head_pose_axes;
+      const origin = axes.origin;
+
+      // Scale axis coordinates to match image display size
+      const scaleX = canvas.width / (img.naturalWidth || canvas.width);
+      const scaleY = canvas.height / (img.naturalHeight || canvas.height);
+
+      const scaledOrigin = {
+        x: origin.x * scaleX,
+        y: origin.y * scaleY
+      };
+
+      // Draw X axis (Red)
+      ctx.strokeStyle = axes.x_axis.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(scaledOrigin.x, scaledOrigin.y);
+      ctx.lineTo(axes.x_axis.x * scaleX, axes.x_axis.y * scaleY);
+      ctx.stroke();
+
+      // Draw Y axis (Green)
+      ctx.strokeStyle = axes.y_axis.color;
+      ctx.beginPath();
+      ctx.moveTo(scaledOrigin.x, scaledOrigin.y);
+      ctx.lineTo(axes.y_axis.x * scaleX, axes.y_axis.y * scaleY);
+      ctx.stroke();
+
+      // Draw Z axis (Blue)
+      ctx.strokeStyle = axes.z_axis.color;
+      ctx.beginPath();
+      ctx.moveTo(scaledOrigin.x, scaledOrigin.y);
+      ctx.lineTo(axes.z_axis.x * scaleX, axes.z_axis.y * scaleY);
+      ctx.stroke();
+    }
+  }, [cvData, isLive]);
 
   // WebSocket effect for live feed only - separate from pre-recorded
   useEffect(() => {
@@ -66,14 +170,16 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       if (data.type === 'live_frame' && data.patient_id === 'live-1') {
         if (imgRef.current && data.data?.frame) {
           imgRef.current.src = data.data.frame;
-          console.log('🖼️ Updated live frame, CRS:', data.data.crs_score, 'HR:', data.data.heart_rate);
+          const crs = data.data.metrics?.crs_score || 0;
+          const hr = data.data.metrics?.heart_rate || 0;
+          console.log('🖼️ Updated live frame, CRS:', crs, 'HR:', hr);
         }
 
         setCvData(data.data);
 
-        if (data.data.alert && !alertFired) {
+        if (data.data.metrics?.alert && !alertFired) {
           setAlertFired(true);
-          console.log('🚨 ALERT FIRED! CRS:', data.data.crs_score);
+          console.log('🚨 ALERT FIRED! CRS:', data.data.metrics.crs_score);
           const audio = new Audio('/alert.mp3');
           audio.play().catch(e => console.log('Audio play failed:', e));
         }
@@ -112,7 +218,9 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         .then(data => {
           setCvData(data);
 
-          if (data.alert && !alertFired) {
+          // Handle both nested (metrics.alert) and flat (alert) formats
+          const isAlert = data.metrics?.alert || data.alert;
+          if (isAlert && !alertFired) {
             setAlertFired(true);
             const audio = new Audio('/alert.mp3');
             audio.play().catch(e => console.log('Audio play failed:', e));
@@ -138,12 +246,19 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     >
       {/* Video Element - Clean, no overlays */}
       {isLive ? (
-        <img
-          ref={imgRef}
-          className="w-full aspect-video object-cover bg-black"
-          alt="Live stream"
-          src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-        />
+        <div className="relative w-full aspect-video bg-black">
+          <img
+            ref={imgRef}
+            className="w-full h-full object-cover"
+            alt="Live stream"
+            src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+          />
+          {/* Canvas overlay for landmarks and pose axes */}
+          <canvas
+            ref={overlayCanvasRef}
+            className="absolute inset-0 pointer-events-none"
+          />
+        </div>
       ) : patient.id <= 5 ? (
         <video
           ref={videoRef}
