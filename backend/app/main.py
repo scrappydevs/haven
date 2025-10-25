@@ -301,12 +301,37 @@ async def get_active_streams():
     }
 
 
-@app.websocket("/ws/stream")
-async def websocket_stream(websocket: WebSocket):
-    """WebSocket endpoint for webcam streaming"""
+@app.websocket("/ws/stream/{patient_id}")
+async def websocket_stream(websocket: WebSocket, patient_id: str):
+    """WebSocket endpoint for patient-specific streaming"""
+
+    # Verify patient exists in Supabase before accepting connection
+    if supabase:
+        try:
+            patient = supabase.table("patients") \
+                .select("*") \
+                .eq("patient_id", patient_id) \
+                .single() \
+                .execute()
+
+            if not patient.data:
+                await websocket.close(code=1008, reason=f"Patient {patient_id} not found")
+                print(f"❌ Connection rejected: Patient {patient_id} not found")
+                return
+        except Exception as e:
+            await websocket.close(code=1011, reason="Database error")
+            print(f"❌ Database error verifying patient {patient_id}: {e}")
+            return
+
+    # Check if patient is already streaming
+    if patient_id in manager.streamers:
+        await websocket.close(code=1008, reason=f"Patient {patient_id} is already streaming")
+        print(f"❌ Connection rejected: Patient {patient_id} already has an active stream")
+        return
+
+    # Accept connection and register streamer
     await websocket.accept()
-    manager.streamers.append(websocket)
-    print(f"✅ Streamer connected. Total: {len(manager.streamers)}")
+    manager.register_streamer(patient_id, websocket)
 
     try:
         frame_count = 0
@@ -324,7 +349,7 @@ async def websocket_stream(websocket: WebSocket):
 
                     if frame_count % 30 == 0:
                         crs = result.get('metrics', {}).get('crs_score', 0)
-                        print(f"📦 Frame #{frame_count} [PROCESSED], CRS: {crs}, viewers: {len(manager.viewers)}")
+                        print(f"📦 Patient {patient_id} - Frame #{frame_count} [PROCESSED], CRS: {crs}, viewers: {len(manager.viewers)}")
                 else:
                     # Use cached CV data for skipped frames, just update the image
                     if last_cv_result:
@@ -353,18 +378,19 @@ async def websocket_stream(websocket: WebSocket):
                             }
                         }
 
+                # Broadcast with patient_id tag
                 await manager.broadcast_frame({
                     "type": "live_frame",
-                    "patient_id": "live-1",
+                    "patient_id": patient_id,  # Patient-specific tag
                     "data": result
                 })
 
     except WebSocketDisconnect:
-        print("Streamer disconnected")
+        print(f"❌ Patient {patient_id} stream disconnected")
     except Exception as e:
-        print(f"❌ Stream error: {e}")
+        print(f"❌ Stream error for patient {patient_id}: {e}")
     finally:
-        manager.disconnect(websocket)
+        manager.unregister_streamer(patient_id)
 
 
 @app.websocket("/ws/view")

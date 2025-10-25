@@ -1,6 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import PatientSearchModal from '@/components/PatientSearchModal';
+
+interface Patient {
+  id: string;
+  patient_id: string;
+  name: string;
+  age: number;
+  gender: string;
+  photo_url: string;
+  condition: string;
+}
 
 export default function StreamPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -8,6 +19,11 @@ export default function StreamPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const captureCleanupRef = useRef<(() => void) | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [showPatientModal, setShowPatientModal] = useState(false);
+  const [activeStreams, setActiveStreams] = useState<string[]>([]);
+
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [fps, setFps] = useState(0);
@@ -20,7 +36,26 @@ export default function StreamPage() {
     };
   }, []);
 
+  // Fetch active streams and open patient selection modal
+  const openPatientSelection = async () => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/streams/active`);
+      const data = await res.json();
+      setActiveStreams(data.active_streams || []);
+      setShowPatientModal(true);
+    } catch (error) {
+      console.error('Error fetching active streams:', error);
+      setShowPatientModal(true);  // Show modal anyway
+    }
+  };
+
   const startStreaming = async () => {
+    // Check if patient is selected
+    if (!selectedPatient) {
+      setError('Please select a patient first');
+      return;
+    }
+
     // Prevent double-start
     if (isStreaming || isConnecting) {
       console.log('⚠️ Already streaming or connecting');
@@ -77,11 +112,11 @@ export default function StreamPage() {
         throw new Error('Failed to play video');
       }
 
-      // Connect to WebSocket
-      const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') + '/ws/stream';
-      console.log('🔌 Connecting to WebSocket:', wsUrl);
+      // Connect to patient-specific WebSocket
+      const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') + `/ws/stream/${selectedPatient.patient_id}`;
+      console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
 
-      const ws = new WebSocket(wsUrl || 'ws://localhost:8000/ws/stream');
+      const ws = new WebSocket(wsUrl || `ws://localhost:8000/ws/stream/${selectedPatient.patient_id}`);
       wsRef.current = ws;
 
       // Set a connection timeout
@@ -273,6 +308,53 @@ export default function StreamPage() {
           </div>
         )}
 
+        {/* Selected Patient Card */}
+        {selectedPatient ? (
+          <div className="bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700">
+            <div className="flex items-center gap-4">
+              <img
+                src={selectedPatient.photo_url}
+                alt={selectedPatient.name}
+                className="w-16 h-16 rounded-full object-cover border-2 border-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-lg font-semibold text-white">{selectedPatient.name}</h3>
+                  <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full">
+                    {selectedPatient.patient_id}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-400">
+                  {selectedPatient.age}y/o • {selectedPatient.gender}
+                </p>
+                <p className="text-sm text-slate-300 mt-1">{selectedPatient.condition}</p>
+              </div>
+              {!isStreaming && (
+                <button
+                  onClick={openPatientSelection}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors"
+                >
+                  Change Patient
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-slate-800 rounded-lg p-8 mb-6 border border-slate-700 text-center">
+            <div className="mb-4">
+              <span className="text-6xl">👤</span>
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No Patient Selected</h3>
+            <p className="text-slate-400 mb-4">Select a patient to start streaming</p>
+            <button
+              onClick={openPatientSelection}
+              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors"
+            >
+              Select Patient
+            </button>
+          </div>
+        )}
+
         {/* Video Preview */}
         <div className="bg-slate-800 rounded-lg p-6 mb-6">
           <div className="relative aspect-video bg-black rounded-lg overflow-hidden mb-4">
@@ -311,9 +393,14 @@ export default function StreamPage() {
             {!isStreaming && !isConnecting ? (
               <button
                 onClick={startStreaming}
-                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-lg transition-colors"
+                disabled={!selectedPatient}
+                className={`flex-1 font-semibold py-3 rounded-lg transition-colors ${
+                  selectedPatient
+                    ? 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
+                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                }`}
               >
-                🎥 Start Streaming
+                🎥 Start Streaming {selectedPatient ? `as ${selectedPatient.patient_id}` : ''}
               </button>
             ) : isConnecting ? (
               <button
@@ -354,6 +441,14 @@ export default function StreamPage() {
         {/* Hidden canvas for frame capture */}
         <canvas ref={canvasRef} className="hidden" />
       </div>
+
+      {/* Patient Search Modal */}
+      <PatientSearchModal
+        isOpen={showPatientModal}
+        onClose={() => setShowPatientModal(false)}
+        onSelect={setSelectedPatient}
+        activeStreams={activeStreams}
+      />
     </div>
   );
 }
