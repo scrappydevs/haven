@@ -141,51 +141,68 @@ class SMSAlertRequest(BaseModel):
 @app.post("/alerts/trigger")
 async def trigger_sms_alert(request: SMSAlertRequest):
     """
-    Send SMS alert via Twilio
+    Send SMS alert via Vonage (Nexmo)
     For MVP: Manual alerts from dashboard
     Future: Automatically triggered by AI agent
+    
+    No A2P registration needed - works immediately for global numbers
     """
     try:
-        # Get Twilio credentials from secrets
-        TWILIO_ACCOUNT_SID = get_secret("TWILIO_ACCOUNT_SID")
-        TWILIO_AUTH_TOKEN = get_secret("TWILIO_AUTH_TOKEN")
-        TWILIO_PHONE_NUMBER = get_secret("TWILIO_PHONE_NUMBER")
+        # Get Vonage credentials from secrets
+        VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
+        VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
         
-        if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
+        if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
+            # Mock mode for demos without credentials
+            print(f"⚠️  Vonage not configured - mock sending SMS to {request.phone_number}")
+            print(f"   Message: {request.message}")
             return {
-                "status": "error",
-                "message": "Twilio credentials not configured",
+                "status": "success",
+                "message": "Alert sent (mock mode - Vonage not configured)",
                 "mock_sent": True,
-                "details": "In production, this would send via Twilio"
+                "to": request.phone_number
             }
         
-        # Import Twilio client
-        from twilio.rest import Client
+        # Import Vonage client
+        import vonage
         
-        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        client = vonage.Client(key=VONAGE_API_KEY, secret=VONAGE_API_SECRET)
+        sms = vonage.Sms(client)
         
         # Send SMS
-        message = client.messages.create(
-            body=f"[Haven Alert] {request.message}",
-            from_=TWILIO_PHONE_NUMBER,
-            to=request.phone_number
-        )
+        response = sms.send_message({
+            "from": "HavenAI",  # Sender ID (max 11 chars, alphanumeric)
+            "to": request.phone_number,
+            "text": f"[Haven Alert] {request.message}"
+        })
         
-        print(f"✅ SMS sent to {request.phone_number}: {message.sid}")
-        
-        return {
-            "status": "success",
-            "message": "Alert sent successfully",
-            "sid": message.sid,
-            "to": request.phone_number
-        }
+        # Check response status
+        if response["messages"][0]["status"] == "0":
+            message_id = response["messages"][0]["message-id"]
+            print(f"✅ SMS sent to {request.phone_number}: {message_id}")
+            
+            return {
+                "status": "success",
+                "message": "Alert sent successfully",
+                "message_id": message_id,
+                "to": request.phone_number,
+                "remaining_balance": response["messages"][0].get("remaining-balance"),
+                "price": response["messages"][0].get("message-price")
+            }
+        else:
+            error_text = response["messages"][0].get("error-text", "Unknown error")
+            print(f"❌ Vonage SMS failed: {error_text}")
+            return {
+                "status": "error",
+                "message": f"SMS failed: {error_text}"
+            }
         
     except ImportError:
-        # Twilio not installed - return mock success
-        print(f"⚠️ Twilio not installed - mock sending SMS to {request.phone_number}")
+        # Vonage not installed - return mock success
+        print(f"⚠️  Vonage library not installed - mock sending SMS to {request.phone_number}")
         return {
             "status": "success",
-            "message": "Alert sent (mock mode - Twilio not installed)",
+            "message": "Alert sent (mock mode - Vonage not installed)",
             "mock_sent": True,
             "to": request.phone_number
         }

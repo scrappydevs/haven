@@ -152,7 +152,7 @@ export default function ManualAlertsPanel() {
         {/* Info Notice */}
         <div className="mt-4 p-3 bg-neutral-50 border border-neutral-200">
           <p className="text-xs text-neutral-600 font-light">
-            <span className="font-medium">Note:</span> This will send an SMS via Twilio. 
+            <span className="font-medium">Note:</span> This will send an SMS via Vonage (global delivery, no A2P registration needed). 
             In production, alerts will be triggered automatically by the AI when anomalies are detected.
           </p>
         </div>
