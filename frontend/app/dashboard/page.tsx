@@ -567,18 +567,38 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b-2 border-neutral-950 bg-surface">
-        <div className="container mx-auto px-6 py-6">
+      <header className="bg-surface">
+        <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            {/* Logo */}
-            <div className="flex items-center gap-4">
-              <div>
-                <h1 className="text-4xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent">
-                  Haven
-                </h1>
-                <p className="text-sm label-uppercase text-neutral-500 mt-1">Linvoseltamab Phase III - NCT04649359</p>
-              </div>
+            {/* Left: Logo */}
+            <div>
+              <h1 className="text-3xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent leading-tight">
+                Haven
+              </h1>
+              <p className="text-[10px] label-uppercase text-neutral-500 mt-0.5">Linvoseltamab Phase III - NCT04649359</p>
             </div>
+
+            {/* Center: Navigation */}
+            <nav className="flex items-center gap-1">
+              <a
+                href="/dashboard"
+                className="px-6 py-2 label-uppercase text-xs text-neutral-950 border-b-2 border-primary-700 hover:bg-neutral-50 transition-colors"
+              >
+                Dashboard
+              </a>
+              <a
+                href="/dashboard/floorplan"
+                className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
+              >
+                Floor Plan
+              </a>
+              <a
+                href="/stream"
+                className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
+              >
+                Stream
+              </a>
+            </nav>
 
             {/* Right side: Alerts & User */}
             <div className="flex items-center gap-4">
@@ -602,9 +622,9 @@ export default function DashboardPage() {
       {/* Main Content */}
       <div className="container mx-auto px-6 py-6">
         {/* Stats Bar */}
-        <div className="mb-6">
+        {/* <div className="mb-6">
           <StatsBar stats={stats} alertCount={alerts.length} />
-        </div>
+        </div> */}
 
         {viewMode === 'overview' ? (
           // OVERVIEW MODE: 6-box grid + global activity feed
