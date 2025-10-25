@@ -7,6 +7,7 @@ import DetailPanel from '@/components/DetailPanel';
 import StatsBar from '@/components/StatsBar';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import GlobalActivityFeed from '@/components/GlobalActivityFeed';
+import AgentAlertToast from '@/components/AgentAlertToast';
 
 interface Patient {
   id: number;
@@ -71,6 +72,12 @@ export default function DashboardPage() {
 
   // Monitoring conditions for each box
   const [boxMonitoringConditions, setBoxMonitoringConditions] = useState<Record<number, string[]>>({});
+
+  // Monitoring levels for each box (BASELINE, ENHANCED, CRITICAL)
+  const [boxMonitoringLevels, setBoxMonitoringLevels] = useState<Record<number, 'BASELINE' | 'ENHANCED' | 'CRITICAL'>>({});
+
+  // Agent alerts (for toast notifications)
+  const [agentAlerts, setAgentAlerts] = useState<any[]>([]);
 
   // Patient selection modal (one-step flow)
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -148,6 +155,78 @@ export default function DashboardPage() {
   const addGlobalEvent = useCallback((event: GlobalEvent) => {
     setGlobalEventFeed(prev => [event, ...prev].slice(0, 100)); // Keep last 100 events
   }, []);
+
+  // Handle agent messages (monitoring state changes and alerts)
+  const handleAgentMessage = useCallback((boxIndex: number, message: any) => {
+    if (message.type === 'monitoring_state_change') {
+      // Update monitoring level for this box
+      setBoxMonitoringLevels(prev => ({
+        ...prev,
+        [boxIndex]: message.level
+      }));
+
+      // Add event to patient log
+      addPatientEvent(boxIndex, {
+        timestamp: new Date().toISOString(),
+        type: 'agent',
+        severity: message.level === 'CRITICAL' ? 'high' : message.level === 'ENHANCED' ? 'moderate' : 'info',
+        message: `🤖 Monitoring: ${message.level}`,
+        details: message.reason
+      });
+
+      // Add to global feed
+      const patient = boxAssignments[boxIndex];
+      if (patient) {
+        addGlobalEvent({
+          timestamp: new Date().toISOString(),
+          patientId: boxIndex,
+          patientName: patient.name,
+          type: 'agent',
+          severity: message.level === 'CRITICAL' ? 'high' : message.level === 'ENHANCED' ? 'moderate' : 'info',
+          message: `🤖 Monitoring: ${message.level}`,
+          details: message.reason
+        });
+      }
+    }
+
+    if (message.type === 'agent_alert') {
+      // Add to agent alerts for toast display
+      setAgentAlerts(prev => [...prev, {
+        id: Date.now(),
+        ...message,
+        boxIndex,
+        patientName: boxAssignments[boxIndex]?.name || 'Unknown'
+      }]);
+
+      // Add event to patient log
+      addPatientEvent(boxIndex, {
+        timestamp: new Date().toISOString(),
+        type: 'agent',
+        severity: message.severity?.toLowerCase() || 'info',
+        message: message.message,
+        details: message.reasoning
+      });
+
+      // Add to global feed
+      const patient = boxAssignments[boxIndex];
+      if (patient) {
+        addGlobalEvent({
+          timestamp: new Date().toISOString(),
+          patientId: boxIndex,
+          patientName: patient.name,
+          type: 'agent',
+          severity: message.severity?.toLowerCase() || 'info',
+          message: message.message,
+          details: message.reasoning
+        });
+      }
+
+      // Auto-dismiss alert after 10 seconds
+      setTimeout(() => {
+        setAgentAlerts(prev => prev.filter(a => a.id !== message.id));
+      }, 10000);
+    }
+  }, [addPatientEvent, addGlobalEvent, boxAssignments]);
 
   // Navigation between modes
   const onPatientClicked = (boxIndex: number) => {
@@ -427,6 +506,7 @@ export default function DashboardPage() {
                       patientId={patient.patient_id}
                       isSelected={selectedPatientId === boxIndex}
                       onCvDataUpdate={handleCvDataUpdate}
+                      onAgentMessage={(pid, msg) => handleAgentMessage(boxIndex, msg)}
                       monitoringConditions={boxMonitoringConditions[boxIndex] || []}
                     />
                     <InfoBar
@@ -437,6 +517,7 @@ export default function DashboardPage() {
                       onClick={() => {
                         onPatientClicked(boxIndex);
                       }}
+                      monitoringLevel={boxMonitoringLevels[boxIndex] || 'BASELINE'}
                     />
                   </div>
                 );
@@ -486,6 +567,7 @@ export default function DashboardPage() {
                       patientId={boxAssignments[selectedPatientId]!.patient_id}
                       isSelected={true}
                       onCvDataUpdate={handleCvDataUpdate}
+                      onAgentMessage={(pid, msg) => handleAgentMessage(selectedPatientId, msg)}
                       monitoringConditions={boxMonitoringConditions[selectedPatientId] || []}
                       fullscreenMode={true}
                     />
@@ -527,6 +609,12 @@ export default function DashboardPage() {
           .filter((p): p is SupabasePatient => p !== null)
           .map(p => p.patient_id)}
         mode="assign-stream"
+      />
+
+      {/* Agent Alert Toasts */}
+      <AgentAlertToast
+        alerts={agentAlerts}
+        onDismiss={(id) => setAgentAlerts(prev => prev.filter(a => a.id !== id))}
       />
     </div>
   );

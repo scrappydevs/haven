@@ -21,6 +21,8 @@ from app.cv_metrics import (
     TremorDetector,
     UpperBodyPostureTracker
 )
+from app.monitoring_control import monitoring_manager
+from app.patient_guardian_agent import patient_guardian
 
 # Initialize MediaPipe Face Mesh - OPTIMIZED for speed
 face_mesh = mp.solutions.face_mesh.FaceMesh(
@@ -160,6 +162,9 @@ class ConnectionManager:
 
         while not self.worker_stop_flags[patient_id].is_set():
             try:
+                # Get monitoring config for this patient
+                monitoring_config = monitoring_manager.get_config(patient_id)
+
                 # Get frame from queue (blocking with timeout)
                 frame_task = self.processing_queues[patient_id].get(timeout=0.5)
                 frame_data = frame_task["frame_data"]
@@ -171,14 +176,15 @@ class ConnectionManager:
                 fast_result = process_frame_fast(frame_data, patient_id)
                 fast_time = time.time() - start_time
 
-                # SLOW: Process metrics every 5 seconds
+                # SLOW: Process metrics at configured frequency (respects monitoring level)
                 slow_result = None
-                if frame_num - last_slow_frame >= 150:  # Every 5 seconds at 30 FPS
+                frames_per_interval = monitoring_config.frequency_seconds * 30  # Assume 30 FPS
+                if frame_num - last_slow_frame >= frames_per_interval:
                     slow_start = time.time()
-                    slow_result = process_frame_metrics(frame_data, patient_id)
+                    slow_result = process_frame_metrics(frame_data, patient_id, monitoring_config)
                     slow_time = time.time() - slow_start
                     last_slow_frame = frame_num
-                    print(f"📊 Patient {patient_id} - Frame #{frame_num} [METRICS] CRS: {slow_result['metrics'].get('crs_score', 0)}, HR: {slow_result['metrics'].get('heart_rate', 0)} (took {slow_time*1000:.0f}ms)")
+                    print(f"📊 Patient {patient_id} - Frame #{frame_num} [{monitoring_config.level}] CRS: {slow_result['metrics'].get('crs_score', 0)}, HR: {slow_result['metrics'].get('heart_rate', 0)} (took {slow_time*1000:.0f}ms)")
 
                 # Merge fast overlays with slow metrics
                 overlay_data = {
@@ -197,6 +203,21 @@ class ConnectionManager:
                     "frame_num": frame_num,
                     "data": overlay_data
                 }))
+
+                # Agent analysis: if we just calculated metrics, analyze them
+                if slow_result and slow_result.get("metrics"):
+                    try:
+                        # Analyze metrics with Patient Guardian Agent
+                        decision = patient_guardian.analyze_metrics(patient_id, slow_result["metrics"])
+
+                        # Execute decision if action needed (not MAINTAIN)
+                        if decision["action"] != "MAINTAIN":
+                            loop.run_until_complete(
+                                patient_guardian.execute_decision(patient_id, decision, self)
+                            )
+                    except Exception as e:
+                        print(f"⚠️ Agent analysis error: {e}")
+
                 loop.close()
 
                 if fast_time > 0.1:
@@ -342,10 +363,10 @@ def process_frame_fast(frame_base64: str, patient_id: Optional[str] = None) -> D
         }
 
 
-def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
+def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, monitoring_config=None) -> Dict:
     """
-    SLOW: All expensive tracker operations (rPPG, FFT, etc.) - runs every 5 seconds
-    Returns ONLY metrics, no overlay data (overlays come from fast function)
+    SLOW: Expensive tracker operations (rPPG, FFT, etc.) - respects monitoring config
+    Returns ONLY metrics that are enabled in monitoring_config
     Target: Can take 1-2 seconds since it runs infrequently
     """
     try:
@@ -373,7 +394,15 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None) -
         # Get trackers for this patient
         trackers = manager.get_trackers(patient_id) if patient_id else None
 
-        # Initialize default values
+        # Get enabled metrics from config (default to all if not specified)
+        enabled_metrics = monitoring_config.enabled_metrics if monitoring_config else [
+            "heart_rate", "respiratory_rate", "crs_score", "face_touching_frequency",
+            "restlessness_index", "movement_vigor", "tremor_magnitude", "tremor_detected",
+            "head_pitch", "head_yaw", "head_roll", "eye_openness", "attention_score",
+            "shoulder_angle", "posture_score", "upper_body_movement", "lean_forward", "arm_asymmetry"
+        ]
+
+        # Initialize default values (only for enabled metrics)
         heart_rate = 75
         respiratory_rate = 14
         crs_score = 0.0
@@ -398,107 +427,121 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None) -
         if face_results.multi_face_landmarks:
             landmarks = face_results.multi_face_landmarks[0]
 
-            # === HEAD POSE ESTIMATION ===
-            model_points = np.array([
-                (0.0, 0.0, 0.0),
-                (0.0, -330.0, -65.0),
-                (-225.0, 170.0, -135.0),
-                (225.0, 170.0, -135.0),
-                (-150.0, -150.0, -125.0),
-                (150.0, -150.0, -125.0)
-            ], dtype=np.float64)
+            # === HEAD POSE ESTIMATION === (only if attention or head pose metrics enabled)
+            needs_head_pose = any(m in enabled_metrics for m in ["head_pitch", "head_yaw", "head_roll", "attention_score"])
+            if needs_head_pose:
+                model_points = np.array([
+                    (0.0, 0.0, 0.0),
+                    (0.0, -330.0, -65.0),
+                    (-225.0, 170.0, -135.0),
+                    (225.0, 170.0, -135.0),
+                    (-150.0, -150.0, -125.0),
+                    (150.0, -150.0, -125.0)
+                ], dtype=np.float64)
 
-            image_points = np.array([
-                (int(landmarks.landmark[1].x * w), int(landmarks.landmark[1].y * h)),
-                (int(landmarks.landmark[152].x * w), int(landmarks.landmark[152].y * h)),
-                (int(landmarks.landmark[263].x * w), int(landmarks.landmark[263].y * h)),
-                (int(landmarks.landmark[33].x * w), int(landmarks.landmark[33].y * h)),
-                (int(landmarks.landmark[287].x * w), int(landmarks.landmark[287].y * h)),
-                (int(landmarks.landmark[57].x * w), int(landmarks.landmark[57].y * h))
-            ], dtype=np.float64)
+                image_points = np.array([
+                    (int(landmarks.landmark[1].x * w), int(landmarks.landmark[1].y * h)),
+                    (int(landmarks.landmark[152].x * w), int(landmarks.landmark[152].y * h)),
+                    (int(landmarks.landmark[263].x * w), int(landmarks.landmark[263].y * h)),
+                    (int(landmarks.landmark[33].x * w), int(landmarks.landmark[33].y * h)),
+                    (int(landmarks.landmark[287].x * w), int(landmarks.landmark[287].y * h)),
+                    (int(landmarks.landmark[57].x * w), int(landmarks.landmark[57].y * h))
+                ], dtype=np.float64)
 
-            focal_length = w
-            center = (w / 2, h / 2)
-            camera_matrix = np.array([
-                [focal_length, 0, center[0]],
-                [0, focal_length, center[1]],
-                [0, 0, 1]
-            ], dtype=np.float64)
+                focal_length = w
+                center = (w / 2, h / 2)
+                camera_matrix = np.array([
+                    [focal_length, 0, center[0]],
+                    [0, focal_length, center[1]],
+                    [0, 0, 1]
+                ], dtype=np.float64)
 
-            dist_coeffs = np.zeros((4, 1))
+                dist_coeffs = np.zeros((4, 1))
 
-            success, rotation_vec, translation_vec = cv2.solvePnP(
-                model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE
-            )
+                success, rotation_vec, translation_vec = cv2.solvePnP(
+                    model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE
+                )
 
-            if success:
-                rotation_mat, _ = cv2.Rodrigues(rotation_vec)
-                pose_mat = cv2.hconcat((rotation_mat, translation_vec))
-                _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(pose_mat)
-                head_pitch = float(euler_angles[0][0])
-                head_yaw = float(euler_angles[1][0])
-                head_roll = float(euler_angles[2][0])
+                if success:
+                    rotation_mat, _ = cv2.Rodrigues(rotation_vec)
+                    pose_mat = cv2.hconcat((rotation_mat, translation_vec))
+                    _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(pose_mat)
+                    head_pitch = float(euler_angles[0][0])
+                    head_yaw = float(euler_angles[1][0])
+                    head_roll = float(euler_angles[2][0])
 
-            # === EYE OPENNESS ===
-            left_eye_top = landmarks.landmark[159]
-            left_eye_bottom = landmarks.landmark[145]
-            right_eye_top = landmarks.landmark[386]
-            right_eye_bottom = landmarks.landmark[374]
+            # === EYE OPENNESS === (only if eye_openness or attention_score enabled)
+            needs_eye = any(m in enabled_metrics for m in ["eye_openness", "attention_score"])
+            if needs_eye:
+                left_eye_top = landmarks.landmark[159]
+                left_eye_bottom = landmarks.landmark[145]
+                right_eye_top = landmarks.landmark[386]
+                right_eye_bottom = landmarks.landmark[374]
 
-            left_eye_height = abs(left_eye_top.y - left_eye_bottom.y)
-            right_eye_height = abs(right_eye_top.y - right_eye_bottom.y)
-            eye_openness = (left_eye_height + right_eye_height) / 2 * 100
+                left_eye_height = abs(left_eye_top.y - left_eye_bottom.y)
+                right_eye_height = abs(right_eye_top.y - right_eye_bottom.y)
+                eye_openness = (left_eye_height + right_eye_height) / 2 * 100
 
-            # === ATTENTION SCORE ===
-            yaw_factor = max(0, 1 - abs(head_yaw) / 45.0)
-            pitch_factor = max(0, 1 - abs(head_pitch) / 30.0)
-            eye_factor = min(1.0, eye_openness / 2.0)
-            attention_score = (yaw_factor * 0.4 + pitch_factor * 0.3 + eye_factor * 0.3)
+            # === ATTENTION SCORE === (only if enabled)
+            if "attention_score" in enabled_metrics:
+                yaw_factor = max(0, 1 - abs(head_yaw) / 45.0)
+                pitch_factor = max(0, 1 - abs(head_pitch) / 30.0)
+                eye_factor = min(1.0, eye_openness / 2.0)
+                attention_score = (yaw_factor * 0.4 + pitch_factor * 0.3 + eye_factor * 0.3)
 
-            # === FACIAL FLUSHING (CRS INDICATOR) ===
-            cheek_redness = 0.0
-            for idx in [205, 425]:
-                lm = landmarks.landmark[idx]
-                x, y = int(lm.x * w), int(lm.y * h)
-                roi = frame[max(0, y-10):min(h, y+10), max(0, x-10):min(w, x+10)]
+            # === FACIAL FLUSHING (CRS INDICATOR) === (only if crs_score enabled)
+            if "crs_score" in enabled_metrics:
+                cheek_redness = 0.0
+                for idx in [205, 425]:
+                    lm = landmarks.landmark[idx]
+                    x, y = int(lm.x * w), int(lm.y * h)
+                    roi = frame[max(0, y-10):min(h, y+10), max(0, x-10):min(w, x+10)]
 
-                if roi.size > 0:
-                    r = np.mean(roi[:, :, 2])
-                    g = np.mean(roi[:, :, 1])
-                    b = np.mean(roi[:, :, 0])
-                    cheek_redness += (r - (g + b) / 2) / 255.0
+                    if roi.size > 0:
+                        r = np.mean(roi[:, :, 2])
+                        g = np.mean(roi[:, :, 1])
+                        b = np.mean(roi[:, :, 0])
+                        cheek_redness += (r - (g + b) / 2) / 255.0
 
-            cheek_redness /= 2
-            crs_score = min(1.0, max(0.0, cheek_redness * 2.5))
+                cheek_redness /= 2
+                crs_score = min(1.0, max(0.0, cheek_redness * 2.5))
 
-            # === EXPENSIVE TRACKER OPERATIONS ===
+            # === EXPENSIVE TRACKER OPERATIONS === (only if enabled)
             if trackers:
-                # rPPG heart rate (FFT on forehead color changes)
-                forehead_lm = landmarks.landmark[10]
-                fx, fy = int(forehead_lm.x * w), int(forehead_lm.y * h)
-                forehead_roi = frame[max(0, fy-30):min(h, fy+10), max(0, fx-40):min(w, fx+40)]
-                heart_rate = trackers.heart_rate.process_frame(frame, forehead_roi)
+                # rPPG heart rate (FFT on forehead color changes) - expensive!
+                if "heart_rate" in enabled_metrics:
+                    forehead_lm = landmarks.landmark[10]
+                    fx, fy = int(forehead_lm.x * w), int(forehead_lm.y * h)
+                    forehead_roi = frame[max(0, fy-30):min(h, fy+10), max(0, fx-40):min(w, fx+40)]
+                    heart_rate = trackers.heart_rate.process_frame(frame, forehead_roi)
 
                 # Respiratory rate (FFT on nose movement)
-                nose_y = landmarks.landmark[1].y
-                respiratory_rate = trackers.respiratory_rate.process_frame(nose_y)
+                if "respiratory_rate" in enabled_metrics:
+                    nose_y = landmarks.landmark[1].y
+                    respiratory_rate = trackers.respiratory_rate.process_frame(nose_y)
 
                 # Face touching detection
-                face_touching_freq, is_touching = trackers.face_touching.process_frame(landmarks)
+                if "face_touching_frequency" in enabled_metrics:
+                    face_touching_freq, is_touching = trackers.face_touching.process_frame(landmarks)
 
                 # Movement and restlessness
-                restlessness_index, movement_vigor = trackers.movement.process_frame(landmarks)
+                if any(m in enabled_metrics for m in ["restlessness_index", "movement_vigor"]):
+                    restlessness_index, movement_vigor = trackers.movement.process_frame(landmarks)
 
-                # Tremor detection (FFT on hand positions)
-                tremor_magnitude, tremor_detected = trackers.tremor.process_frame(landmarks)
+                # Tremor detection (FFT on hand positions) - very expensive!
+                if any(m in enabled_metrics for m in ["tremor_magnitude", "tremor_detected"]):
+                    tremor_magnitude, tremor_detected = trackers.tremor.process_frame(landmarks)
 
                 # Upper body posture tracking
-                if pose_results.pose_landmarks:
+                needs_upper_body = any(m in enabled_metrics for m in ["shoulder_angle", "posture_score", "upper_body_movement", "lean_forward", "arm_asymmetry"])
+                if needs_upper_body and pose_results.pose_landmarks:
                     upper_body_metrics = trackers.upper_body.process_frame(pose_results.pose_landmarks)
             else:
-                # Fallback if no trackers
-                heart_rate = int(75 + (crs_score * 30))
-                respiratory_rate = int(14 + (crs_score * 10))
+                # Fallback if no trackers - only calculate if enabled
+                if "heart_rate" in enabled_metrics:
+                    heart_rate = int(75 + (crs_score * 30))
+                if "respiratory_rate" in enabled_metrics:
+                    respiratory_rate = int(14 + (crs_score * 10))
 
         # Return ONLY metrics (no overlay data)
         return {
