@@ -247,7 +247,8 @@ async def trigger_voice_alert(request: SMSAlertRequest):
 
         if not all([VONAGE_API_KEY, VONAGE_API_SECRET, VONAGE_APPLICATION_ID, VONAGE_PRIVATE_KEY]):
             # Mock mode for demos without credentials
-            print(f"⚠️  Vonage Voice not fully configured - mock calling {request.phone_number}")
+            print(
+                f"⚠️  Vonage Voice not fully configured - mock calling {request.phone_number}")
             print(f"   Message: {request.message}")
             return {
                 "status": "success",
@@ -262,7 +263,7 @@ async def trigger_voice_alert(request: SMSAlertRequest):
 
         # Import Vonage client (v4+ API)
         from vonage import Auth, Vonage
-        
+
         # Create auth with application credentials for Voice API
         auth = Auth(
             api_key=VONAGE_API_KEY,
@@ -295,7 +296,8 @@ async def trigger_voice_alert(request: SMSAlertRequest):
         })
 
         # Extract call UUID from response object
-        call_uuid = response.uuid if hasattr(response, 'uuid') else str(response)
+        call_uuid = response.uuid if hasattr(
+            response, 'uuid') else str(response)
         print(f"✅ Voice call placed to {request.phone_number}: {call_uuid}")
 
         return {
@@ -334,23 +336,24 @@ class MessengerAlertRequest(BaseModel):
 async def trigger_messenger_alert(request: MessengerAlertRequest):
     """
     Send alert via WhatsApp, Facebook Messenger, Viber, or MMS
-    
+
     NO 10DLC REGISTRATION REQUIRED FOR:
     - WhatsApp Business API
     - Facebook Messenger
     - Viber Business Messages
     - International MMS
-    
+
     These channels work immediately and bypass U.S. SMS carrier restrictions!
     """
     try:
         # Get Vonage credentials from secrets
         VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
         VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
-        
+
         if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
             # Mock mode for demos without credentials
-            print(f"⚠️  Vonage not configured - mock sending {request.channel} to {request.phone_number}")
+            print(
+                f"⚠️  Vonage not configured - mock sending {request.channel} to {request.phone_number}")
             print(f"   Message: {request.message}")
             return {
                 "status": "success",
@@ -359,31 +362,34 @@ async def trigger_messenger_alert(request: MessengerAlertRequest):
                 "to": request.phone_number,
                 "channel": request.channel
             }
-        
+
         # Import Vonage Messages API (v4+ API)
         from vonage import Auth, Vonage
         from vonage_messages import MessagesClient
-        
+
         # Create auth and client
         auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
         client = Vonage(auth=auth)
-        
+
         # Format phone number (remove + and spaces)
-        to_number = request.phone_number.replace("+", "").replace("-", "").replace(" ", "")
-        
+        to_number = request.phone_number.replace(
+            "+", "").replace("-", "").replace(" ", "")
+
         # Build message based on channel
         message_data = {
             "to": to_number,
             "message_type": "text",
             "text": f"🚨 Haven Alert: {request.message}"
         }
-        
+
         # Channel-specific configuration
         if request.channel == "whatsapp":
-            message_data["from"] = "14157386102"  # WhatsApp Business number (Vonage sandbox)
+            # WhatsApp Business number (Vonage sandbox)
+            message_data["from"] = "14157386102"
             message_data["channel"] = "whatsapp"
         elif request.channel == "messenger":
-            message_data["from"] = "107083064136738"  # Facebook Page ID (get from Vonage dashboard)
+            # Facebook Page ID (get from Vonage dashboard)
+            message_data["from"] = "107083064136738"
             message_data["channel"] = "messenger"
         elif request.channel == "viber":
             message_data["from"] = "HavenAI"  # Viber Service ID
@@ -396,12 +402,12 @@ async def trigger_messenger_alert(request: MessengerAlertRequest):
                 "status": "error",
                 "message": f"Unsupported channel: {request.channel}"
             }
-        
+
         # Send message via Vonage Messages API
         response = client.messages.send_message(message_data)
-        
+
         print(f"✅ {request.channel.title()} message sent to {request.phone_number}: {response.get('message_uuid')}")
-        
+
         return {
             "status": "success",
             "message": f"{request.channel.title()} message sent successfully",
@@ -409,10 +415,11 @@ async def trigger_messenger_alert(request: MessengerAlertRequest):
             "to": request.phone_number,
             "channel": request.channel
         }
-        
+
     except ImportError:
         # Vonage not installed - return mock success
-        print(f"⚠️  Vonage Messages API not installed - mock sending {request.channel} to {request.phone_number}")
+        print(
+            f"⚠️  Vonage Messages API not installed - mock sending {request.channel} to {request.phone_number}")
         return {
             "status": "success",
             "message": f"{request.channel.title()} message sent (mock mode - Vonage not installed)",
@@ -435,13 +442,14 @@ async def vonage_inbound_messages(request: dict):
     Receive inbound messages from WhatsApp/Messenger/Viber
     Nurses can reply to alerts directly!
     """
-    print(f"📩 Inbound message from {request.get('from')}: {request.get('message', {}).get('content', {}).get('text')}")
-    
+    print(
+        f"📩 Inbound message from {request.get('from')}: {request.get('message', {}).get('content', {}).get('text')}")
+
     # TODO: Process inbound replies from nurses
     # - Store in database
     # - Notify dashboard
     # - Update alert status
-    
+
     return {"status": "received"}
 
 
@@ -451,13 +459,14 @@ async def vonage_message_status(request: dict):
     Receive delivery status updates for sent messages
     Track if nurse received/read the alert
     """
-    print(f"📊 Message status update: {request.get('status')} for message {request.get('message_uuid')}")
-    
+    print(
+        f"📊 Message status update: {request.get('status')} for message {request.get('message_uuid')}")
+
     # TODO: Update alert delivery status in database
     # - delivered
     # - read
     # - failed
-    
+
     return {"status": "received"}
 
 
@@ -1281,8 +1290,10 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
+
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+
 
 @app.post("/ai/chat")
 async def ai_chat(request: ChatRequest):
@@ -1294,14 +1305,14 @@ async def ai_chat(request: ChatRequest):
             "response": "AI assistant is not available. Please configure ANTHROPIC_API_KEY.",
             "error": "anthropic_not_configured"
         }
-    
+
     try:
         # Convert messages to Anthropic format
         anthropic_messages = [
             {"role": msg.role, "content": msg.content}
             for msg in request.messages
         ]
-        
+
         # System prompt with context about Haven
         system_prompt = """You are Haven AI, an intelligent assistant for a hospital patient monitoring system. 
 You help clinical staff with:
@@ -1311,7 +1322,7 @@ You help clinical staff with:
 - Hospital operations and logistics
 
 Provide helpful, concise, and accurate responses. When you don't have specific information, guide users on how to find it in the system."""
-        
+
         # Call Anthropic API
         message = anthropic_client.messages.create(
             model="claude-3-sonnet-20240229",
@@ -1319,12 +1330,12 @@ Provide helpful, concise, and accurate responses. When you don't have specific i
             system=system_prompt,
             messages=anthropic_messages
         )
-        
+
         return {
             "response": message.content[0].text,
             "model": "claude-3-5-sonnet"
         }
-        
+
     except Exception as e:
         print(f"❌ Error in AI chat: {e}")
         return {

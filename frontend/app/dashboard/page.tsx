@@ -9,7 +9,6 @@ import PatientSearchModal from '@/components/PatientSearchModal';
 import GlobalActivityFeed from '@/components/GlobalActivityFeed';
 import ManualAlertsPanel from '@/components/ManualAlertsPanel';
 import { getApiUrl } from '@/lib/api';
-import AgentAlertToast from '@/components/AgentAlertToast';
 
 interface Patient {
   id: number;
@@ -101,8 +100,6 @@ export default function DashboardPage() {
     escalationsToday: number;
   }>>({});
 
-  // Agent alerts (for toast notifications)
-  const [agentAlerts, setAgentAlerts] = useState<any[]>([]);
 
   // Patient selection modal (one-step flow)
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -309,14 +306,6 @@ export default function DashboardPage() {
     }
 
     if (message.type === 'agent_alert') {
-      // Add to agent alerts for toast display
-      setAgentAlerts(prev => [...prev, {
-        id: Date.now(),
-        ...message,
-        boxIndex,
-        patientName: boxAssignments[boxIndex]?.name || 'Unknown'
-      }]);
-
       // Update last decision with full details
       setBoxLastDecision(prev => ({
         ...prev,
@@ -350,11 +339,6 @@ export default function DashboardPage() {
           details: message.reasoning
         });
       }
-
-      // Auto-dismiss alert after 10 seconds
-      setTimeout(() => {
-        setAgentAlerts(prev => prev.filter(a => a.id !== message.id));
-      }, 10000);
     }
   }, [addPatientEvent, addGlobalEvent, boxAssignments]);
 
@@ -665,21 +649,26 @@ export default function DashboardPage() {
                 // Assigned box - show VideoPlayer with patient stream
                 return (
                   <div key={boxIndex} className="flex flex-col">
-                    <VideoPlayer
-                      patient={{
-                        id: boxIndex,
-                        name: patient.name,
-                        age: patient.age,
-                        condition: patient.condition,
-                        baseline_vitals: { heart_rate: 75 }
-                      }}
-                      isLive={true}
-                      patientId={patient.patient_id}
-                      isSelected={selectedPatientId === boxIndex}
-                      onCvDataUpdate={handleCvDataUpdate}
-                      onAgentMessage={(pid, msg) => handleAgentMessage(boxIndex, msg)}
-                      monitoringConditions={boxMonitoringConditions[boxIndex] || []}
-                    />
+                    <div 
+                      className="cursor-pointer"
+                      onClick={() => onPatientClicked(boxIndex)}
+                    >
+                      <VideoPlayer
+                        patient={{
+                          id: boxIndex,
+                          name: patient.name,
+                          age: patient.age,
+                          condition: patient.condition,
+                          baseline_vitals: { heart_rate: 75 }
+                        }}
+                        isLive={true}
+                        patientId={patient.patient_id}
+                        isSelected={selectedPatientId === boxIndex}
+                        onCvDataUpdate={handleCvDataUpdate}
+                        onAgentMessage={(pid, msg) => handleAgentMessage(boxIndex, msg)}
+                        monitoringConditions={boxMonitoringConditions[boxIndex] || []}
+                      />
+                    </div>
                     <InfoBar
                       patientId={patient.patient_id}
                       patientName={patient.name}
@@ -688,7 +677,6 @@ export default function DashboardPage() {
                       onClick={() => {
                         onPatientClicked(boxIndex);
                       }}
-                      monitoringLevel={boxMonitoringLevels[boxIndex] || 'BASELINE'}
                     />
                   </div>
                 );
@@ -790,14 +778,6 @@ export default function DashboardPage() {
           .map(p => p.patient_id)}
         mode="assign-stream"
       />
-
-      {/* Agent Alert Toasts - Only show in overview mode */}
-      {viewMode === 'overview' && (
-        <AgentAlertToast
-          alerts={agentAlerts}
-          onDismiss={(id) => setAgentAlerts(prev => prev.filter(a => a.id !== id))}
-        />
-      )}
     </div>
   );
 }

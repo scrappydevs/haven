@@ -11,7 +11,7 @@ export default function AppHeader() {
         <div className="flex items-center justify-between">
           {/* Left: Logo */}
           <div>
-            <h1 className="text-3xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent leading-tight">
+            <h1 className="text-3xl font-playfair font-black text-primary-950 leading-tight">
               Haven
             </h1>
           </div>

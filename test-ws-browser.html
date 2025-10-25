@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    <div id="status">Disconnected</div>
+    <button onclick="connect()">Connect to ws://localhost:8000/ws/stream/P-003</button>
+    <div id="log" style="margin-top: 20px; font-family: monospace; white-space: pre-wrap;"></div>
+
+    <script>
+        let ws = null;
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+        }
+        
+        function connect() {
+            log('🔌 Attempting to connect...');
+            document.getElementById('status').textContent = 'Connecting...';
+            
+            ws = new WebSocket('ws://localhost:8000/ws/stream/P-003');
+            
+            ws.onopen = () => {
+                log('✅ WebSocket OPENED');
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('status').style.color = 'green';
+                
+                // Send handshake
+                const handshake = JSON.stringify({
+                    type: 'handshake',
+                    monitoring_conditions: []
+                });
+                log('📤 Sending handshake: ' + handshake);
+                ws.send(handshake);
+            };
+            
+            ws.onmessage = (event) => {
+                log('📥 Received message: ' + event.data);
+            };
+            
+            ws.onerror = (event) => {
+                log('❌ WebSocket ERROR: ' + JSON.stringify(event));
+                log('   - readyState: ' + ws.readyState);
+                log('   - url: ' + ws.url);
+                document.getElementById('status').textContent = 'Error';
+                document.getElementById('status').style.color = 'red';
+            };
+            
+            ws.onclose = (event) => {
+                log('❌ WebSocket CLOSED');
+                log('   - code: ' + event.code);
+                log('   - reason: ' + event.reason);
+                log('   - wasClean: ' + event.wasClean);
+                document.getElementById('status').textContent = 'Disconnected (code: ' + event.code + ')';
+                document.getElementById('status').style.color = 'orange';
+            };
+        }
+    </script>
+</body>
+</html>
+

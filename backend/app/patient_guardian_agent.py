@@ -8,17 +8,27 @@ import os
 import json
 from typing import Dict, List, Optional
 from datetime import datetime
-import anthropic
 from app.monitoring_control import monitoring_manager, MonitoringLevel
+from app.infisical_config import get_secret
 
-# Initialize Claude client (with fallback if no API key)
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-if ANTHROPIC_API_KEY:
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    print(f"✅ Claude API initialized with key: {ANTHROPIC_API_KEY[:10]}...")
-else:
+# Try to import anthropic (with fallback if not installed)
+try:
+    import anthropic
+    ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")
+    ANTHROPIC_MODEL = os.environ.get(
+        "ANTHROPIC_MODEL",
+        "claude-haiku-4-5-20251001"  # Default Anthropic model for Haven
+    )
+    if ANTHROPIC_API_KEY:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        print(f"✅ Claude API initialized with model {ANTHROPIC_MODEL}")
+    else:
+        client = None
+        print("⚠️ No ANTHROPIC_API_KEY found - Claude reasoning will use fallback rules")
+except ImportError:
     client = None
-    print("⚠️ No ANTHROPIC_API_KEY found - Claude reasoning will use fallback rules")
+    ANTHROPIC_MODEL = None
+    print("⚠️ Anthropic library not installed - Claude reasoning will use fallback rules")
 
 class PatientGuardianAgent:
     """
@@ -82,7 +92,7 @@ class PatientGuardianAgent:
 
         try:
             response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",  # Sonnet 3.5 v2
+                model=ANTHROPIC_MODEL,
                 max_tokens=1024,
                 messages=[{
                     "role": "user",
