@@ -17,6 +17,7 @@ interface VideoPlayerProps {
   isSelected?: boolean;
   onCvDataUpdate?: (patientId: number, data: CVData) => void;
   patientId?: string;  // Patient ID to filter WebSocket messages (e.g., "P-001")
+  monitoringConditions?: string[];  // Monitoring conditions for this patient (e.g., ["CRS", "SEIZURE"])
 }
 
 interface Landmark {

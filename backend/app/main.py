@@ -500,11 +500,17 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                                 "heart_rate": 75,
                                 "respiratory_rate": 14,
                                 "alert": False,
+                                "alert_triggers": [],
                                 "head_pitch": 0.0,
                                 "head_yaw": 0.0,
                                 "head_roll": 0.0,
                                 "eye_openness": 0.0,
-                                "attention_score": 0.0
+                                "attention_score": 0.0,
+                                "shoulder_angle": 0.0,
+                                "posture_score": 1.0,
+                                "upper_body_movement": 0.0,
+                                "lean_forward": 0.0,
+                                "arm_asymmetry": 0.0
                             }
                         }
 

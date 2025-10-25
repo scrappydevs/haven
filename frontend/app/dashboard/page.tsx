@@ -52,7 +52,10 @@ export default function DashboardPage() {
     null, null, null, null, null, null  // 6 boxes, all empty initially
   ]);
 
-  // Patient selection modal
+  // Monitoring conditions for each box
+  const [boxMonitoringConditions, setBoxMonitoringConditions] = useState<Record<number, string[]>>({});
+
+  // Patient selection modal (one-step flow)
   const [showPatientModal, setShowPatientModal] = useState(false);
   const [selectedBoxIndex, setSelectedBoxIndex] = useState<number | null>(null);
   const [activeStreams, setActiveStreams] = useState<string[]>([]);
@@ -73,29 +76,44 @@ export default function DashboardPage() {
     setShowPatientModal(true);
   };
 
-  // Assign patient to a box
+  // Assign patient to box (reads monitoring config from localStorage set by Stream page)
   const assignPatientToBox = (patient: SupabasePatient) => {
     if (selectedBoxIndex === null) return;
 
+    // Read monitoring config from localStorage (set by Stream page)
+    const savedConditions = localStorage.getItem(`monitoring-${patient.patient_id}`);
+    const conditions = savedConditions ? JSON.parse(savedConditions) : [];
+
+    // Assign patient to box
     setBoxAssignments(prev => {
       const newAssignments = [...prev];
-      newAssignments[selectedBoxIndex] = patient;  // Store full patient object
+      newAssignments[selectedBoxIndex] = patient;
       return newAssignments;
     });
+
+    // Store monitoring conditions for this box
+    setBoxMonitoringConditions(prev => ({
+      ...prev,
+      [selectedBoxIndex]: conditions
+    }));
 
     setShowPatientModal(false);
     setSelectedPatientId(selectedBoxIndex);  // Auto-select the newly assigned box
 
     // Add initial monitoring event
+    const protocolsText = conditions.length > 0
+      ? `Monitoring: ${conditions.join(', ')}`
+      : 'No protocols configured (configure in Stream page)';
+
     addPatientEvent(selectedBoxIndex, {
       timestamp: new Date().toISOString(),
       type: 'system',
-      severity: 'info',
+      severity: conditions.length > 0 ? 'info' : 'warning',
       message: '📹 Monitoring Started',
-      details: `Assigned ${patient.name} to Box ${selectedBoxIndex + 1}`
+      details: `Assigned ${patient.name} to Box ${selectedBoxIndex + 1} - ${protocolsText}`
     });
 
-    console.log(`✅ Assigned ${patient.patient_id} to box ${selectedBoxIndex}`);
+    console.log(`✅ Assigned ${patient.patient_id} to box ${selectedBoxIndex} with conditions: ${conditions.length > 0 ? conditions.join(', ') : 'none'}`);
   };
 
   // Add event to patient's log
@@ -123,12 +141,14 @@ export default function DashboardPage() {
 
       // Critical alerts first
       if (metrics.alert && !prevMetrics.alert) {
+        const triggers = metrics.alert_triggers || [];
+        const triggerText = triggers.length > 0 ? triggers.join(', ') : 'Critical threshold exceeded';
         logEntries.push({
           timestamp: new Date().toISOString(),
           type: 'alert',
           severity: 'high',
-          message: 'Alert Triggered',
-          details: `CRS threshold exceeded`
+          message: '🚨 Alert Triggered',
+          details: triggerText
         });
       }
 
@@ -344,6 +364,7 @@ export default function DashboardPage() {
                       patientId={patient.patient_id}
                       isSelected={selectedPatientId === boxIndex}
                       onCvDataUpdate={handleCvDataUpdate}
+                      monitoringConditions={boxMonitoringConditions[boxIndex] || []}
                     />
                     <InfoBar
                       patientId={patient.patient_id}
@@ -383,7 +404,7 @@ export default function DashboardPage() {
               }
               cvData={selectedCvData}
               isLive={true}
-              monitoringConditions={[]}  // TODO: Get from WebSocket or store when assigning
+              monitoringConditions={selectedPatientId !== null ? (boxMonitoringConditions[selectedPatientId] || []) : []}
               events={selectedPatientId !== null ? (patientEvents[selectedPatientId] || []) : []}
             />
           </div>

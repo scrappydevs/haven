@@ -5,7 +5,7 @@ Real computer vision-based metric extraction for clinical monitoring
 
 import numpy as np
 from collections import deque
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict
 import time
 
 class HeartRateMonitor:
@@ -254,14 +254,16 @@ class TremorDetector:
     """
     Detects high-frequency tremor movements
     """
-    def __init__(self, window_size=30, fps=30):
-        self.window_size = window_size
+    def __init__(self, window_size=60, fps=30):
+        self.window_size = window_size  # 2 seconds for better FFT resolution
         self.fps = fps
-        self.hand_positions = deque(maxlen=window_size)  # Track hand/face position
+        self.hand_positions = deque(maxlen=window_size)
+        self.detection_buffer = deque(maxlen=15)  # Track last 15 detections for persistence
 
     def process_frame(self, landmarks) -> Tuple[float, bool]:
         """
         Detect tremor based on high-frequency movements
+        Requires sustained high-frequency oscillation to reduce false positives
 
         Args:
             landmarks: Face landmarks (could be extended to hand landmarks)
@@ -282,19 +284,178 @@ class TremorDetector:
             x_signal = positions[:, 0]
             y_signal = positions[:, 1]
 
-            # FFT for tremor frequency detection (4-12 Hz typical)
-            fft_x = np.fft.rfft(x_signal - np.mean(x_signal))
-            fft_y = np.fft.rfft(y_signal - np.mean(y_signal))
+            # Detrend to remove slow movements
+            x_signal = x_signal - np.mean(x_signal)
+            y_signal = y_signal - np.mean(y_signal)
+
+            # Apply Hamming window to reduce spectral leakage
+            window = np.hamming(len(x_signal))
+            x_signal = x_signal * window
+            y_signal = y_signal * window
+
+            # FFT for tremor frequency detection (4-12 Hz typical for pathological tremor)
+            fft_x = np.fft.rfft(x_signal)
+            fft_y = np.fft.rfft(y_signal)
             fft_freq = np.fft.rfftfreq(len(x_signal), 1.0 / self.fps)
 
-            # Tremor frequency range
-            mask = (fft_freq >= 4) & (fft_freq <= 12)
-            tremor_magnitude = np.mean(np.abs(fft_x[mask])) + np.mean(np.abs(fft_y[mask]))
+            # Tremor frequency range (narrower range for pathological tremor)
+            tremor_mask = (fft_freq >= 4) & (fft_freq <= 12)
+            tremor_power = np.mean(np.abs(fft_x[tremor_mask])**2) + np.mean(np.abs(fft_y[tremor_mask])**2)
 
-            tremor_detected = tremor_magnitude > 0.001  # Threshold
+            # Normal movement frequency range (0.5-3 Hz)
+            normal_mask = (fft_freq >= 0.5) & (fft_freq <= 3)
+            normal_power = np.mean(np.abs(fft_x[normal_mask])**2) + np.mean(np.abs(fft_y[normal_mask])**2)
 
-            return float(tremor_magnitude * 10000), tremor_detected  # Scale for visibility
+            # Tremor is detected only if high-frequency power significantly exceeds low-frequency
+            # This helps distinguish tremor from normal voluntary movement
+            if normal_power > 0:
+                tremor_ratio = tremor_power / (normal_power + 1e-6)
+            else:
+                tremor_ratio = 0
+
+            # Much higher threshold and require persistence
+            tremor_magnitude = float(tremor_power * 100000)
+            is_tremor_frame = tremor_magnitude > 5.0 and tremor_ratio > 1.5
+
+            # Add to detection buffer
+            self.detection_buffer.append(is_tremor_frame)
+
+            # Require 60% of recent frames to show tremor (9 out of 15)
+            tremor_detected = sum(self.detection_buffer) >= 9
+
+            return tremor_magnitude, tremor_detected
 
         except Exception as e:
             print(f"Tremor detection error: {e}")
             return 0.0, False
+
+
+class UpperBodyPostureTracker:
+    """
+    Tracks upper body posture and movement patterns
+    Useful for detecting discomfort, abnormal posture, and restlessness
+    """
+    def __init__(self, window_size=30):
+        self.window_size = window_size
+        self.shoulder_positions = deque(maxlen=window_size)
+        self.posture_history = deque(maxlen=window_size * 3)  # 3 seconds
+        self.prev_shoulder_distance = None
+
+    def process_frame(self, pose_landmarks) -> Dict[str, float]:
+        """
+        Analyze upper body posture from MediaPipe Pose landmarks
+
+        Args:
+            pose_landmarks: MediaPipe Pose landmarks (33 points)
+
+        Returns:
+            {
+                "shoulder_angle": float,  # Shoulder tilt angle (degrees)
+                "posture_score": float,   # 0-1, higher = better posture
+                "shoulder_width": float,  # Normalized shoulder distance
+                "upper_body_movement": float,  # Movement index
+                "lean_forward": float,    # Forward lean angle (degrees)
+                "arm_asymmetry": float    # 0-1, 0 = symmetric
+            }
+        """
+        if not pose_landmarks:
+            return {
+                "shoulder_angle": 0.0,
+                "posture_score": 1.0,
+                "shoulder_width": 0.0,
+                "upper_body_movement": 0.0,
+                "lean_forward": 0.0,
+                "arm_asymmetry": 0.0
+            }
+
+        try:
+            # Key landmarks (MediaPipe Pose indices)
+            # 11: Left shoulder, 12: Right shoulder
+            # 13: Left elbow, 14: Right elbow
+            # 15: Left wrist, 16: Right wrist
+            # 23: Left hip, 24: Right hip
+            # 0: Nose
+
+            left_shoulder = pose_landmarks.landmark[11]
+            right_shoulder = pose_landmarks.landmark[12]
+            left_elbow = pose_landmarks.landmark[13]
+            right_elbow = pose_landmarks.landmark[14]
+            left_hip = pose_landmarks.landmark[23]
+            right_hip = pose_landmarks.landmark[24]
+            nose = pose_landmarks.landmark[0]
+
+            # === SHOULDER ANGLE (tilt) ===
+            shoulder_angle = np.degrees(np.arctan2(
+                right_shoulder.y - left_shoulder.y,
+                right_shoulder.x - left_shoulder.x
+            ))
+
+            # === SHOULDER WIDTH (for tracking movement) ===
+            shoulder_width = np.sqrt(
+                (right_shoulder.x - left_shoulder.x)**2 +
+                (right_shoulder.y - left_shoulder.y)**2
+            )
+
+            # === POSTURE SCORE ===
+            # Good posture: shoulders level, spine straight
+            # Calculate spine alignment (shoulders to hips)
+            shoulder_center_y = (left_shoulder.y + right_shoulder.y) / 2
+            hip_center_y = (left_hip.y + right_hip.y) / 2
+            shoulder_center_x = (left_shoulder.x + right_shoulder.x) / 2
+            hip_center_x = (left_hip.x + right_hip.x) / 2
+
+            # Spine straightness (lower = better)
+            spine_horizontal_offset = abs(shoulder_center_x - hip_center_x)
+
+            # Shoulder levelness (lower = better)
+            shoulder_tilt = abs(shoulder_angle)
+
+            # Combined posture score (0-1, higher is better)
+            posture_score = max(0.0, 1.0 - (spine_horizontal_offset * 2 + shoulder_tilt / 30))
+
+            # === FORWARD LEAN ===
+            # Compare nose position to shoulder center
+            lean_forward = (shoulder_center_y - nose.y) * 100  # Positive = leaning forward
+
+            # === ARM ASYMMETRY ===
+            # Compare left and right arm positions
+            left_arm_angle = np.degrees(np.arctan2(
+                left_elbow.y - left_shoulder.y,
+                left_elbow.x - left_shoulder.x
+            ))
+            right_arm_angle = np.degrees(np.arctan2(
+                right_elbow.y - right_shoulder.y,
+                right_elbow.x - right_shoulder.x
+            ))
+            arm_asymmetry = min(1.0, abs(left_arm_angle - right_arm_angle) / 90)
+
+            # === UPPER BODY MOVEMENT ===
+            self.shoulder_positions.append((shoulder_center_x, shoulder_center_y))
+
+            if len(self.shoulder_positions) > 1:
+                # Calculate movement over time
+                positions = np.array(self.shoulder_positions)
+                movement = np.sum(np.sqrt(np.sum(np.diff(positions, axis=0)**2, axis=1)))
+                upper_body_movement = float(movement * 10)  # Scale for visibility
+            else:
+                upper_body_movement = 0.0
+
+            return {
+                "shoulder_angle": float(shoulder_angle),
+                "posture_score": float(posture_score),
+                "shoulder_width": float(shoulder_width),
+                "upper_body_movement": float(upper_body_movement),
+                "lean_forward": float(lean_forward),
+                "arm_asymmetry": float(arm_asymmetry)
+            }
+
+        except Exception as e:
+            print(f"Upper body posture tracking error: {e}")
+            return {
+                "shoulder_angle": 0.0,
+                "posture_score": 1.0,
+                "shoulder_width": 0.0,
+                "upper_body_movement": 0.0,
+                "lean_forward": 0.0,
+                "arm_asymmetry": 0.0
+            }

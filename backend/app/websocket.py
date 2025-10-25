@@ -15,13 +15,23 @@ from app.cv_metrics import (
     RespiratoryRateMonitor,
     FaceTouchingDetector,
     MovementVolumeTracker,
-    TremorDetector
+    TremorDetector,
+    UpperBodyPostureTracker
 )
 
 # Initialize MediaPipe Face Mesh
 face_mesh = mp.solutions.face_mesh.FaceMesh(
     max_num_faces=1,
     refine_landmarks=True,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
+# Initialize MediaPipe Pose
+pose = mp.solutions.pose.Pose(
+    static_image_mode=False,
+    model_complexity=1,  # 0=lite, 1=full, 2=heavy
+    smooth_landmarks=True,
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
@@ -34,6 +44,7 @@ class PatientMetricTrackers:
         self.face_touching = FaceTouchingDetector()
         self.movement = MovementVolumeTracker()
         self.tremor = TremorDetector()
+        self.upper_body = UpperBodyPostureTracker()
         self.monitoring_conditions: List[str] = []  # e.g., ['CRS', 'SEIZURE']
 
 class ConnectionManager:
@@ -140,6 +151,9 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
 
         # Run face detection
         results = face_mesh.process(rgb_frame)
+
+        # Run pose detection
+        pose_results = pose.process(rgb_frame)
 
         # Default values
         crs_score = 0.0
@@ -269,6 +283,9 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
 
                 # Tremor detection
                 tremor_magnitude, tremor_detected = trackers.tremor.process_frame(landmarks)
+
+                # Upper body posture tracking
+                upper_body_metrics = trackers.upper_body.process_frame(pose_results.pose_landmarks if pose_results.pose_landmarks else None)
             else:
                 # Fallback if no trackers available
                 heart_rate = int(75 + (crs_score * 30))
@@ -279,6 +296,14 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
                 movement_vigor = 0.0
                 tremor_magnitude = 0.0
                 tremor_detected = False
+                upper_body_metrics = {
+                    "shoulder_angle": 0.0,
+                    "posture_score": 1.0,
+                    "shoulder_width": 0.0,
+                    "upper_body_movement": 0.0,
+                    "lean_forward": 0.0,
+                    "arm_asymmetry": 0.0
+                }
 
             # === PREPARE LANDMARK DATA FOR FRONTEND ===
             # Extract key landmarks with metadata (no drawing here)
@@ -357,8 +382,19 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
                 "head_yaw": float(round(head_yaw, 1)),
                 "head_roll": float(round(head_roll, 1)),
 
-                # General alert
-                "alert": bool(crs_score > 0.7 or tremor_detected)
+                # Upper body posture metrics
+                "shoulder_angle": upper_body_metrics["shoulder_angle"],
+                "posture_score": upper_body_metrics["posture_score"],
+                "upper_body_movement": upper_body_metrics["upper_body_movement"],
+                "lean_forward": upper_body_metrics["lean_forward"],
+                "arm_asymmetry": upper_body_metrics["arm_asymmetry"],
+
+                # General alert with trigger reasons
+                "alert": bool(crs_score > 0.7 or tremor_detected),
+                "alert_triggers": list(filter(None, [
+                    f"CRS Score Critical: {int(crs_score * 100)}%" if crs_score > 0.7 else None,
+                    f"Tremor Detected: {tremor_magnitude:.1f}" if tremor_detected else None
+                ]))
             }
         }
 
@@ -372,11 +408,17 @@ def process_frame(frame_base64: str, patient_id: Optional[str] = None) -> Dict:
                 "heart_rate": 75,
                 "respiratory_rate": 14,
                 "alert": False,
+                "alert_triggers": [],
                 "head_pitch": 0.0,
                 "head_yaw": 0.0,
                 "head_roll": 0.0,
                 "eye_openness": 0.0,
-                "attention_score": 0.0
+                "attention_score": 0.0,
+                "shoulder_angle": 0.0,
+                "posture_score": 1.0,
+                "upper_body_movement": 0.0,
+                "lean_forward": 0.0,
+                "arm_asymmetry": 0.0
             }
         }
 

@@ -25,8 +25,16 @@ interface DetailPanelProps {
       tremor_detected?: boolean;
       movement_vigor?: number;
 
+      // Upper body posture
+      shoulder_angle?: number;
+      posture_score?: number;
+      upper_body_movement?: number;
+      lean_forward?: number;
+      arm_asymmetry?: number;
+
       // General
       alert?: boolean;
+      alert_triggers?: string[];
       head_pitch?: number;
       head_yaw?: number;
       head_roll?: number;
@@ -36,6 +44,7 @@ interface DetailPanelProps {
     respiratory_rate?: number;
     crs_score?: number;
     alert?: boolean;
+    alert_triggers?: string[];
   } | null;
   isLive?: boolean;
   monitoringConditions?: string[];  // NEW: Which conditions are being monitored
@@ -75,6 +84,7 @@ export default function DetailPanel({ patient, cvData, isLive = false, monitorin
   const heartRate = getValue('heart_rate');
   const respiratoryRate = getValue('respiratory_rate');
   const alert = getValue('alert');
+  const alertTriggers = getValue('alert_triggers') || [];
 
   // CRS-specific metrics
   const crsScore = getValue('crs_score');
@@ -85,6 +95,13 @@ export default function DetailPanel({ patient, cvData, isLive = false, monitorin
   const tremorMagnitude = getValue('tremor_magnitude');
   const tremorDetected = getValue('tremor_detected');
   const movementVigor = getValue('movement_vigor');
+
+  // Upper body posture metrics
+  const shoulderAngle = getValue('shoulder_angle');
+  const postureScore = getValue('posture_score');
+  const upperBodyMovement = getValue('upper_body_movement');
+  const leanForward = getValue('lean_forward');
+  const armAsymmetry = getValue('arm_asymmetry');
 
   // Head pose (useful for both)
   const headPitch = getValue('head_pitch');
@@ -114,10 +131,17 @@ export default function DetailPanel({ patient, cvData, isLive = false, monitorin
               {isLive && <span className="text-red-400">• 🔴 LIVE</span>}
             </div>
           </div>
-          <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-            alert ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
-          }`}>
-            {alert ? '⚠️ Alert' : '✓ Stable'}
+          <div className="text-right">
+            <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+              alert ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
+            }`}>
+              {alert ? '⚠️ Alert' : '✓ Stable'}
+            </div>
+            {alert && alertTriggers.length > 0 && (
+              <p className="text-xs text-red-400 mt-1">
+                {alertTriggers.join(' • ')}
+              </p>
+            )}
           </div>
         </div>
         {patient.condition && (
@@ -283,6 +307,80 @@ export default function DetailPanel({ patient, cvData, isLive = false, monitorin
         </div>
       )}
 
+      {/* Upper Body Posture */}
+      {monitoringConditions.length > 0 && (
+        <div className="px-6 py-4 border-b border-slate-700">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+              Upper Body Posture
+            </h4>
+            <span className={`text-xs font-semibold px-2 py-1 rounded ${
+              (postureScore ?? 1) > 0.7 ? 'bg-green-500/20 text-green-400' :
+              (postureScore ?? 1) > 0.4 ? 'bg-yellow-500/20 text-yellow-400' :
+              'bg-red-500/20 text-red-400'
+            }`}>
+              {(postureScore ?? 1) > 0.7 ? 'Good' :
+               (postureScore ?? 1) > 0.4 ? 'Fair' : 'Poor'}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {/* Posture Score Bar */}
+            <div className="bg-slate-900/50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-slate-400">Posture Score</span>
+                <span className="text-sm font-bold text-white">
+                  {postureScore ? `${(postureScore * 100).toFixed(0)}%` : '--'}
+                </span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                <motion.div
+                  className={`h-full ${
+                    (postureScore ?? 1) > 0.7 ? 'bg-green-500' :
+                    (postureScore ?? 1) > 0.4 ? 'bg-yellow-500' :
+                    'bg-red-500'
+                  }`}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${(postureScore ?? 1) * 100}%` }}
+                  transition={{ duration: 0.5 }}
+                />
+              </div>
+            </div>
+
+            {/* Posture Metrics Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-900/50 rounded-lg p-3">
+                <p className="text-xs text-slate-400 mb-1">Shoulder Tilt</p>
+                <p className="text-xl font-bold text-white">
+                  {shoulderAngle ? `${shoulderAngle.toFixed(1)}°` : '--'}
+                </p>
+              </div>
+              <div className="bg-slate-900/50 rounded-lg p-3">
+                <p className="text-xs text-slate-400 mb-1">Forward Lean</p>
+                <p className={`text-xl font-bold ${
+                  Math.abs(leanForward ?? 0) > 15 ? 'text-yellow-400' : 'text-white'
+                }`}>
+                  {leanForward ? `${leanForward.toFixed(1)}°` : '--'}
+                </p>
+              </div>
+              <div className="bg-slate-900/50 rounded-lg p-3">
+                <p className="text-xs text-slate-400 mb-1">Arm Asymmetry</p>
+                <p className={`text-xl font-bold ${
+                  (armAsymmetry ?? 0) > 0.3 ? 'text-yellow-400' : 'text-white'
+                }`}>
+                  {armAsymmetry ? `${(armAsymmetry * 100).toFixed(0)}%` : '--'}
+                </p>
+              </div>
+              <div className="bg-slate-900/50 rounded-lg p-3">
+                <p className="text-xs text-slate-400 mb-1">Body Movement</p>
+                <p className="text-xl font-bold text-white">
+                  {upperBodyMovement ? upperBodyMovement.toFixed(1) : '0.0'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Head Pose (shown for all) */}
       {monitoringConditions.length > 0 && (
         <div className="px-6 py-4 border-b border-slate-700">
@@ -315,9 +413,24 @@ export default function DetailPanel({ patient, cvData, isLive = false, monitorin
       {/* No Monitoring Protocols Message */}
       {monitoringConditions.length === 0 && (
         <div className="px-6 py-8 border-b border-slate-700">
-          <div className="text-center">
-            <p className="text-slate-400 text-sm mb-2">No condition-specific monitoring active</p>
-            <p className="text-slate-500 text-xs">Basic vitals will continue to be tracked</p>
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div className="flex-1">
+                <h4 className="text-yellow-400 font-semibold text-sm mb-1">
+                  No Monitoring Protocols Configured
+                </h4>
+                <p className="text-xs text-slate-400 mb-2">
+                  This patient hasn&apos;t been configured with specific monitoring protocols yet.
+                </p>
+                <p className="text-xs text-slate-500">
+                  → Go to <span className="text-blue-400 font-semibold">Stream page</span> to configure monitoring protocols
+                </p>
+                <p className="text-xs text-slate-500 mt-2">
+                  ℹ️ Basic vitals (heart rate, respiratory rate) are still being tracked
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}

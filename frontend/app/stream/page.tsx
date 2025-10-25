@@ -500,6 +500,16 @@ export default function StreamPage() {
                 setSelectedPatient(tempPatient);
                 setMonitoringConditions(conditions);
                 setShowConditionSelector(false);
+
+                // Save monitoring config to localStorage for dashboard to read
+                if (tempPatient) {
+                  localStorage.setItem(
+                    `monitoring-${tempPatient.patient_id}`,
+                    JSON.stringify(conditions)
+                  );
+                  console.log(`💾 Saved monitoring config for ${tempPatient.patient_id}:`, conditions);
+                }
+
                 setTempPatient(null);
                 console.log(`✅ Selected patient ${tempPatient.patient_id} with conditions:`, conditions);
               }}
