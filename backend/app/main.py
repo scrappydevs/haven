@@ -3,11 +3,12 @@ TrialSentinel AI - Backend API
 FastAPI application serving pre-computed CV results and trial data
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import os
 from pathlib import Path
+from app.websocket import manager, process_frame
 
 app = FastAPI(
     title="TrialSentinel AI",
@@ -215,6 +216,50 @@ async def get_stats():
         "time_savings_percent": 75,
         "lives_saved": 2  # Based on early detection
     }
+
+
+@app.websocket("/ws/stream")
+async def websocket_stream(websocket: WebSocket):
+    """
+    WebSocket endpoint for computers streaming webcam
+    Receives frames, processes with CV, broadcasts to viewers
+    """
+    await manager.connect_streamer(websocket)
+    try:
+        while True:
+            # Receive frame from streamer
+            data = await websocket.receive_json()
+
+            if data.get("type") == "frame":
+                # Process frame with computer vision
+                result = process_frame(data.get("frame"))
+
+                # Broadcast to all dashboard viewers
+                await manager.broadcast_frame({
+                    "type": "live_frame",
+                    "patient_id": "live-1",
+                    "data": result
+                })
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        print("Streamer disconnected")
+
+
+@app.websocket("/ws/view")
+async def websocket_view(websocket: WebSocket):
+    """
+    WebSocket endpoint for dashboards viewing live stream
+    Receives processed frames from backend
+    """
+    await manager.connect_viewer(websocket)
+    try:
+        while True:
+            # Keep connection alive, wait for messages
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        print("Viewer disconnected")
 
 
 if __name__ == "__main__":
