@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { API_URL, WS_URL } from '@/lib/api-config';
 import { motion } from 'framer-motion';
 
 interface VideoPlayerProps {
@@ -208,8 +209,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   useEffect(() => {
     if (!isLive) return;
 
-    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-    const wsUrl = API_URL.replace('http', 'ws') + '/ws/view';
+    const wsUrl = `${WS_URL}/ws/view`;
     console.log('🔌 Viewer connecting to:', wsUrl);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -292,7 +292,6 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       const time = video.currentTime;
       setCurrentTime(time);
 
-      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
       const timestamp = time.toFixed(1);
       fetch(`${API_URL}/cv-data/${patient.id}/${timestamp}`)
         .then(res => res.json())

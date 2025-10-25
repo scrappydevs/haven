@@ -35,6 +35,7 @@ app.add_middleware(
         "https://use-haven.vercel.app",  # Production frontend
         "http://localhost:3000",          # Local development
         "http://localhost:3001",          # Alternative local port
+        "http://localhost:3002",          # Alternative local port
     ],
     allow_credentials=True,
     allow_methods=["*"],

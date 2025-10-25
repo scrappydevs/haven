@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import MonitoringConditionSelector from '@/components/MonitoringConditionSelector';
+import { API_URL, WS_URL } from '@/lib/api-config';
 
 interface Patient {
   id: string;
@@ -43,14 +44,14 @@ export default function StreamPage() {
   // Fetch active streams and open patient selection modal
   const openPatientSelection = async () => {
     try {
-      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
       const res = await fetch(`${API_URL}/streams/active`);
       const data = await res.json();
       setActiveStreams(data.active_streams || []);
-      setShowPatientModal(true);
     } catch (error) {
       console.error('Error fetching active streams:', error);
-      setShowPatientModal(true);  // Show modal anyway
+      setActiveStreams([]);
+    } finally {
+      setShowPatientModal(true);  // Always show modal
     }
   };
 
@@ -118,11 +119,10 @@ export default function StreamPage() {
       }
 
       // Connect to patient-specific WebSocket
-      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-      const wsUrl = API_URL.replace('http', 'ws') + `/ws/stream/${selectedPatient.patient_id}`;
+      const wsUrl = `${WS_URL}/ws/stream/${selectedPatient.patient_id}`;
       console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
 
-      const ws = new WebSocket(wsUrl || `ws://localhost:8000/ws/stream/${selectedPatient.patient_id}`);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       // Set a connection timeout

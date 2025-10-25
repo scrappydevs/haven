@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_URL } from '@/lib/api-config';
 
 interface Patient {
   id: string;
@@ -35,7 +36,6 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
     const fetchPatients = async () => {
       setLoading(true);
       try {
-        const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
         const res = await fetch(`${API_URL}/patients/search?q=${search}`);
         const data = await res.json();
         setPatients(Array.isArray(data) ? data : []);
