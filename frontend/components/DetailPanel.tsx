@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import AIAgentStatus from './AIAgentStatus';
 import TerminalLog, { TerminalLogEntry } from './TerminalLog';
 import ActiveProtocols from './ActiveProtocols';
@@ -76,7 +76,7 @@ export default function DetailPanel({
   agentStats = { decisionsToday: 0, escalationsToday: 0 }
 }: DetailPanelProps) {
   const [terminalEntries, setTerminalEntries] = useState<TerminalLogEntry[]>([]);
-  const [logIdCounter, setLogIdCounter] = useState(0);
+  const logIdCounterRef = useRef(0); // Use ref for atomic increments - prevents duplicate keys
 
   // Helper to get value from either nested metrics or flat structure
   const getValue = (key: string): any => {
@@ -100,7 +100,7 @@ export default function DetailPanel({
     else if (latestEvent.type === 'monitoring') terminalType = 'monitoring';
 
     const newEntry: TerminalLogEntry = {
-      id: logIdCounter,
+      id: logIdCounterRef.current++, // Atomic increment
       timestamp: new Date(latestEvent.timestamp),
       type: terminalType,
       severity: latestEvent.severity === 'high' || latestEvent.severity === 'critical' ? 'critical' :
@@ -115,7 +115,6 @@ export default function DetailPanel({
     };
 
     setTerminalEntries(prev => [...prev, newEntry]);
-    setLogIdCounter(prev => prev + 1);
   }, [events?.length]); // Only trigger when events array length changes
 
   // Add vital sign entries when metrics update
@@ -138,7 +137,7 @@ export default function DetailPanel({
     if (hr && (hrConcerning || Math.random() < 0.3)) {
       const status = hr > 100 ? '⚠️ [ELEVATED]' : hr > 90 ? '↑ [HIGH]' : '✓ [NORMAL]';
       const entry: TerminalLogEntry = {
-        id: logIdCounter,
+        id: logIdCounterRef.current++, // Atomic increment
         timestamp: new Date(),
         type: 'vital',
         severity: hr > 100 ? 'critical' : hr > 90 ? 'warning' : 'normal',
@@ -146,14 +145,13 @@ export default function DetailPanel({
         metadata: { value: hr }
       };
       setTerminalEntries(prev => [...prev, entry].slice(-100)); // Keep last 100
-      setLogIdCounter(prev => prev + 1);
     }
 
     // Log RR if concerning
     if (rr && (rrConcerning || Math.random() < 0.3)) {
       const status = rr > 22 ? '⚠️ [ELEVATED]' : rr > 18 ? '↑ [HIGH]' : '✓ [NORMAL]';
       const entry: TerminalLogEntry = {
-        id: logIdCounter + 1,
+        id: logIdCounterRef.current++, // Atomic increment
         timestamp: new Date(),
         type: 'vital',
         severity: rr > 22 ? 'critical' : rr > 18 ? 'warning' : 'normal',
@@ -161,14 +159,13 @@ export default function DetailPanel({
         metadata: { value: rr }
       };
       setTerminalEntries(prev => [...prev, entry].slice(-100));
-      setLogIdCounter(prev => prev + 1);
     }
 
     // Log CRS if concerning
     if (crs !== undefined && (crsConcerning || Math.random() < 0.3)) {
       const status = crs > 0.7 ? '🚨 [CRITICAL]' : crs > 0.5 ? '⚠️ [CONCERNING]' : '✓ [STABLE]';
       const entry: TerminalLogEntry = {
-        id: logIdCounter + 2,
+        id: logIdCounterRef.current++, // Atomic increment
         timestamp: new Date(),
         type: 'vital',
         severity: crs > 0.7 ? 'critical' : crs > 0.5 ? 'warning' : 'normal',
@@ -176,7 +173,6 @@ export default function DetailPanel({
         metadata: { value: crs }
       };
       setTerminalEntries(prev => [...prev, entry].slice(-100));
-      setLogIdCounter(prev => prev + 1);
     }
   }, [cvData?.metrics?.heart_rate, cvData?.metrics?.respiratory_rate, cvData?.metrics?.crs_score]);
 

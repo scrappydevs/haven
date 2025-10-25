@@ -659,29 +659,36 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                 .execute()
 
             if not patient.data:
-                await websocket.close(code=1008, reason=f"Patient {patient_id} not found")
                 print(f"❌ Connection rejected: Patient {patient_id} not found")
+                # Don't accept invalid connections - FastAPI handles rejection
                 return
         except Exception as e:
-            await websocket.close(code=1011, reason="Database error")
             print(f"❌ Database error verifying patient {patient_id}: {e}")
+            # Don't accept on database errors
             return
 
     # Check if patient is already streaming
     if patient_id in manager.streamers:
-        await websocket.close(code=1008, reason=f"Patient {patient_id} is already streaming")
         print(f"❌ Connection rejected: Patient {patient_id} already has an active stream")
+        # Don't accept duplicate streams
         return
 
     # Accept connection and register streamer
     await websocket.accept()
+    print(f"✅ WebSocket connection accepted for patient {patient_id}")
 
     # Wait for initial handshake with monitoring conditions
     try:
+        print(f"⏳ Waiting for handshake from patient {patient_id}...")
         initial_data = await websocket.receive_json()
+        print(f"📨 Received handshake data: {initial_data}")
+
         monitoring_conditions = initial_data.get("monitoring_conditions", [])
+        print(f"📋 Registering streamer for patient {patient_id} with conditions: {monitoring_conditions}")
+
         manager.register_streamer(patient_id, websocket, monitoring_conditions)
-        print(f"📋 Patient {patient_id} monitoring conditions: {monitoring_conditions}")
+        print(f"✅ Streamer registered successfully for patient {patient_id}")
+        print(f"📊 Total active streamers: {len(manager.streamers)} - {list(manager.streamers.keys())}")
 
         # Send acknowledgment
         await websocket.send_json({
@@ -689,9 +696,13 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
             "patient_id": patient_id,
             "monitoring_conditions": monitoring_conditions
         })
+        print(f"📤 Sent acknowledgment to patient {patient_id}")
     except Exception as e:
         print(f"❌ Handshake error for patient {patient_id}: {e}")
+        import traceback
+        traceback.print_exc()
         manager.register_streamer(patient_id, websocket, [])
+        print(f"✅ Registered streamer with empty conditions as fallback")
 
     try:
         frame_count = 0
