@@ -37,7 +37,7 @@ function StatCard({ label, value, accentColor, width }: StatCardProps) {
     : "border-l-4 border-primary-700";
 
   return (
-    <div className={`bg-surface border border-neutral-200 ${borderClass} px-4 py-3 ${width}`}>
+    <div className={`bg-surface border border-neutral-200 ${borderClass} px-4 py-3 ${width} rounded-lg`}>
       <div className="flex items-center gap-2">
         <p className="text-neutral-500 text-sm font-light label-uppercase">{label}</p>
         {/* add a gap that right justifies the value */}
@@ -47,4 +47,3 @@ function StatCard({ label, value, accentColor, width }: StatCardProps) {
     </div>
   );
 }
-

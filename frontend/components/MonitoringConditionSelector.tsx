@@ -96,11 +96,13 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
       {/* Patient Card */}
       <div className="bg-neutral-50 border border-neutral-200 p-4 mb-6 rounded-lg">
         <div className="flex items-center gap-4">
-          <img
-            src={patient.photo_url}
-            alt={patient.name}
-            className="w-16 h-16 object-cover rounded-lg"
-          />
+          {patient.photo_url && (
+            <img
+              src={patient.photo_url}
+              alt={patient.name}
+              className="w-16 h-16 object-cover rounded-lg"
+            />
+          )}
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-lg font-medium text-neutral-950">{patient.name}</h3>

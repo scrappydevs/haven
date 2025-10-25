@@ -119,7 +119,7 @@ export default function StreamPage() {
       }
 
       // Connect to patient-specific WebSocket
-      const wsUrl = `${getWsUrl()}/ws/stream/${selectedPatient.patient_id}`;
+      const wsUrl = getWsUrl(`/ws/stream/${selectedPatient.patient_id}`);
       console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
 
       const ws = new WebSocket(wsUrl);
@@ -162,6 +162,10 @@ export default function StreamPage() {
           setIsStreaming(true);
           setIsConnecting(false);
 
+          if (data.warning) {
+            console.warn('⚠️ WebSocket warning:', data.warning);
+          }
+
           // Start capturing and sending frames
           const cleanup = startCapture();
           captureCleanupRef.current = cleanup;
@@ -174,8 +178,14 @@ export default function StreamPage() {
         setIsStreaming(false);
         setIsConnecting(false);
 
+        if (event.reason) {
+          setError(event.reason);
+        } else if (event.code === 4090) {
+          setError('This patient already has an active stream. Please stop the other stream before starting a new one.');
+        }
+
         if (event.code === 1006) {
-          setError('Connection failed. Make sure backend is running: cd backend && uvicorn app.main:app --reload');
+          setError('Connection failed. Make sure backend is running: cd backend && python3 main.py');
         }
       };
 
@@ -373,17 +383,60 @@ export default function StreamPage() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 border-b-2 border-neutral-950 pb-4">
-          <h1 className="heading-page text-neutral-950 mb-2">
-            Live Stream
-          </h1>
-          <p className="body-large text-neutral-700">
-            Stream your webcam to the dashboard for live CV analysis
-          </p>
+    <div className="min-h-screen bg-neutral-50">
+      {/* Header with Navigation */}
+      <header className="border-b-2 border-neutral-950 bg-surface">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            {/* Left: Logo */}
+            <div>
+              <h1 className="text-3xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent leading-tight">
+                Haven
+              </h1>
+            </div>
+
+            {/* Center: Navigation */}
+            <nav className="flex items-center gap-1">
+              <a
+                href="/dashboard"
+                className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
+              >
+                Dashboard
+              </a>
+              <a
+                href="/dashboard/floorplan"
+                className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
+              >
+                Floor Plan
+              </a>
+              <a
+                href="/stream"
+                className="px-6 py-2 label-uppercase text-xs text-neutral-950 border-b-2 border-primary-700 hover:bg-neutral-50 transition-colors"
+              >
+                Stream
+              </a>
+            </nav>
+
+            {/* Right side: Alerts & User */}
+            <div className="flex items-center gap-4">
+              {/* Notifications */}
+              <button className="relative p-2 text-neutral-500 hover:text-neutral-950 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+              </button>
+
+              {/* User avatar */}
+              <div className="w-9 h-9 rounded-full bg-neutral-200 border border-neutral-300 flex items-center justify-center text-neutral-600 text-sm font-medium">
+                U
+              </div>
+            </div>
+          </div>
         </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto p-6">
 
         {/* Error Message */}
         {error && (
@@ -520,23 +573,23 @@ export default function StreamPage() {
         <div className="bg-white border border-neutral-200 p-8 rounded-lg">
           <h2 className="heading-section text-neutral-950 mb-6 border-b border-neutral-200 pb-3">How to Use</h2>
           <ol className="space-y-4 body-default text-neutral-950">
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">01</span>
               <span>Click &quot;Start Streaming&quot; button above</span>
             </li>
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">02</span>
               <span>Allow camera permissions when prompted</span>
             </li>
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">03</span>
               <span>On another computer, open the dashboard</span>
             </li>
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">04</span>
               <span>Look for your patient in the live feed section</span>
             </li>
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">05</span>
               <span>Try rubbing your face to simulate CRS → Alert fires!</span>
             </li>

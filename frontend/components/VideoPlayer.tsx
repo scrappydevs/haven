@@ -210,7 +210,7 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   useEffect(() => {
     if (!isLive) return;
 
-    const wsUrl = `${getWsUrl()}/ws/view`;
+    const wsUrl = getWsUrl('/ws/view');
     console.log('🔌 Viewer connecting to:', wsUrl);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -388,14 +388,14 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         <div className={`relative w-full bg-neutral-950 ${fullscreenMode ? 'h-full' : 'aspect-video'}`}>
           <img
             ref={imgRef}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
             alt="Live stream"
             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
           />
           {/* Canvas overlay for persistent landmark and pose rendering */}
           <canvas
             ref={overlayCanvasRef}
-            className="absolute inset-0 pointer-events-none"
+            className="absolute inset-0 pointer-events-none w-full h-full"
           />
         </div>
       ) : patient.id <= 5 ? (
