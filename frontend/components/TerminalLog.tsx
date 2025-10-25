@@ -72,7 +72,7 @@ export default function TerminalLog({ entries }: TerminalLogProps) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Terminal Header - Minimal */}
       <div className="bg-neutral-900 border-b border-neutral-700 px-3 py-1.5 flex items-center justify-between" style={{ flexShrink: 0 }}>
-        <span className="font-mono text-xs text-neutral-400">PATIENT_GUARDIAN_AGENT</span>
+        <span className="font-mono text-xs text-emerald-500">FETCH_AI_HEALTH_AGENT</span>
         <span className="font-mono text-xs text-neutral-500">
           {entries.length} events
         </span>

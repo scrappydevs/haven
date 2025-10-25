@@ -134,7 +134,7 @@ export default function AIAgentStatus({
               )}
             </div>
             <p className="label-uppercase text-neutral-500 text-[10px] mt-0.5">
-              Patient Guardian • Claude 3.5 Sonnet
+              Fetch.ai Health Agent • Claude 3.5 Sonnet
             </p>
           </div>
         </div>
