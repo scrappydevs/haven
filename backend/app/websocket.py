@@ -56,11 +56,11 @@ def get_pose():
     global _pose
     if _pose is None:
         _pose = mp.solutions.pose.Pose(
-            static_image_mode=True,
+            static_image_mode=False,  # Video mode - tracks between frames (much faster)
             model_complexity=0,  # 0 = lite model (faster)
-            smooth_landmarks=False,
-            min_detection_confidence=0.3,
-            min_tracking_confidence=0.3
+            smooth_landmarks=True,  # Smooth tracking for better visual quality
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
         )
     return _pose
 
@@ -311,8 +311,8 @@ def process_frame_fast(frame_base64: str, patient_id: Optional[str] = None) -> D
 
         decode_time = time.time() - start
 
-        # AGGRESSIVE downsampling for speed
-        small_frame = cv2.resize(frame, (160, 90))
+        # AGGRESSIVE downsampling for speed (smaller = faster pose detection)
+        small_frame = cv2.resize(frame, (128, 72))
         rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
         resize_time = time.time() - start - decode_time
