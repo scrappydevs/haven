@@ -129,6 +129,176 @@ async def health_check():
     }
 
 
+# ============================================================================
+# Twilio SMS Alerts
+# ============================================================================
+
+class SMSAlertRequest(BaseModel):
+    phone_number: str
+    message: str
+
+
+@app.post("/alerts/trigger")
+async def trigger_sms_alert(request: SMSAlertRequest):
+    """
+    Send SMS alert via Vonage (Nexmo)
+    For MVP: Manual alerts from dashboard
+    Future: Automatically triggered by AI agent
+    
+    No A2P registration needed - works immediately for global numbers
+    """
+    try:
+        # Get Vonage credentials from secrets
+        VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
+        VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
+        
+        if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
+            # Mock mode for demos without credentials
+            print(f"⚠️  Vonage not configured - mock sending SMS to {request.phone_number}")
+            print(f"   Message: {request.message}")
+            return {
+                "status": "success",
+                "message": "Alert sent (mock mode - Vonage not configured)",
+                "mock_sent": True,
+                "to": request.phone_number
+            }
+        
+        # Import Vonage client (v4+ API)
+        from vonage import Auth, Vonage
+        from vonage_sms import SmsMessage
+        
+        # Create auth and client
+        auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
+        client = Vonage(auth=auth)
+        
+        # Create and send SMS message (v4 API)
+        # Use your Vonage phone number as sender for U.S. SMS compliance
+        message = SmsMessage(
+            to=request.phone_number,
+            from_="12178020876",  # Your Vonage number (supports SMS, Voice & MMS)
+            text=f"[Haven Alert] {request.message}"
+        )
+        response_obj = client.sms.send(message)
+        
+        # Check response status (v4 API uses underscores, not hyphens)
+        first_message = response_obj.messages[0]
+        if first_message.status == "0":
+            print(f"✅ SMS sent to {request.phone_number}: {first_message.message_id}")
+            
+            return {
+                "status": "success",
+                "message": "Alert sent successfully",
+                "message_id": first_message.message_id,
+                "to": request.phone_number,
+                "remaining_balance": first_message.remaining_balance,
+                "price": first_message.message_price
+            }
+        else:
+            # Status != "0" means error
+            error_msg = f"Vonage error (status {first_message.status})"
+            print(f"❌ Vonage SMS failed: {error_msg}")
+            return {
+                "status": "error",
+                "message": f"SMS failed: {error_msg}"
+            }
+        
+    except ImportError:
+        # Vonage not installed - return mock success
+        print(f"⚠️  Vonage library not installed - mock sending SMS to {request.phone_number}")
+        return {
+            "status": "success",
+            "message": "Alert sent (mock mode - Vonage not installed)",
+            "mock_sent": True,
+            "to": request.phone_number
+        }
+    except Exception as e:
+        print(f"❌ Failed to send SMS: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to send alert: {str(e)}"
+        }
+
+
+@app.post("/alerts/call")
+async def trigger_voice_alert(request: SMSAlertRequest):
+    """
+    Make voice call with TTS alert via Vonage
+    No 10DLC registration required - works immediately!
+    
+    Voice calls bypass SMS carrier restrictions
+    """
+    try:
+        # Get Vonage credentials from secrets
+        VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
+        VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
+        VONAGE_APPLICATION_ID = get_secret("VONAGE_APPLICATION_ID")
+        
+        if not all([VONAGE_API_KEY, VONAGE_API_SECRET]):
+            # Mock mode for demos without credentials
+            print(f"⚠️  Vonage not configured - mock calling {request.phone_number}")
+            print(f"   Message: {request.message}")
+            return {
+                "status": "success",
+                "message": "Voice call placed (mock mode - Vonage Voice not configured)",
+                "mock_sent": True,
+                "to": request.phone_number,
+                "note": "Voice API requires Vonage Application setup - see dashboard"
+            }
+        
+        # Import Vonage client (v4+ API)
+        from vonage import Auth, Vonage
+        
+        # Create auth and client
+        auth = Auth(api_key=VONAGE_API_KEY, api_secret=VONAGE_API_SECRET)
+        client = Vonage(auth=auth)
+        
+        # Create voice call with TTS
+        # NCCO = Nexmo Call Control Objects
+        ncco = [
+            {
+                "action": "talk",
+                "text": f"This is an urgent alert from Haven AI. {request.message}. I repeat: {request.message}. Please check the dashboard immediately.",
+                "voiceName": "Amy",  # US English female voice
+                "bargeIn": False  # Don't allow user to interrupt
+            }
+        ]
+        
+        # Remove '+' from phone numbers for Voice API
+        to_number = request.phone_number.replace("+", "").replace("-", "").replace(" ", "")
+        
+        response = client.voice.create_call({
+            "to": [{"type": "phone", "number": to_number}],
+            "from_": {"type": "phone", "number": "12178020876"},  # Your Vonage number
+            "ncco": ncco
+        })
+        
+        print(f"✅ Voice call placed to {request.phone_number}: {response.get('uuid')}")
+        
+        return {
+            "status": "success",
+            "message": "Voice call placed successfully",
+            "call_uuid": response.get("uuid"),
+            "to": request.phone_number,
+            "type": "voice"
+        }
+        
+    except ImportError:
+        # Vonage not installed - return mock success
+        print(f"⚠️  Vonage library not installed - mock calling {request.phone_number}")
+        return {
+            "status": "success",
+            "message": "Voice call placed (mock mode - Vonage not installed)",
+            "mock_sent": True,
+            "to": request.phone_number
+        }
+    except Exception as e:
+        print(f"❌ Failed to place voice call: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to place call: {str(e)}"
+        }
+
+
 @app.get("/smplrspace/config")
 async def get_smplrspace_config():
     """
