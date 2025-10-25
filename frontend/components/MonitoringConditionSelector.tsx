@@ -34,8 +34,10 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
   const [protocols, setProtocols] = useState<Record<string, Protocol>>({});
 
   useEffect(() => {
+    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+    
     // Fetch available protocols
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/monitoring/protocols`)
+    fetch(`${API_URL}/monitoring/protocols`)
       .then(res => res.json())
       .then(data => {
         setProtocols(data);
@@ -44,7 +46,7 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
 
     // Get AI recommendations
     setLoading(true);
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/monitoring/recommend`, {
+    fetch(`${API_URL}/monitoring/recommend`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

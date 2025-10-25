@@ -15,11 +15,11 @@ class SecretManager:
     """
     
     def __init__(self):
+        self.loaded_secrets = []
+        self.missing_secrets = []
+        
         # Check if running with Infisical CLI
-        if os.getenv("INFISICAL_PROJECT_ID"):
-            print("✅ Running with Infisical CLI")
-        else:
-            print("⚠️  Not using Infisical CLI - reading from environment")
+        self.using_infisical = os.getenv("INFISICAL_PROJECT_ID") is not None
     
     def get_secret(
         self, 
@@ -42,10 +42,33 @@ class SecretManager:
         """
         value = os.getenv(secret_name, default)
         if value:
-            print(f"✅ Loaded {secret_name}")
+            if secret_name not in self.loaded_secrets:
+                self.loaded_secrets.append(secret_name)
         else:
-            print(f"⚠️  {secret_name} not found")
+            if secret_name not in self.missing_secrets:
+                self.missing_secrets.append(secret_name)
         return value
+    
+    def print_status(self):
+        """Print a summary of loaded secrets"""
+        print("\n" + "="*60)
+        if self.using_infisical:
+            print("✅ Secrets loaded from Infisical CLI")
+        else:
+            print("📋 Secrets loaded from environment")
+        print("="*60)
+        
+        if self.loaded_secrets:
+            print("\n✅ Loaded secrets:")
+            for secret in self.loaded_secrets:
+                print(f"   • {secret}")
+        
+        if self.missing_secrets:
+            print("\n⚠️  Missing secrets (optional):")
+            for secret in self.missing_secrets:
+                print(f"   • {secret}")
+        
+        print("="*60 + "\n")
     
     def get_all_secrets(
         self, 

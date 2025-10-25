@@ -43,7 +43,8 @@ export default function StreamPage() {
   // Fetch active streams and open patient selection modal
   const openPatientSelection = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/streams/active`);
+      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+      const res = await fetch(`${API_URL}/streams/active`);
       const data = await res.json();
       setActiveStreams(data.active_streams || []);
       setShowPatientModal(true);
@@ -117,7 +118,8 @@ export default function StreamPage() {
       }
 
       // Connect to patient-specific WebSocket
-      const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') + `/ws/stream/${selectedPatient.patient_id}`;
+      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+      const wsUrl = API_URL.replace('http', 'ws') + `/ws/stream/${selectedPatient.patient_id}`;
       console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
 
       const ws = new WebSocket(wsUrl || `ws://localhost:8000/ws/stream/${selectedPatient.patient_id}`);

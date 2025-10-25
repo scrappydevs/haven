@@ -10,20 +10,17 @@ import json
 from pathlib import Path
 import os
 from app.websocket import manager, process_frame_fast, process_frame_metrics
-from app.supabase_client import supabase
+from app.supabase_client import supabase, SUPABASE_URL
 from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
-from app.infisical_config import get_secret
+from app.infisical_config import get_secret, secret_manager
 
 # Try to import anthropic for LLM recommendations
 try:
     import anthropic
     ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")
     anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
-    if anthropic_client:
-        print("✅ Anthropic client initialized")
 except ImportError:
     anthropic_client = None
-    print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
 
 app = FastAPI(
     title="Haven AI",
@@ -62,8 +59,6 @@ patients_file = DATA_DIR / "patients.json"
 if patients_file.exists():
     with open(patients_file, "r") as f:
         patients = json.load(f)
-else:
-    print("⚠️  Warning: patients.json not found. Run scripts/generate_patients.py first!")
 
 # Load trial protocol
 trial_protocol = {}
@@ -71,8 +66,23 @@ protocol_file = DATA_DIR / "nct04649359.json"
 if protocol_file.exists():
     with open(protocol_file, "r") as f:
         trial_protocol = json.load(f)
-else:
-    print("⚠️  Warning: nct04649359.json not found. Run scripts/pull_trial_data.py first!")
+
+# Print secret manager status after all imports
+@app.on_event("startup")
+async def startup_event():
+    """Print configuration status on startup"""
+    secret_manager.print_status()
+    
+    # Print service status
+    print("🚀 TrialSentinel Backend Services:")
+    print(f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
+    if supabase and SUPABASE_URL:
+        print(f"     └─ {SUPABASE_URL}")
+    print(f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
+    print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
+    print(f"   • Patients: {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
+    print(f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
+    print("\n✅ Backend ready!\n")
 
 # In-memory alert storage
 alerts = []

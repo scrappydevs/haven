@@ -83,7 +83,8 @@ export default function DashboardPage() {
 
     // Fetch active streams
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/streams/active`);
+      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+      const res = await fetch(`${API_URL}/streams/active`);
       const data = await res.json();
       setActiveStreams(data.active_streams || []);
     } catch (error) {
@@ -101,10 +102,12 @@ export default function DashboardPage() {
     const savedConditions = localStorage.getItem(`monitoring-${patient.patient_id}`);
     const conditions = savedConditions ? JSON.parse(savedConditions) : [];
 
-    // Assign patient to box
+    // Assign patient to box and add a new empty box
     setBoxAssignments(prev => {
       const newAssignments = [...prev];
       newAssignments[selectedBoxIndex] = patient;
+      // Add a new empty box at the end
+      newAssignments.push(null);
       return newAssignments;
     });
 
@@ -127,7 +130,7 @@ export default function DashboardPage() {
       type: 'system',
       severity: conditions.length > 0 ? 'info' : 'warning',
       message: '📹 Monitoring Started',
-      details: `Assigned ${patient.name} to Box ${selectedBoxIndex + 1} - ${protocolsText}`
+      details: `Assigned ${patient.name} - ${protocolsText}`
     });
 
     console.log(`✅ Assigned ${patient.patient_id} to box ${selectedBoxIndex} with conditions: ${conditions.length > 0 ? conditions.join(', ') : 'none'}`);
@@ -321,8 +324,10 @@ export default function DashboardPage() {
   }, [selectedPatientId, selectedCvData, addPatientEvent, addGlobalEvent, boxAssignments]);
 
   useEffect(() => {
+    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+    
     // Fetch patients from backend
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients`)
+    fetch(`${API_URL}/patients`)
       .then(res => res.json())
       .then(data => {
         setPatients(data);
@@ -335,14 +340,14 @@ export default function DashboardPage() {
 
     // Poll for alerts every 2 seconds
     const alertInterval = setInterval(() => {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/alerts`)
+      fetch(`${API_URL}/alerts`)
         .then(res => res.json())
         .then(data => setAlerts(data))
         .catch(err => console.error('Error fetching alerts:', err));
     }, 2000);
 
     // Fetch stats
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/stats`)
+    fetch(`${API_URL}/stats`)
       .then(res => res.json())
       .then(data => setStats(data))
       .catch(err => console.error('Error fetching stats:', err));

@@ -2,7 +2,7 @@
 # Haven AI - Unified Startup Script
 # Starts both backend and frontend with automatic port detection
 
-set -e
+echo "🚀 Starting Haven..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -29,61 +29,25 @@ echo ""
 # Step 2: Start Backend
 echo -e "${YELLOW}🚀 Starting Backend Server...${NC}"
 cd backend
-if [ ! -d "venv" ]; then
-  echo -e "${RED}❌ Virtual environment not found${NC}"
-  echo -e "${YELLOW}💡 Run: cd backend && python3.12 -m venv venv && source venv/bin/activate && pip install -r requirements.txt${NC}"
-  exit 1
-fi
-
-source venv/bin/activate
-python3 main.py > /tmp/backend.log 2>&1 &
+infisical run --env=dev -- python3 main.py &
 BACKEND_PID=$!
-echo -e "${GREEN}✅ Backend started (PID: $BACKEND_PID)${NC}"
 
-# Wait for backend to start and write port file
-echo -e "${YELLOW}⏳ Waiting for backend to initialize...${NC}"
-for i in {1..15}; do
-  if [ -f ".port" ]; then
-    PORT=$(cat .port)
-    echo -e "${GREEN}✅ Backend running on http://localhost:$PORT${NC}"
-    echo -e "${GREEN}📚 API Docs: http://localhost:$PORT/docs${NC}"
-    break
-  fi
-  sleep 1
-done
+# Wait for backend to start
+sleep 3
 
-if [ ! -f ".port" ]; then
-  echo -e "${RED}❌ Backend failed to start. Check logs:${NC}"
-  tail -20 /tmp/backend.log
-  exit 1
-fi
-
-cd ..
-echo ""
-
-# Step 3: Configure Frontend
-echo -e "${YELLOW}🔧 Configuring Frontend API URL...${NC}"
-cd frontend
-node scripts/setup-api-url.js
-cd ..
-echo ""
-
-# Step 4: Start Frontend
-echo -e "${YELLOW}🌐 Starting Frontend Server...${NC}"
-cd frontend
-npm run dev > /tmp/frontend.log 2>&1 &
+# Start frontend
+echo "🎨 Starting frontend..."
+cd ../frontend
+npm run dev &
 FRONTEND_PID=$!
-echo -e "${GREEN}✅ Frontend started (PID: $FRONTEND_PID)${NC}"
 
-# Wait for frontend to start
-echo -e "${YELLOW}⏳ Waiting for frontend to initialize...${NC}"
-for i in {1..15}; do
-  if curl -s http://localhost:3000 > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Frontend running on http://localhost:3000${NC}"
-    break
-  fi
-  sleep 1
-done
+# Wait for user interrupt
+echo ""
+echo "✅ Haven is running!"
+echo "   Backend: http://localhost:8000"
+echo "   Frontend: http://localhost:3000"
+echo ""
+echo "Press Ctrl+C to stop..."
 
 cd ..
 echo ""
@@ -94,8 +58,8 @@ echo -e "${BLUE}║                 🎉 Haven AI is Running!                   
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${GREEN}📡 Frontend:${NC}  http://localhost:3000"
-echo -e "${GREEN}🔌 Backend:${NC}   http://localhost:$PORT"
-echo -e "${GREEN}📚 API Docs:${NC}  http://localhost:$PORT/docs"
+echo -e "${GREEN}🔌 Backend:${NC}   http://localhost:8000"
+echo -e "${GREEN}📚 API Docs:${NC}  http://localhost:8000/docs"
 echo ""
 echo -e "${YELLOW}Logs:${NC}"
 echo -e "  Backend:  tail -f /tmp/backend.log"
@@ -107,6 +71,9 @@ echo -e "  Or: kill $BACKEND_PID $FRONTEND_PID"
 echo ""
 echo -e "${GREEN}Press Ctrl+C to view logs (servers will keep running)${NC}"
 echo ""
+
+# Handle cleanup
+trap "echo 'Stopping...'; kill $BACKEND_PID $FRONTEND_PID; exit" INT
 
 # Show logs
 tail -f /tmp/backend.log /tmp/frontend.log
