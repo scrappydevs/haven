@@ -112,7 +112,6 @@ export default function GlobalActivityFeed({ events, alerts, onPatientClick }: G
           {events.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center text-slate-600">
-                <p className="text-4xl mb-2">👀</p>
                 <p className="text-sm">No activity yet</p>
                 <p className="text-xs mt-1">Events will appear here when patients are monitored</p>
               </div>

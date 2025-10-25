@@ -1,14 +1,13 @@
 interface StatsBarProps {
   stats: {
     patients_monitored: number;
-    daily_cost_savings: number;
   };
   alertCount: number;
 }
 
 export default function StatsBar({ stats, alertCount }: StatsBarProps) {
   return (
-    <div className="flex gap-8">
+    <div className="flex gap-8 justify-end">
       <StatCard
         label="Patients Monitored"
         value={stats.patients_monitored.toString()}
@@ -18,11 +17,6 @@ export default function StatsBar({ stats, alertCount }: StatsBarProps) {
         label="Active Alerts"
         value={alertCount.toString()}
         accentColor={alertCount > 0 ? "alert" : "primary"}
-      />
-      <StatCard
-        label="Daily Savings"
-        value={`$${(stats.daily_cost_savings / 1000).toFixed(1)}K`}
-        accentColor="primary"
       />
     </div>
   );

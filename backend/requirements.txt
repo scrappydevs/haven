@@ -7,7 +7,7 @@ websockets>=11.0,<13.0
 # Computer Vision
 opencv-python==4.10.0.84
 mediapipe==0.10.21
-numpy==2.2.2
+numpy>=1.23.5,<2.0  # mediapipe requires <2.0, opencv-python requires >=1.23.5
 pillow==11.1.0
 
 # AI/ML
@@ -18,7 +18,7 @@ pandas==2.2.3
 
 # Database
 supabase==2.10.0
-httpx==0.28.1
+httpx>=0.26,<0.28  # supabase requires <0.28
 
 # Production
 gunicorn==23.0.0

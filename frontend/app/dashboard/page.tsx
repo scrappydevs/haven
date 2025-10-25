@@ -54,8 +54,7 @@ export default function DashboardPage() {
   const [patientEvents, setPatientEvents] = useState<Record<number, any[]>>({});  // Events per box
   const [stats, setStats] = useState({
     patients_monitored: 47,
-    active_alerts: 0,
-    daily_cost_savings: 17550
+    active_alerts: 0
   });
 
   // View mode: overview (6 boxes + global feed) vs detail (1 large video + detail panel)
@@ -65,8 +64,9 @@ export default function DashboardPage() {
   const [globalEventFeed, setGlobalEventFeed] = useState<GlobalEvent[]>([]);
 
   // Box assignment system (which patient is in which box)
+  // Start with just one empty box, add more as patients are assigned
   const [boxAssignments, setBoxAssignments] = useState<(SupabasePatient | null)[]>([
-    null, null, null, null, null, null  // 6 boxes, all empty initially
+    null  // Start with one empty box
   ]);
 
   // Monitoring conditions for each box
@@ -362,7 +362,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-4">
               <div>
                 <h1 className="text-2xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent">
-                  TrialSentinel
+                  Haven
                 </h1>
                 <p className="text-xs label-uppercase text-neutral-500 mt-1">Linvoseltamab Phase III - NCT04649359</p>
               </div>
@@ -528,4 +528,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
