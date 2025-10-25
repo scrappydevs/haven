@@ -9,6 +9,7 @@ import PatientSearchModal from '@/components/PatientSearchModal';
 import GlobalActivityFeed from '@/components/GlobalActivityFeed';
 import ManualAlertsPanel from '@/components/ManualAlertsPanel';
 import PatientManagement from '@/components/PatientNurseLookup';
+import AppHeader from '@/components/AppHeader';
 import { getApiUrl } from '@/lib/api';
 
 interface Patient {
@@ -270,7 +271,7 @@ export default function DashboardPage() {
           patientName: patient.name,
           type: 'agent',
           severity: message.level === 'CRITICAL' ? 'high' : message.level === 'ENHANCED' ? 'moderate' : 'info',
-          message: `🤖 Monitoring: ${message.level}`,
+          message: `Monitoring: ${message.level}`,
           details: message.reason
         });
       }
@@ -368,14 +369,24 @@ export default function DashboardPage() {
       const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/alerts/${alertId}?status=resolved`, {
         method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
+        const data = await response.json();
+        if (data.error) {
+          console.error('❌ Failed to resolve alert:', data.error);
+          return;
+        }
+        
         // Remove alert from local state immediately for responsive UI
         setAlerts(prev => prev.filter(alert => alert.id !== alertId));
         console.log('✅ Alert resolved:', alertId);
       } else {
-        console.error('❌ Failed to resolve alert');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ Failed to resolve alert:', response.status, errorData);
       }
     } catch (err) {
       console.error('❌ Error resolving alert:', err);
@@ -388,28 +399,30 @@ export default function DashboardPage() {
 
   // Stable callback for CV data updates with throttled logging
   const handleCvDataUpdate = useCallback((patientId: number, data: any) => {
-    // Only update if this is the selected patient
+    // Update selected patient's CV data for detail view
     if (patientId === selectedPatientId) {
-      const prevData = selectedCvData;
       setSelectedCvData(data);
+    }
 
-      const metrics = data?.metrics || {};
-      const prevMetrics = prevData?.metrics || {};
+    // Generate logs for ALL patients (works in both overview and detail modes)
+    const metrics = data?.metrics || {};
+    // Only track previous metrics for selected patient to avoid comparison errors
+    const prevMetrics = (patientId === selectedPatientId && selectedCvData?.metrics) ? selectedCvData.metrics : null;
 
-      // Throttle log generation to reduce React state updates
-      const now = Date.now();
-      const shouldLog = now - lastLogTime.current >= LOG_THROTTLE_MS;
-      if (!shouldLog && !metrics.alert) {
-        // Skip logging unless it's an alert (always log alerts)
-        return;
-      }
-      lastLogTime.current = now;
+    // Throttle log generation to reduce React state updates
+    const now = Date.now();
+    const shouldLog = now - lastLogTime.current >= LOG_THROTTLE_MS;
+    if (!shouldLog && !metrics.alert) {
+      // Skip logging unless it's an alert (always log alerts)
+      return;
+    }
+    lastLogTime.current = now;
 
-      // Log every 200ms (5 FPS) instead of every frame (30 FPS)
-      const logEntries: any[] = [];
+    // Log every 200ms (5 FPS) instead of every frame (30 FPS)
+    const logEntries: any[] = [];
 
-      // Critical alerts first
-      if (metrics.alert && !prevMetrics.alert) {
+    // Critical alerts first
+    if (metrics.alert && !prevMetrics.alert) {
         const triggers = metrics.alert_triggers || [];
         const triggerText = triggers.length > 0 ? triggers.join(', ') : 'Critical threshold exceeded';
         logEntries.push({
@@ -525,22 +538,21 @@ export default function DashboardPage() {
         });
       }
 
-      // Add all logs to patient-specific and global feeds
-      logEntries.forEach(entry => {
-        // Add to patient log
-        addPatientEvent(patientId, entry);
+    // Add all logs to patient-specific and global feeds
+    logEntries.forEach(entry => {
+      // Add to patient log
+      addPatientEvent(patientId, entry);
 
-        // Add to global feed with patient info
-        const patient = boxAssignments[patientId];
-        if (patient) {
-          addGlobalEvent({
-            ...entry,
-            patientId,
-            patientName: patient.name
-          });
-        }
-      });
-    }
+      // Add to global feed with patient info
+      const patient = boxAssignments[patientId];
+      if (patient) {
+        addGlobalEvent({
+          ...entry,
+          patientId,
+          patientName: patient.name
+        });
+      }
+    });
   }, [selectedPatientId, selectedCvData, addPatientEvent, addGlobalEvent, boxAssignments]);
 
   useEffect(() => {
@@ -598,63 +610,13 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b-2 border-neutral-950 bg-surface">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            {/* Left: Logo */}
-            <div>
-              <h1 className="text-lg font-light text-neutral-950 uppercase tracking-wider">
-                Haven
-              </h1>
-            </div>
-
-            {/* Center: Navigation */}
-            <nav className="flex items-center gap-1">
-              <a
-                href="/dashboard"
-                className="px-6 py-2 label-uppercase text-xs text-neutral-950 border-b-2 border-primary-700 hover:bg-neutral-50 transition-colors"
-              >
-                Dashboard
-              </a>
-              <a
-                href="/dashboard/floorplan"
-                className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
-              >
-                Floor Plan
-              </a>
-              <a
-                href="/stream"
-                className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
-              >
-                Stream
-              </a>
-            </nav>
-
-            {/* Right side: Alerts & User */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setManualAlertsOpen(true)}
-                className="px-4 py-2 text-xs font-medium uppercase tracking-wide border border-neutral-300 rounded-full text-neutral-700 hover:text-neutral-950 hover:border-neutral-950 transition-colors"
-              >
-                Manual Alerts
-              </button>
-              {/* Notifications */}
-              <button className="relative p-2 text-neutral-500 hover:text-neutral-950 transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                </svg>
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-              </button>
-
-              {/* User avatar */}
-              <div className="w-9 h-9 rounded-full bg-neutral-200 border border-neutral-300 flex items-center justify-center text-neutral-600 text-sm font-medium">
-                U
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header with Alerts */}
+      <AppHeader 
+        alerts={alerts}
+        onAlertResolve={handleAlertResolve}
+        onPatientClick={onPatientClicked}
+        onManualAlertsClick={() => setManualAlertsOpen(true)}
+      />
 
       {/* Main Content */}
       <div className="container mx-auto px-6 py-6">
@@ -749,10 +711,7 @@ export default function DashboardPage() {
             <div className="col-span-4 h-[calc(100vh-180px)] min-h-[420px]">
               <GlobalActivityFeed
                 events={globalEventFeed}
-                alerts={alerts}
-                isLoading={isLoadingAlerts}
                 onPatientClick={onPatientClicked}
-                onAlertResolve={handleAlertResolve}
               />
             </div>
           </div>

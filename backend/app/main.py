@@ -751,22 +751,35 @@ async def update_alert_status(alert_id: str, status: str = "resolved"):
     """
     Update alert status (e.g., mark as resolved/acknowledged)
     """
+    from datetime import datetime
+
     if not supabase:
         # Fallback to in-memory
         global alerts
         for alert in alerts:
             if alert.get("id") == alert_id:
                 alert["status"] = status
+                if status == "resolved":
+                    alert["resolved_at"] = datetime.now().isoformat()
                 return alert
         return {"error": "Alert not found"}
 
     try:
-        result = supabase.table("alerts").update({
-            "status": status,
-            "resolved_at": "now()" if status == "resolved" else None
-        }).eq("id", alert_id).execute()
+        update_data = {
+            "status": status
+        }
+        if status == "resolved":
+            update_data["resolved_at"] = datetime.now().isoformat()
 
-        return result.data[0] if result.data else {"error": "Alert not found"}
+        result = supabase.table("alerts").update(
+            update_data).eq("id", alert_id).execute()
+
+        if result.data and len(result.data) > 0:
+            print(f"✅ Alert {alert_id} marked as {status}")
+            return result.data[0]
+        else:
+            print(f"⚠️ Alert {alert_id} not found")
+            return {"error": "Alert not found"}
     except Exception as e:
         print(f"❌ Error updating alert: {e}")
         return {"error": str(e)}

@@ -30,6 +30,7 @@ except ImportError:
     ANTHROPIC_MODEL = None
     print("⚠️ Anthropic library not installed - Claude reasoning will use fallback rules")
 
+
 class PatientGuardianAgent:
     """
     Autonomous agent that monitors patient vitals and adjusts monitoring levels
@@ -42,7 +43,8 @@ class PatientGuardianAgent:
     def set_baseline(self, patient_id: str, baseline: Dict):
         """Set baseline vitals for a patient"""
         self.patient_baselines[patient_id] = baseline
-        print(f"📝 Baseline set for {patient_id}: HR={baseline.get('heart_rate', 75)}, RR={baseline.get('respiratory_rate', 14)}")
+        print(
+            f"📝 Baseline set for {patient_id}: HR={baseline.get('heart_rate', 75)}, RR={baseline.get('respiratory_rate', 14)}")
 
     def analyze_metrics(self, patient_id: str, metrics: Dict) -> Dict:
         """
@@ -66,12 +68,15 @@ class PatientGuardianAgent:
         })
 
         # Calculate deviations
-        hr_deviation = metrics.get("heart_rate", 75) - baseline.get("heart_rate", 75)
-        rr_deviation = metrics.get("respiratory_rate", 14) - baseline.get("respiratory_rate", 14)
+        hr_deviation = metrics.get("heart_rate", 75) - \
+            baseline.get("heart_rate", 75)
+        rr_deviation = metrics.get(
+            "respiratory_rate", 14) - baseline.get("respiratory_rate", 14)
         crs_score = metrics.get("crs_score", 0.0)
 
         # Get recent alert history
-        recent_alerts = self.alert_history.get(patient_id, [])[-5:]  # Last 5 alerts
+        recent_alerts = self.alert_history.get(
+            patient_id, [])[-5:]  # Last 5 alerts
 
         # Build Claude prompt for reasoning
         prompt = self._build_reasoning_prompt(
@@ -102,7 +107,8 @@ class PatientGuardianAgent:
 
             # Parse Claude's response
             reasoning_text = response.content[0].text
-            decision = self._parse_claude_decision(reasoning_text, current_level)
+            decision = self._parse_claude_decision(
+                reasoning_text, current_level)
 
             # Add to alert history if escalating
             if decision["action"] in ["ESCALATE_TO_ENHANCED", "ESCALATE_TO_CRITICAL"]:
@@ -192,6 +198,8 @@ Analyze the current metrics and decide:
 - Consider trend: is patient improving, stable, or deteriorating?
 - Don't oscillate: avoid rapid level changes unless justified
 
+**IMPORTANT:** Do NOT use emojis in your reasoning or messages. Use plain text only.
+
 Provide your clinical decision:"""
 
         return prompt
@@ -206,7 +214,8 @@ Provide your clinical decision:"""
             decision = json.loads(json_str)
 
             # Validate action
-            valid_actions = ["MAINTAIN", "ESCALATE_TO_ENHANCED", "ESCALATE_TO_CRITICAL", "RETURN_TO_BASELINE"]
+            valid_actions = ["MAINTAIN", "ESCALATE_TO_ENHANCED",
+                             "ESCALATE_TO_CRITICAL", "RETURN_TO_BASELINE"]
             if decision.get("action") not in valid_actions:
                 raise ValueError(f"Invalid action: {decision.get('action')}")
 
@@ -325,7 +334,7 @@ Provide your clinical decision:"""
                 "type": "agent_alert",
                 "patient_id": patient_id,
                 "severity": "MONITORING",
-                "message": f"🤖 Enhanced monitoring activated for {duration} minutes",
+                "message": f"Enhanced monitoring activated for {duration} minutes",
                 "reasoning": reasoning,
                 "concerns": decision.get("concerns", []),
                 "confidence": decision.get("confidence", 0.7),
@@ -356,7 +365,7 @@ Provide your clinical decision:"""
                 "type": "agent_alert",
                 "patient_id": patient_id,
                 "severity": "CRITICAL",
-                "message": "🚨 CRITICAL monitoring protocol activated",
+                "message": "CRITICAL monitoring protocol activated",
                 "reasoning": reasoning,
                 "concerns": decision.get("concerns", []),
                 "confidence": decision.get("confidence", 0.9),
@@ -388,7 +397,7 @@ Provide your clinical decision:"""
                 "type": "agent_alert",
                 "patient_id": patient_id,
                 "severity": "INFO",
-                "message": "✅ Patient stable - returned to baseline monitoring",
+                "message": "Patient stable - returned to baseline monitoring",
                 "reasoning": reasoning,
                 "confidence": decision.get("confidence", 0.8)
             })
@@ -398,6 +407,7 @@ Provide your clinical decision:"""
             "action": action,
             "patient_id": patient_id
         }
+
 
 # Global agent instance
 patient_guardian = PatientGuardianAgent()
