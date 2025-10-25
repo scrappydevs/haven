@@ -1969,6 +1969,252 @@ Active Alerts: {summary_data.get('active_alerts_count', 0)}
         return {"error": str(e)}
 
 
+# ========================================
+# PATIENT INTAKE ENDPOINTS (LiveKit-based)
+# ========================================
+
+@app.post("/api/intake/start")
+async def start_intake(request: dict):
+    """
+    Initialize a patient intake session and return LiveKit access token
+    """
+    try:
+        from livekit.api import AccessToken, VideoGrants
+        import uuid
+
+        patient_id = request.get("patient_id")
+        if not patient_id:
+            return {"error": "patient_id is required"}, 400
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())[:8]
+        room_name = f"intake-{patient_id}-{session_id}"
+
+        # Create LiveKit access token for patient
+        token = AccessToken(
+            os.getenv("LIVEKIT_API_KEY"),
+            os.getenv("LIVEKIT_API_SECRET")
+        )
+        token.identity = f"patient-{patient_id}"
+        token.name = patient_id
+        token.add_grant(VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+        ))
+
+        logger.info(f"🎫 Created intake token for patient {patient_id}, room: {room_name}")
+
+        return {
+            "token": token.to_jwt(),
+            "url": os.getenv("LIVEKIT_URL"),
+            "room_name": room_name,
+            "patient_id": patient_id,
+            "session_id": session_id
+        }
+
+    except Exception as e:
+        logger.error(f"Error starting intake: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/pending")
+async def get_pending_intakes():
+    """
+    Get all intake reports awaiting review, sorted by urgency and time
+    """
+    try:
+        if not supabase:
+            return []
+
+        result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("status", "pending_review") \
+            .order("created_at", desc=True) \
+            .execute()
+
+        # Sort by urgency (high first) then by time
+        intakes = result.data if result.data else []
+        urgency_order = {"high": 0, "medium": 1, "low": 2}
+        intakes.sort(key=lambda x: (
+            urgency_order.get(x.get("urgency_level", "low"), 2),
+            x.get("created_at", "")
+        ))
+
+        logger.info(f"📋 Retrieved {len(intakes)} pending intakes")
+        return intakes
+
+    except Exception as e:
+        logger.error(f"Error fetching pending intakes: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/{intake_id}")
+async def get_intake_report(intake_id: str):
+    """
+    Get full intake report by ID
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("id", intake_id) \
+            .single() \
+            .execute()
+
+        if not result.data:
+            return {"error": "Intake report not found"}, 404
+
+        logger.info(f"📄 Retrieved intake report: {intake_id}")
+        return result.data
+
+    except Exception as e:
+        logger.error(f"Error fetching intake report: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/intake/{intake_id}/review")
+async def mark_intake_reviewed(intake_id: str, request: dict):
+    """
+    Mark intake as reviewed by provider
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        reviewer_id = request.get("reviewer_id", "unknown")
+
+        supabase.table("intake_reports") \
+            .update({
+                "status": "reviewed",
+                "reviewed_by": reviewer_id,
+                "reviewed_at": datetime.now().isoformat()
+            }) \
+            .eq("id", intake_id) \
+            .execute()
+
+        logger.info(f"✅ Intake {intake_id} marked as reviewed by {reviewer_id}")
+        return {"success": True}
+
+    except Exception as e:
+        logger.error(f"Error marking intake as reviewed: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/intake/{intake_id}/assign-room")
+async def assign_intake_to_room(intake_id: str, request: dict):
+    """
+    Assign patient from intake to an examination room
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        room_id = request.get("room_id")
+        if not room_id:
+            return {"error": "room_id is required"}, 400
+
+        # Get intake report
+        intake_result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("id", intake_id) \
+            .single() \
+            .execute()
+
+        if not intake_result.data:
+            return {"error": "Intake report not found"}, 404
+
+        patient_id = intake_result.data.get("patient_id")
+
+        # Update intake report
+        supabase.table("intake_reports") \
+            .update({
+                "status": "assigned",
+                "assigned_room": room_id
+            }) \
+            .eq("id", intake_id) \
+            .execute()
+
+        # Assign patient to room (use existing room assignment logic)
+        try:
+            supabase.table("room_assignments") \
+                .insert({
+                    "room_id": room_id,
+                    "patient_id": patient_id,
+                    "assigned_at": datetime.now().isoformat()
+                }) \
+                .execute()
+        except Exception as room_error:
+            logger.warning(f"Room assignment may already exist: {room_error}")
+
+        logger.info(f"🏥 Patient {patient_id} assigned to room {room_id} from intake {intake_id}")
+
+        # Broadcast to dashboard
+        await manager.broadcast_frame({
+            "type": "patient_assigned_from_intake",
+            "patient_id": patient_id,
+            "room_id": room_id,
+            "intake_id": intake_id
+        })
+
+        return {"success": True, "patient_id": patient_id, "room_id": room_id}
+
+    except Exception as e:
+        logger.error(f"Error assigning intake to room: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/stats")
+async def get_intake_stats():
+    """
+    Get intake system statistics
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        # Count by status
+        all_intakes = supabase.table("intake_reports").select("status, urgency_level").execute()
+
+        stats = {
+            "total": len(all_intakes.data) if all_intakes.data else 0,
+            "pending": 0,
+            "reviewed": 0,
+            "assigned": 0,
+            "high_urgency": 0,
+            "medium_urgency": 0,
+            "low_urgency": 0
+        }
+
+        if all_intakes.data:
+            for intake in all_intakes.data:
+                status = intake.get("status", "")
+                urgency = intake.get("urgency_level", "low")
+
+                if status == "pending_review":
+                    stats["pending"] += 1
+                elif status == "reviewed":
+                    stats["reviewed"] += 1
+                elif status == "assigned":
+                    stats["assigned"] += 1
+
+                if urgency == "high":
+                    stats["high_urgency"] += 1
+                elif urgency == "medium":
+                    stats["medium_urgency"] += 1
+                else:
+                    stats["low_urgency"] += 1
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error getting intake stats: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
