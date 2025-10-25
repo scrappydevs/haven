@@ -63,7 +63,6 @@ export default function FloorPlanPage() {
   const [availablePatients, setAvailablePatients] = useState<SupabasePatient[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [roomsLoaded, setRoomsLoaded] = useState(false);
-  const [legendCollapsed, setLegendCollapsed] = useState(false);
   const [roomsListCollapsed, setRoomsListCollapsed] = useState(false);
   const [smplrConfig, setSmplrConfig] = useState<{
     organizationId: string;
@@ -191,64 +190,77 @@ export default function FloorPlanPage() {
     };
   }, [smplrLoaded, smplrConfig]);
 
-  // Update furniture colors when rooms change (patient assignment status)
+  // Navigate camera to a specific room
+  const navigateToRoom = (room: Room) => {
+    if (!spaceRef.current || !isViewerReady) return;
+    
+    try {
+      // Move camera to room position with smooth animation
+      spaceRef.current.setCameraPlacement({
+        alpha: -Math.PI / 4, // viewing angle in radians (45 degrees from editor position)
+        beta: Math.PI / 3,   // elevation in radians (60 degrees)
+        radius: 15,          // distance in meters
+        target: {
+          x: room.position.x,
+          y: 0,
+          z: room.position.z,
+        },
+        animate: true,
+        animationDuration: 1, // duration in SECONDS (not milliseconds)
+      });
+      
+      console.log(`📍 Navigated to ${room.name} at (${room.position.x}, ${room.position.z})`);
+    } catch (error) {
+      console.error('Error navigating to room:', error);
+    }
+  };
+
+  // Update room markers when rooms change (patient assignment status)
   useEffect(() => {
     if (!isViewerReady || !spaceRef.current || rooms.length === 0) return;
 
-    // Use furniture layer to color actual furniture/equipment in the floor plan
-    const furnitureData = rooms.map(room => ({
-      id: room.id,
-      furnitureId: room.id,
-      room,
-    }));
-
-    // Remove old layer if exists
+    // Remove old layers if they exist
     try {
-      spaceRef.current.removeDataLayer('room-status');
+      spaceRef.current.removeDataLayer('room-icons');
     } catch (e) {
       // Layer doesn't exist yet
     }
 
-    // Add furniture layer with room status colors
-    if (furnitureData.length > 0) {
+    // Add icon markers for each room
+    const iconData = rooms.filter(r => r.type === 'patient').map(room => ({
+      id: room.id,
+      position: {
+        levelIndex: room.position.levelIndex,
+        x: room.position.x,
+        z: room.position.z,
+        elevation: 1.5, // Show icon at head height
+      },
+      room,
+    }));
+
+    if (iconData.length > 0) {
       spaceRef.current.addDataLayer({
-        id: 'room-status',
-        type: 'furniture',
-        data: furnitureData,
+        id: 'room-icons',
+        type: 'icon',
+        data: iconData,
+        icon: {
+          url: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', // Hospital bed icon
+          width: 32,
+          height: 32,
+        },
         color: (data: any) => {
           const room = data.room as Room;
-          if (room.type === 'nurse_station') {
-            return '#c97064'; // Terracotta for nurse stations
-          }
           return room.assignedPatient ? '#6b9080' : '#cbd5e1'; // Green if occupied, gray if empty
         },
         onClick: (data: any) => {
           const room = data.room as Room;
           setSelectedRoom(room);
-          if (room.type === 'nurse_station') {
-            setShowNurseModal(true);
-          } else {
-            if (!room.assignedPatient) {
-              setShowPatientModal(true);
-            }
+          if (!room.assignedPatient) {
+            setShowPatientModal(true);
           }
         },
         tooltip: (data: any) => {
           const room = data.room as Room;
-          
-          if (room.type === 'nurse_station') {
-            const nurseCount = room.assignedNurses?.length || 0;
-            return `
-              <div style="min-width: 200px; padding: 4px;">
-                <div style="font-weight: 500; font-size: 14px; margin-bottom: 8px; color: #0f172a;">
-                  ${room.name}
-                </div>
-                <div style="font-size: 12px; color: #475569;">
-                  <strong>Nurses on duty:</strong> ${nurseCount}
-                </div>
-              </div>
-            `;
-          }
           
           if (room.assignedPatient) {
             return `
@@ -305,6 +317,22 @@ export default function FloorPlanPage() {
 
       console.log('🔄 Detecting rooms from walls using Smplrspace API...');
 
+      // First, get ALL rooms from walls
+      const allRoomsData = await smplrClient.getRoomsOnLevel({
+        spaceId: spaceId,
+        levelIndex: 0,
+        useCache: false,
+      });
+
+      console.log('🏠 All rooms detected from walls:', allRoomsData);
+
+      if (!allRoomsData || allRoomsData.length === 0) {
+        console.log('⚠️ No rooms detected from walls. Your floor plan may not have fully enclosed rooms.');
+        return;
+      }
+
+      console.log(`✅ Detected ${allRoomsData.length} rooms from wall geometry`);
+
       // Get space definition to access annotations
       const space = spaceRef.current;
       if (!space) {
@@ -313,85 +341,79 @@ export default function FloorPlanPage() {
       }
 
       const definition = space.getDefinition();
-      console.log('📐 Space definition:', definition);
+      
+      // Annotations are nested inside levels[0].annotations
+      const level0 = definition?.levels?.[0];
+      const annotationsArray = level0?.annotations || [];
+      
+      console.log('📋 All annotations:', annotationsArray);
       
       // Get all annotations labeled "Hospital Room"
-      let hospitalAnnotations = definition?.annotations?.filter((a: any) => 
-        a.text?.toLowerCase().includes('hospital room')
-      ) || [];
+      const hospitalAnnotations = annotationsArray.filter((a: any) => 
+        (a.text?.toLowerCase().includes('hospital room') || 
+         a.name?.toLowerCase().includes('hospital room'))
+      );
 
-      console.log('📋 All annotations:', definition?.annotations);
-      console.log('🏥 Hospital Room annotations:', hospitalAnnotations);
+      console.log(`🏥 Found ${hospitalAnnotations.length} "Hospital Room" annotations`);
 
-      // Fallback: if no "Hospital Room" annotations found, try furniture
-      if (hospitalAnnotations.length === 0) {
-        console.log('⚠️ No annotations labeled "Hospital Room" found');
-        console.log('💡 TIP: In Smplrspace editor, add text annotations labeled "Hospital Room" to mark patient rooms');
-        console.log('📦 Trying furniture as fallback...');
-        
-        hospitalAnnotations = definition?.furniture?.filter((f: any) => 
-          f.name?.toLowerCase().includes('hospital room')
-        ) || [];
-        
-        if (hospitalAnnotations.length === 0) {
-          console.log('❌ No "Hospital Room" annotations or furniture found');
-          console.log('💡 Add text annotations in Smplrspace editor: Right-click → Add annotation → "Hospital Room"');
-          return;
-        }
-        
-        console.log(`📦 Found ${hospitalAnnotations.length} furniture items as fallback`);
-      } else {
-        console.log(`🏥 Found ${hospitalAnnotations.length} Hospital Room annotations`);
-      }
-
-      // For each hospital room annotation/marker, find which room it's in
+      // Match hospital annotations to detected rooms
       const rooms: any[] = [];
-      for (let i = 0; i < hospitalAnnotations.length; i++) {
-        const annotation = hospitalAnnotations[i];
-        
-        try {
-          // Get the room at this annotation's position
-          const roomData = await smplrClient.getRoomAtPoint({
-            spaceId: spaceId,
-            point: {
-              levelIndex: annotation.levelIndex || 0,
-              x: annotation.position?.x || annotation.x || 0,
-              z: annotation.position?.z || annotation.z || 0,
-            },
-          });
+      
+      if (hospitalAnnotations.length > 0) {
+        // Match each annotation to a room by checking if annotation position is inside room polygon
+        for (let i = 0; i < hospitalAnnotations.length; i++) {
+          const annotation = hospitalAnnotations[i];
+          const r = annotation.r || 0;
+          const t = annotation.t || 0;
+          
+          // Try to find which room this annotation is in
+          for (const roomData of allRoomsData) {
+            if (roomData.room && roomData.room.length > 0) {
+              // Calculate center point of room polygon
+              const centerX = roomData.room.reduce((sum: number, p: any) => sum + p.x, 0) / roomData.room.length;
+              const centerZ = roomData.room.reduce((sum: number, p: any) => sum + p.z, 0) / roomData.room.length;
 
-          console.log(`📍 Checking annotation "${annotation.text || annotation.name}" at position:`, {
-            levelIndex: annotation.levelIndex,
-            x: annotation.position?.x || annotation.x,
-            z: annotation.position?.z || annotation.z,
-            roomFound: !!roomData
-          });
-
-          if (roomData && roomData.room) {
-            // Calculate center point of room polygon
+              rooms.push({
+                id: annotation.id || `room-${i + 1}`,
+                name: annotation.name || `Hospital Room ${i + 1}`,
+                levelIndex: 0,
+                position: { x: centerX, z: centerZ },
+                polygon: roomData.room,
+                holes: roomData.holes || [],
+              });
+              
+              console.log(`✅ Matched annotation "${annotation.name}" to room`);
+              break; // Move to next annotation
+            }
+          }
+        }
+      } else {
+        // No hospital annotations - use all detected rooms
+        console.log('📦 No "Hospital Room" annotations found, using all detected rooms');
+        for (let i = 0; i < allRoomsData.length; i++) {
+          const roomData = allRoomsData[i];
+          if (roomData.room && roomData.room.length > 0) {
             const centerX = roomData.room.reduce((sum: number, p: any) => sum + p.x, 0) / roomData.room.length;
             const centerZ = roomData.room.reduce((sum: number, p: any) => sum + p.z, 0) / roomData.room.length;
 
             rooms.push({
-              id: annotation.id || `room-${i + 1}`,
-              name: annotation.text || annotation.name || `Room ${i + 1}`,
-              levelIndex: annotation.levelIndex || 0,
+              id: `auto-room-${i + 1}`,
+              name: `Room ${i + 1}`,
+              levelIndex: 0,
               position: { x: centerX, z: centerZ },
               polygon: roomData.room,
               holes: roomData.holes || [],
             });
           }
-        } catch (error) {
-          console.warn(`⚠️ Could not find room for annotation: ${annotation.text || annotation.name}`, error);
         }
       }
 
       if (rooms.length === 0) {
-        console.log('⚠️ No rooms found for Hospital Room markers');
+        console.log('⚠️ Could not match any rooms');
         return;
       }
 
-      console.log(`✅ Detected ${rooms.length} hospital rooms`);
+      console.log(`✅ Prepared ${rooms.length} rooms for sync`);
 
       // Sync to backend with floor_id
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/rooms/sync-from-smplrspace`, {
@@ -427,33 +449,44 @@ export default function FloorPlanPage() {
       
       if (Array.isArray(assignments) && assignments.length > 0) {
         console.log(`✅ Loaded ${assignments.length} room assignments from backend`);
-        console.log('📋 Room details:', assignments.map(a => ({
-          id: a.room_id,
-          name: a.room_name,
-          type: a.room_type,
-          patient: a.patient_id ? a.patient_name : 'Empty'
-        })));
+        
+        // Log first assignment's metadata to debug position extraction
+        if (assignments[0]) {
+          console.log('🔍 First room metadata:', assignments[0].metadata);
+          console.log('🔍 Smplrspace data:', assignments[0].metadata?.smplrspace_data);
+          console.log('🔍 Position:', assignments[0].metadata?.smplrspace_data?.position);
+        }
         
         // Convert backend room assignments to frontend Room format
-        const backendRooms: Room[] = assignments.map((assignment: any) => ({
-          id: assignment.room_id,
-          name: assignment.room_name,
-          type: assignment.room_type,
-          position: {
-            levelIndex: assignment.floor_id ? 0 : 0, // Use floor_id
+        const backendRooms: Room[] = assignments.map((assignment: any) => {
+          const position = {
+            levelIndex: 0,
             x: assignment.metadata?.smplrspace_data?.position?.x || 0,
             z: assignment.metadata?.smplrspace_data?.position?.z || 0,
-          },
-          assignedPatient: assignment.patient_id ? {
-            patient_id: assignment.patient_id,
-            name: assignment.patient_name || 'Unknown',
-            age: 0,
-            condition: '',
-            photo_url: '',
-          } : undefined,
-        }));
+          };
+          
+          console.log(`📍 Room "${assignment.room_name}" position:`, position);
+          
+          return {
+            id: assignment.room_id,
+            name: assignment.room_name,
+            type: assignment.room_type,
+            position,
+            assignedPatient: assignment.patient_id ? {
+              patient_id: assignment.patient_id,
+              name: assignment.patient_name || 'Unknown',
+              age: 0,
+              condition: '',
+              photo_url: '',
+            } : undefined,
+          };
+        });
         
-        console.log('🏠 Frontend rooms:', backendRooms);
+        console.log('🏠 Frontend rooms with positions:', backendRooms.map(r => ({
+          name: r.name,
+          x: r.position.x,
+          z: r.position.z
+        })));
         setRooms(backendRooms);
         setRoomsLoaded(true);
       } else {
@@ -705,33 +738,18 @@ export default function FloorPlanPage() {
             />
           ) : (
             <>
-              {/* Legend - Collapsible */}
+              {/* Legend - Always Visible */}
               <div className="bg-surface border border-neutral-200">
-                <button
-                  onClick={() => setLegendCollapsed(!legendCollapsed)}
-                  className="w-full px-4 py-3 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors"
-                >
+                <div className="px-4 py-3 border-b border-neutral-200">
                   <p className="text-xs font-light text-neutral-500">Legend</p>
-                  <svg 
-                    className={`w-4 h-4 text-neutral-400 transition-transform ${legendCollapsed ? '' : 'rotate-180'}`}
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                  </svg>
-                </button>
-
-                {!legendCollapsed && (
-                  <div className="px-4 py-3">
-                    <FloorPlanLegend
-                      totalRooms={rooms.filter(r => r.type === 'patient').length}
-                      occupiedRooms={rooms.filter(r => r.assignedPatient).length}
-                      totalNurses={rooms.reduce((sum, r) => sum + (r.assignedNurses?.length || 0), 0)}
-                    />
-                  </div>
-                )}
+                </div>
+                <div className="px-4 py-3">
+                  <FloorPlanLegend
+                    totalRooms={rooms.filter(r => r.type === 'patient').length}
+                    occupiedRooms={rooms.filter(r => r.assignedPatient).length}
+                    totalNurses={rooms.reduce((sum, r) => sum + (r.assignedNurses?.length || 0), 0)}
+                  />
+                </div>
               </div>
 
               {/* All Rooms - Collapsible */}
@@ -762,6 +780,7 @@ export default function FloorPlanPage() {
                     }`}
                     onClick={() => {
                       setSelectedRoom(room);
+                      navigateToRoom(room);
                     }}
                   >
                     <div className="flex items-center justify-between">
@@ -769,7 +788,7 @@ export default function FloorPlanPage() {
                         <div className={`w-2 h-2 rounded-full ${
                           room.assignedPatient ? 'bg-primary-700' : 'bg-neutral-300'
                         }`} />
-                        <div>
+                        <div className="flex-1">
                           <p className="font-light text-neutral-950 text-xs">{room.name}</p>
                           {room.assignedPatient && (
                             <p className="text-[10px] font-light text-neutral-500 mt-0.5">
@@ -778,9 +797,14 @@ export default function FloorPlanPage() {
                           )}
                         </div>
                       </div>
-                      <span className="text-[10px] font-light text-neutral-400">
-                        {room.assignedPatient ? 'Occupied' : 'Empty'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-light text-neutral-400">
+                          {room.assignedPatient ? 'Occupied' : 'Empty'}
+                        </span>
+                        <svg className="w-3 h-3 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 ))}

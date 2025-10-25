@@ -40,6 +40,7 @@ class RoomWithPatient(BaseModel):
     room_type: str
     floor_id: str
     capacity: int = 1
+    metadata: Dict = {}
     patient_id: Optional[str] = None
     patient_name: Optional[str] = None
     assigned_at: Optional[datetime] = None
@@ -115,6 +116,7 @@ def get_all_rooms_with_patients(floor_id: str = None) -> List[RoomWithPatient]:
                     'room_type': room['room_type'],
                     'floor_id': room.get('floor_id', 'floor-1'),
                     'capacity': room.get('capacity', 1),
+                    'metadata': room.get('metadata', {}),  # ✅ Include metadata
                 }
                 
                 # Add patient info if assigned
