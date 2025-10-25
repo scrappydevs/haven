@@ -19,7 +19,7 @@ class MonitoringConfig:
         self.patient_id = patient_id
         self.level = MonitoringLevel.BASELINE
         self.enabled_metrics = ["heart_rate", "respiratory_rate", "crs_score"]
-        self.frequency_seconds = 5
+        self.frequency_seconds = 10  # Reduced from 5s to 10s for better performance
         self.activated_at = datetime.now()
         self.expires_at = None  # None = indefinite
         self.activation_reason = ""
@@ -59,7 +59,7 @@ class MonitoringManager:
         config = self.get_config(patient_id)
         config.level = MonitoringLevel.BASELINE
         config.enabled_metrics = ["heart_rate", "respiratory_rate", "crs_score"]
-        config.frequency_seconds = 5
+        config.frequency_seconds = 10  # Reduced from 5s to 10s for better performance
         config.expires_at = None
         config.activation_reason = reason
         config.activated_at = datetime.now()

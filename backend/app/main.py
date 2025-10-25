@@ -883,8 +883,8 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                 })
 
                 # Step 2: QUEUE FOR PROCESSING - Worker thread will handle CV processing
-                # Queue every 2nd frame (15 FPS) to avoid overwhelming the worker
-                if frame_count % 2 == 0:
+                # Queue every 3rd frame (10 FPS) for better performance on limited CPU
+                if frame_count % 3 == 0:
                     manager.queue_frame_for_processing(patient_id, raw_frame, frame_count)
 
     except WebSocketDisconnect:

@@ -34,23 +34,35 @@ from app.cv_metrics import (
 from app.monitoring_control import monitoring_manager
 from app.patient_guardian_agent import patient_guardian
 
-# Initialize MediaPipe Face Mesh - OPTIMIZED for speed
-face_mesh = mp.solutions.face_mesh.FaceMesh(
-    max_num_faces=1,
-    refine_landmarks=False,  # ✅ Skip refinement for speed
-    static_image_mode=True,
-    min_detection_confidence=0.3,  # ✅ Lower threshold for speed
-    min_tracking_confidence=0.3
-)
+# MediaPipe models - lazy initialized per worker to avoid fork issues
+_face_mesh = None
+_pose = None
 
-# Initialize MediaPipe Pose - OPTIMIZED for speed
-pose = mp.solutions.pose.Pose(
-    static_image_mode=True,
-    model_complexity=0,  # ✅ 0 = lite model (faster)
-    smooth_landmarks=False,
-    min_detection_confidence=0.3,  # ✅ Lower threshold for speed
-    min_tracking_confidence=0.3
-)
+def get_face_mesh():
+    """Lazy-load face mesh (thread-safe after fork)"""
+    global _face_mesh
+    if _face_mesh is None:
+        _face_mesh = mp.solutions.face_mesh.FaceMesh(
+            max_num_faces=1,
+            refine_landmarks=False,
+            static_image_mode=True,
+            min_detection_confidence=0.3,
+            min_tracking_confidence=0.3
+        )
+    return _face_mesh
+
+def get_pose():
+    """Lazy-load pose model (thread-safe after fork)"""
+    global _pose
+    if _pose is None:
+        _pose = mp.solutions.pose.Pose(
+            static_image_mode=False,  # Video mode - tracks between frames (much faster)
+            model_complexity=0,  # 0 = lite model (faster)
+            smooth_landmarks=True,  # Smooth tracking for better visual quality
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+    return _pose
 
 class PatientMetricTrackers:
     """Container for per-patient metric tracking instances"""
@@ -299,15 +311,16 @@ def process_frame_fast(frame_base64: str, patient_id: Optional[str] = None) -> D
 
         decode_time = time.time() - start
 
-        # AGGRESSIVE downsampling for speed
-        small_frame = cv2.resize(frame, (160, 90))
+        # AGGRESSIVE downsampling for speed (smaller = faster pose detection)
+        small_frame = cv2.resize(frame, (128, 72))
         rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
         resize_time = time.time() - start - decode_time
 
         # MediaPipe Pose (no lock needed - single worker thread per patient)
         mediapipe_start = time.time()
-        pose_results = pose.process(rgb_frame)
+        pose_model = get_pose()
+        pose_results = pose_model.process(rgb_frame)
         mediapipe_time = time.time() - mediapipe_start
 
         # Extract pose landmarks as simple overlay
@@ -406,8 +419,10 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
         rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
         # MediaPipe processing (no lock needed - single worker thread per patient)
-        face_results = face_mesh.process(rgb_frame)
-        pose_results = pose.process(rgb_frame)
+        face_model = get_face_mesh()
+        pose_model = get_pose()
+        face_results = face_model.process(rgb_frame)
+        pose_results = pose_model.process(rgb_frame)
 
         # Get trackers for this patient
         trackers = manager.get_trackers(patient_id) if patient_id else None
