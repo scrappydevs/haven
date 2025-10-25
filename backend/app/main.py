@@ -234,7 +234,7 @@ async def websocket_stream(websocket: WebSocket):
                 result = process_frame(data.get("frame"))
 
                 if frame_count % 30 == 0:
-                    print(f"📦 Frame #{frame_count}, CRS: {result.get('crs_score')}, viewers: {len(manager.viewers)}")
+                    print(f"📦 Frame #{frame_count}, CRS: {result.get('crs_score')}, viewers: {len(manager.viewers)}, streamers: {len(manager.streamers)}")
 
                 await manager.broadcast_frame({
                     "type": "live_frame",

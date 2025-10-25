@@ -32,11 +32,15 @@ class ConnectionManager:
 
     async def broadcast_frame(self, frame_data: Dict):
         """Send processed frame to all viewers"""
+        if not self.viewers:
+            return
+
         dead = []
         for viewer in self.viewers:
             try:
                 await viewer.send_json(frame_data)
-            except Exception:
+            except Exception as e:
+                print(f"❌ Failed to send to viewer: {e}")
                 dead.append(viewer)
 
         for viewer in dead:
@@ -127,10 +131,10 @@ def process_frame(frame_base64: str) -> Dict:
 
         return {
             "frame": f"data:image/jpeg;base64,{frame_base64_out}",
-            "crs_score": round(crs_score, 2),
-            "heart_rate": heart_rate,
-            "respiratory_rate": respiratory_rate,
-            "alert": crs_score > 0.7
+            "crs_score": float(round(crs_score, 2)),
+            "heart_rate": int(heart_rate),
+            "respiratory_rate": int(respiratory_rate),
+            "alert": bool(crs_score > 0.7)
         }
 
     except Exception as e:
