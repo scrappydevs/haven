@@ -46,8 +46,8 @@ export default function DashboardPage() {
     daily_cost_savings: 17550
   });
 
-  // Box assignment system (which patient_id is in which box)
-  const [boxAssignments, setBoxAssignments] = useState<(string | null)[]>([
+  // Box assignment system (which patient is in which box)
+  const [boxAssignments, setBoxAssignments] = useState<(SupabasePatient | null)[]>([
     null, null, null, null, null, null  // 6 boxes, all empty initially
   ]);
 
@@ -78,11 +78,12 @@ export default function DashboardPage() {
 
     setBoxAssignments(prev => {
       const newAssignments = [...prev];
-      newAssignments[selectedBoxIndex] = patient.patient_id;
+      newAssignments[selectedBoxIndex] = patient;  // Store full patient object
       return newAssignments;
     });
 
     setShowPatientModal(false);
+    setSelectedPatientId(selectedBoxIndex);  // Auto-select the newly assigned box
     console.log(`✅ Assigned ${patient.patient_id} to box ${selectedBoxIndex}`);
   };
 
@@ -160,9 +161,9 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {boxAssignments.map((patientId, boxIndex) => {
+              {boxAssignments.map((patient, boxIndex) => {
                 // Empty box - show + button
-                if (!patientId) {
+                if (!patient) {
                   return (
                     <div key={boxIndex} className="flex flex-col">
                       <div className="relative rounded-t-lg overflow-hidden border-2 border-slate-700 bg-slate-900/50">
@@ -186,21 +187,25 @@ export default function DashboardPage() {
                 return (
                   <div key={boxIndex} className="flex flex-col">
                     <VideoPlayer
-                      patient={{ id: boxIndex, name: patientId, age: 0, condition: '', baseline_vitals: { heart_rate: 75 } }}
+                      patient={{
+                        id: boxIndex,
+                        name: patient.name,
+                        age: patient.age,
+                        condition: patient.condition,
+                        baseline_vitals: { heart_rate: 75 }
+                      }}
                       isLive={true}
-                      patientId={patientId}
+                      patientId={patient.patient_id}
                       isSelected={selectedPatientId === boxIndex}
                       onCvDataUpdate={handleCvDataUpdate}
                     />
                     <InfoBar
-                      patientId={patientId}
-                      patientName={patientId}
+                      patientId={patient.patient_id}
+                      patientName={patient.name}
                       isLive={true}
                       isSelected={selectedPatientId === boxIndex}
                       onClick={() => {
                         setSelectedPatientId(boxIndex);
-                        // Also re-assign to allow changing
-                        openPatientSelectionForBox(boxIndex);
                       }}
                     />
                   </div>
@@ -213,10 +218,23 @@ export default function DashboardPage() {
           <div className="col-span-4">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-white">Patient Details</h2>
-              <p className="text-sm text-slate-400">Detailed vitals and AI analysis</p>
+              <p className="text-sm text-slate-400">
+                {selectedPatientId !== null && boxAssignments[selectedPatientId]
+                  ? `${boxAssignments[selectedPatientId]?.name} - Live Analysis`
+                  : 'Select a patient to view details'}
+              </p>
             </div>
             <DetailPanel
-              patient={null}
+              patient={
+                selectedPatientId !== null && boxAssignments[selectedPatientId]
+                  ? {
+                      id: selectedPatientId,
+                      name: boxAssignments[selectedPatientId]!.name,
+                      age: boxAssignments[selectedPatientId]!.age,
+                      condition: boxAssignments[selectedPatientId]!.condition
+                    }
+                  : null
+              }
               cvData={selectedCvData}
               isLive={true}
             />
@@ -230,7 +248,9 @@ export default function DashboardPage() {
         onClose={() => setShowPatientModal(false)}
         onSelect={assignPatientToBox}
         activeStreams={activeStreams}
-        assignedPatients={boxAssignments.filter((id): id is string => id !== null)}
+        assignedPatients={boxAssignments
+          .filter((p): p is SupabasePatient => p !== null)
+          .map(p => p.patient_id)}
         mode="assign-stream"
       />
     </div>
