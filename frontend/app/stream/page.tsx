@@ -457,7 +457,7 @@ export default function StreamPage() {
           <ol className="space-y-4 body-default text-neutral-950">
             <li className="flex gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">01</span>
-              <span>Click "Start Streaming" button above</span>
+              <span>Click &quot;Start Streaming&quot; button above</span>
             </li>
             <li className="flex gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">02</span>

@@ -368,8 +368,16 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Stats */}
-            <StatsBar stats={stats} alertCount={alerts.length} />
+            {/* Navigation & Stats */}
+            <div className="flex items-center gap-6">
+              <a
+                href="/floorplan"
+                className="border border-neutral-300 px-6 py-2 font-light text-xs uppercase tracking-wider text-neutral-700 hover:border-primary-700 hover:text-primary-700 transition-colors"
+              >
+                Floor Plan
+              </a>
+              <StatsBar stats={stats} alertCount={alerts.length} />
+            </div>
           </div>
         </div>
       </header>
