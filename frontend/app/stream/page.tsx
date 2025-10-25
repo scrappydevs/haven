@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import AnalysisModeSelector, { AnalysisMode } from '@/components/AnalysisModeSelector';
 import { getApiUrl, getWsUrl } from '@/lib/api';
+import { LiveKitRoom, useVoiceAssistant, BarVisualizer, RoomAudioRenderer } from '@livekit/components-react';
+import '@livekit/components-styles';
 
 interface Patient {
   id: string;
@@ -39,6 +41,7 @@ export default function StreamPage() {
   const [isListeningForWakeWord, setIsListeningForWakeWord] = useState(false);
   const [havenActive, setHavenActive] = useState(false);
   const [havenTranscript, setHavenTranscript] = useState<string>('');
+  const [havenRoomData, setHavenRoomData] = useState<{token: string, url: string, room_name: string, session_id: string} | null>(null);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -515,18 +518,16 @@ export default function StreamPage() {
       }
 
       console.log('✅ Haven session created:', data.room_name);
-      setHavenTranscript('Haven AI is listening...');
 
-      // TODO: Connect to LiveKit voice room
-      // For now, show placeholder
-      setTimeout(() => {
-        setHavenTranscript('Haven agent connected. Speak your concern.');
-      }, 1000);
+      // Store room data for LiveKit connection
+      setHavenRoomData({
+        token: data.token,
+        url: data.url,
+        room_name: data.room_name,
+        session_id: data.session_id
+      });
 
-      // Simulate conversation end after 30 seconds (for demo)
-      setTimeout(() => {
-        endHavenSession();
-      }, 30000);
+      setHavenTranscript('Connecting to Haven AI...');
 
     } catch (err: any) {
       console.error('❌ Failed to start Haven session:', err);
@@ -538,10 +539,51 @@ export default function StreamPage() {
     }
   };
 
-  const endHavenSession = () => {
+  const endHavenSession = async () => {
     console.log('🛡️ Ending Haven session');
+
+    // TODO: Get conversation summary from LiveKit agent
+    // For now, create a mock summary
+    if (havenRoomData && selectedPatient) {
+      try {
+        const apiUrl = getApiUrl();
+
+        // Mock conversation summary (in production, this would come from the agent)
+        const mockSummary = {
+          patient_id: selectedPatient.patient_id,
+          session_id: havenRoomData.session_id,
+          conversation_summary: {
+            full_transcript_text: havenTranscript,
+            extracted_info: {
+              symptom_description: "Patient reported concern",
+              body_location: null,
+              pain_level: null,
+              duration: null
+            }
+          }
+        };
+
+        console.log('💾 Saving Haven conversation summary...');
+        const response = await fetch(`${apiUrl}/api/haven/conversation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mockSummary)
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          console.log('✅ Haven conversation saved, alert created:', result.alert_id);
+        } else {
+          console.warn('⚠️ Failed to save conversation:', result.error);
+        }
+      } catch (err) {
+        console.error('❌ Error saving Haven conversation:', err);
+      }
+    }
+
     setHavenActive(false);
     setHavenTranscript('');
+    setHavenRoomData(null);
 
     // Restart wake word listening
     if (isStreaming && selectedPatient) {
@@ -563,6 +605,35 @@ export default function StreamPage() {
       stopWakeWordListening();
     };
   }, [isStreaming, selectedPatient, havenActive]);
+
+  // Haven Voice Assistant Component
+  function HavenVoiceAssistant() {
+    const { state, audioTrack } = useVoiceAssistant();
+
+    useEffect(() => {
+      // Update transcript based on voice assistant state
+      if (state === 'connecting') {
+        setHavenTranscript('Connecting to Haven AI...');
+      } else if (state === 'listening') {
+        setHavenTranscript('Haven AI is listening. Speak naturally about your concern.');
+      } else if (state === 'thinking') {
+        setHavenTranscript('Haven AI is processing...');
+      } else if (state === 'speaking') {
+        setHavenTranscript('Haven AI is speaking...');
+      }
+    }, [state]);
+
+    return (
+      <>
+        <RoomAudioRenderer />
+        {audioTrack && (
+          <div className="flex justify-center mb-4">
+            <BarVisualizer state={state} barCount={5} trackRef={audioTrack} />
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -732,38 +803,50 @@ export default function StreamPage() {
             )}
 
             {/* Haven Voice Agent Conversation Overlay */}
-            {havenActive && (
+            {havenActive && havenRoomData && (
               <div className="absolute inset-0 bg-primary-900/95 flex flex-col items-center justify-center p-8">
-                <div className="max-w-md w-full bg-white/10 backdrop-blur-sm border-2 border-primary-400 p-8 rounded-lg">
-                  <div className="flex items-center justify-center gap-3 mb-6">
-                    <div className="w-4 h-4 bg-primary-400 rounded-full animate-pulse" />
-                    <h3 className="heading-section text-white">Haven AI Active</h3>
-                  </div>
-
-                  <div className="mb-6">
-                    <div className="bg-white/5 border border-white/20 p-4 rounded-lg min-h-[100px]">
-                      <p className="body-default text-white/90">
-                        {havenTranscript || 'Listening...'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-2 text-white/60 text-xs">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                      </svg>
-                      <span className="label-uppercase">Speak naturally about your concern</span>
+                <LiveKitRoom
+                  token={havenRoomData.token}
+                  serverUrl={havenRoomData.url}
+                  connect={true}
+                  audio={true}
+                  video={false}
+                  className="max-w-md w-full"
+                >
+                  <div className="max-w-md w-full bg-white/10 backdrop-blur-sm border-2 border-primary-400 p-8 rounded-lg">
+                    <div className="flex items-center justify-center gap-3 mb-6">
+                      <div className="w-4 h-4 bg-primary-400 rounded-full animate-pulse" />
+                      <h3 className="heading-section text-white">Haven AI Active</h3>
                     </div>
 
-                    <button
-                      onClick={endHavenSession}
-                      className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white label-uppercase text-xs transition-colors"
-                    >
-                      End Conversation
-                    </button>
+                    {/* Voice Assistant Audio and Visualizer */}
+                    <HavenVoiceAssistant />
+
+                    <div className="mb-6">
+                      <div className="bg-white/5 border border-white/20 p-4 rounded-lg min-h-[100px]">
+                        <p className="body-default text-white/90">
+                          {havenTranscript || 'Listening...'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2 text-white/60 text-xs">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                        </svg>
+                        <span className="label-uppercase">Speak naturally about your concern</span>
+                      </div>
+
+                      <button
+                        onClick={endHavenSession}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white label-uppercase text-xs transition-colors"
+                      >
+                        End Conversation
+                      </button>
+                    </div>
                   </div>
-                </div>
+                </LiveKitRoom>
               </div>
             )}
           </div>
