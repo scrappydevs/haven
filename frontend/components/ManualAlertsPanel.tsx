@@ -4,12 +4,12 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getApiUrl } from '@/lib/api';
 
-// Hardcoded nurse list for MVP
+// Hardcoded nurse list for MVP (all using test number for demo)
 const NURSES = [
-  { name: 'Nurse Sarah Johnson', phone: '+14155551234' },
-  { name: 'Nurse Michael Chen', phone: '+14155555678' },
-  { name: 'Nurse Emily Rodriguez', phone: '+14155559012' },
-  { name: 'Dr. David Kim (On-Call)', phone: '+14155553456' },
+  { name: 'Nurse Sarah Johnson', phone: '+13854019951' },
+  { name: 'Nurse Michael Chen', phone: '+13854019951' },
+  { name: 'Nurse Emily Rodriguez', phone: '+13854019951' },
+  { name: 'Dr. David Kim (On-Call)', phone: '+13854019951' },
 ];
 
 interface ToastMessage {
