@@ -14,7 +14,6 @@ interface VideoPlayerProps {
     };
   };
   isLive?: boolean;
-  onCvDataUpdate?: (data: CVData | null) => void;
   isSelected?: boolean;
 }
 
@@ -25,7 +24,7 @@ interface CVData {
   alert?: boolean;
 }
 
-export default function VideoPlayer({ patient, isLive = false, onCvDataUpdate, isSelected = false }: VideoPlayerProps) {
+export default function VideoPlayer({ patient, isLive = false, isSelected = false }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -112,13 +111,6 @@ export default function VideoPlayer({ patient, isLive = false, onCvDataUpdate, i
 
     return () => clearInterval(interval);
   }, [patient.id, isLive, alertFired]);
-
-  // Notify parent of CV data updates
-  useEffect(() => {
-    if (onCvDataUpdate) {
-      onCvDataUpdate(cvData);
-    }
-  }, [cvData, onCvDataUpdate]);
 
   return (
     <motion.div

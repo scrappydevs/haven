@@ -6,7 +6,6 @@ FastAPI application serving pre-computed CV results and trial data
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import json
-import os
 from pathlib import Path
 from app.websocket import manager, process_frame
 
@@ -16,10 +15,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Enable CORS for frontend
+# CORS for frontend - allows browser WebSocket connections from localhost:3000
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production: ["https://trialsentinel.vercel.app"]
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -220,29 +219,23 @@ async def get_stats():
 
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket):
-    """
-    WebSocket endpoint for computers streaming webcam
-    Receives frames, processes with CV, broadcasts to viewers
-    """
-    await manager.connect_streamer(websocket)
-    frame_count = 0
+    """WebSocket endpoint for webcam streaming"""
+    await websocket.accept()
+    manager.streamers.append(websocket)
+    print(f"✅ Streamer connected. Total: {len(manager.streamers)}")
+
     try:
+        frame_count = 0
         while True:
-            # Receive frame from streamer
             data = await websocket.receive_json()
-            
             frame_count += 1
-            if frame_count % 30 == 0:  # Log every 30th frame
-                print(f"📦 Received frame #{frame_count} from streamer")
 
             if data.get("type") == "frame":
-                # Process frame with computer vision
                 result = process_frame(data.get("frame"))
-                
-                if frame_count % 30 == 0:
-                    print(f"✨ Processed frame, CRS: {result.get('crs_score', 0)}, broadcasting to {len(manager.viewers)} viewers")
 
-                # Broadcast to all dashboard viewers
+                if frame_count % 30 == 0:
+                    print(f"📦 Frame #{frame_count}, CRS: {result.get('crs_score')}, viewers: {len(manager.viewers)}")
+
                 await manager.broadcast_frame({
                     "type": "live_frame",
                     "patient_id": "live-1",
@@ -250,29 +243,28 @@ async def websocket_stream(websocket: WebSocket):
                 })
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
         print("Streamer disconnected")
     except Exception as e:
-        print(f"❌ Error in stream endpoint: {e}")
+        print(f"❌ Stream error: {e}")
+    finally:
         manager.disconnect(websocket)
 
 
 @app.websocket("/ws/view")
 async def websocket_view(websocket: WebSocket):
-    """
-    WebSocket endpoint for dashboards viewing live stream
-    Receives processed frames from backend
-    """
-    await manager.connect_viewer(websocket)
+    """WebSocket endpoint for dashboard viewing"""
+    await websocket.accept()
+    manager.viewers.append(websocket)
+    print(f"✅ Viewer connected. Total: {len(manager.viewers)}")
+
     try:
-        # Keep connection alive - just wait forever
-        # Frames are sent via broadcast_frame(), not through this loop
         import asyncio
         while True:
-            await asyncio.sleep(1)  # Keep alive, don't wait for messages
+            await asyncio.sleep(1)
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
         print("Viewer disconnected")
+    finally:
+        manager.disconnect(websocket)
 
 
 if __name__ == "__main__":

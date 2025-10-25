@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import VideoPlayer from '@/components/VideoPlayer';
 import InfoBar from '@/components/InfoBar';
 import DetailPanel from '@/components/DetailPanel';
@@ -16,13 +16,6 @@ interface Patient {
   };
 }
 
-interface CVData {
-  crs_score: number;
-  heart_rate: number;
-  respiratory_rate: number;
-  alert?: boolean;
-}
-
 interface Alert {
   patient_id: number;
   message: string;
@@ -35,21 +28,11 @@ export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
-  const [cvDataMap, setCvDataMap] = useState<Map<number, CVData | null>>(new Map());
   const [stats, setStats] = useState({
     patients_monitored: 47,
     active_alerts: 0,
     daily_cost_savings: 17550
   });
-
-  // Callback to update CV data for a specific patient
-  const handleCvDataUpdate = useCallback((patientId: number, data: CVData | null) => {
-    setCvDataMap(prev => {
-      const newMap = new Map(prev);
-      newMap.set(patientId, data);
-      return newMap;
-    });
-  }, []);
 
   useEffect(() => {
     // Fetch patients from backend
@@ -93,9 +76,8 @@ export default function DashboardPage() {
     }
   ];
 
-  // Get selected patient and its CV data
+  // Get selected patient
   const selectedPatient = displayedPatients.find(p => p.id === selectedPatientId) || null;
-  const selectedCvData = selectedPatientId ? cvDataMap.get(selectedPatientId) || null : null;
 
   return (
     <div className="min-h-screen">
@@ -134,7 +116,6 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 gap-4">
                 {displayedPatients.map((patient, index) => {
                   const isLive = index === 5;
-                  const patientCvData = cvDataMap.get(patient.id);
 
                   return (
                     <div key={patient.id} className="flex flex-col">
@@ -142,13 +123,10 @@ export default function DashboardPage() {
                         patient={patient}
                         isLive={isLive}
                         isSelected={selectedPatientId === patient.id}
-                        onCvDataUpdate={(data) => handleCvDataUpdate(patient.id, data)}
                       />
                       <InfoBar
                         patientId={isLive ? 'LIVE' : patient.id}
                         patientName={patient.name}
-                        heartRate={patientCvData?.heart_rate}
-                        crsScore={patientCvData?.crs_score}
                         isLive={isLive}
                         isSelected={selectedPatientId === patient.id}
                         onClick={() => setSelectedPatientId(patient.id)}
@@ -172,7 +150,7 @@ export default function DashboardPage() {
             </div>
             <DetailPanel
               patient={selectedPatient}
-              cvData={selectedCvData}
+              cvData={null}
               isLive={selectedPatient?.id === 999}
             />
           </div>

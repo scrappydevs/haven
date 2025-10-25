@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct WebSocket Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e293b; color: #e2e8f0; }
+        button { padding: 10px 20px; margin: 5px; font-size: 16px; cursor: pointer; }
+        #log { background: #0f172a; padding: 20px; border-radius: 8px; margin-top: 20px; white-space: pre-wrap; }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <h1>Direct WebSocket Connection Test</h1>
+    <p>This bypasses Next.js to test if WebSocket works directly</p>
+
+    <button onclick="testStream()">Test /ws/stream</button>
+    <button onclick="testTest()">Test /ws/test</button>
+    <button onclick="clearLog()">Clear Log</button>
+
+    <div id="log"></div>
+
+    <script>
+        function log(msg, type = 'info') {
+            const logEl = document.getElementById('log');
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : '';
+            logEl.innerHTML += `<span class="${className}">${new Date().toLocaleTimeString()} - ${msg}</span>\n`;
+            console.log(msg);
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function testTest() {
+            log('🔌 Connecting to ws://localhost:8000/ws/test');
+
+            const ws = new WebSocket('ws://localhost:8000/ws/test');
+
+            ws.onopen = () => {
+                log('✅ CONNECTED to /ws/test', 'success');
+            };
+
+            ws.onmessage = (event) => {
+                log(`📥 Received: ${event.data}`, 'success');
+            };
+
+            ws.onerror = (error) => {
+                log('❌ ERROR: ' + JSON.stringify(error), 'error');
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = (event) => {
+                log(`❌ CLOSED: Code ${event.code}, Reason: ${event.reason || '(none)'}`, 'error');
+            };
+        }
+
+        function testStream() {
+            log('🔌 Connecting to ws://localhost:8000/ws/stream');
+
+            const ws = new WebSocket('ws://localhost:8000/ws/stream');
+
+            ws.onopen = () => {
+                log('✅ CONNECTED to /ws/stream', 'success');
+                log('Sending test frame...');
+                ws.send(JSON.stringify({
+                    type: 'frame',
+                    frame: 'data:image/jpeg;base64,test'
+                }));
+            };
+
+            ws.onmessage = (event) => {
+                log(`📥 Received: ${event.data}`, 'success');
+            };
+
+            ws.onerror = (error) => {
+                log('❌ ERROR: Connection failed', 'error');
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = (event) => {
+                log(`❌ CLOSED: Code ${event.code}, Reason: ${event.reason || '(none)'}`, 'error');
+            };
+        }
+    </script>
+</body>
+</html>

@@ -21,39 +21,25 @@ face_mesh = mp.solutions.face_mesh.FaceMesh(
 
 class ConnectionManager:
     def __init__(self):
-        self.streamers: List[WebSocket] = []  # Computers sending video
-        self.viewers: List[WebSocket] = []    # Dashboards watching
-
-    async def connect_streamer(self, websocket: WebSocket):
-        await websocket.accept()
-        self.streamers.append(websocket)
-        print(f"✅ Streamer connected. Total streamers: {len(self.streamers)}")
-
-    async def connect_viewer(self, websocket: WebSocket):
-        await websocket.accept()
-        self.viewers.append(websocket)
-        print(f"✅ Viewer connected. Total viewers: {len(self.viewers)}")
+        self.streamers: List[WebSocket] = []
+        self.viewers: List[WebSocket] = []
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.streamers:
             self.streamers.remove(websocket)
-            print(f"❌ Streamer disconnected. Remaining: {len(self.streamers)}")
         if websocket in self.viewers:
             self.viewers.remove(websocket)
-            print(f"❌ Viewer disconnected. Remaining: {len(self.viewers)}")
 
     async def broadcast_frame(self, frame_data: Dict):
         """Send processed frame to all viewers"""
-        disconnected = []
+        dead = []
         for viewer in self.viewers:
             try:
                 await viewer.send_json(frame_data)
-            except Exception as e:
-                print(f"❌ Error broadcasting to viewer: {e}")
-                disconnected.append(viewer)
+            except Exception:
+                dead.append(viewer)
 
-        # Remove disconnected viewers
-        for viewer in disconnected:
+        for viewer in dead:
             self.disconnect(viewer)
 
 manager = ConnectionManager()
@@ -84,10 +70,7 @@ def process_frame(frame_base64: str) -> Dict:
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if frame is None:
-            print("❌ Failed to decode frame")
             raise ValueError("Failed to decode frame")
-        
-        print(f"✅ Decoded frame: {frame.shape}")
 
         # Convert BGR to RGB for MediaPipe
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -151,13 +134,11 @@ def process_frame(frame_base64: str) -> Dict:
         }
 
     except Exception as e:
-        print(f"❌ Error processing frame: {e}")
         return {
             "frame": frame_base64,
             "crs_score": 0.0,
             "heart_rate": 75,
             "respiratory_rate": 14,
-            "alert": False,
-            "error": str(e)
+            "alert": False
         }
 
