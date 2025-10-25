@@ -7,6 +7,7 @@ import '@livekit/components-styles';
 export default function PatientIntakePage() {
   const [patientId, setPatientId] = useState('');
   const [token, setToken] = useState('');
+  const [livekitUrl, setLivekitUrl] = useState('');
   const [stage, setStage] = useState<'select' | 'interview' | 'complete'>('select');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,6 +34,7 @@ export default function PatientIntakePage() {
 
       const data = await response.json();
       setToken(data.token);
+      setLivekitUrl(data.url);
       setStage('interview');
     } catch (err) {
       console.error('Intake start error:', err);
@@ -154,10 +156,10 @@ export default function PatientIntakePage() {
           </div>
         )}
 
-        {stage === 'interview' && token && (
+        {stage === 'interview' && token && livekitUrl && (
           <LiveKitRoom
             token={token}
-            serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL!}
+            serverUrl={livekitUrl}
             connect={true}
             audio={true}
             video={false}  // Audio-only for intake
@@ -199,6 +201,7 @@ export default function PatientIntakePage() {
                   setStage('select');
                   setPatientId('');
                   setToken('');
+                  setLivekitUrl('');
                 }}
                 className="mt-6 text-blue-600 hover:text-blue-700 text-sm font-medium"
               >

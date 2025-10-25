@@ -1995,16 +1995,14 @@ async def start_intake(request: dict):
             os.getenv("LIVEKIT_API_KEY"),
             os.getenv("LIVEKIT_API_SECRET")
         )
-        token.identity = f"patient-{patient_id}"
-        token.name = patient_id
-        token.add_grant(VideoGrants(
+        token = token.with_identity(f"patient-{patient_id}").with_name(patient_id).with_grants(VideoGrants(
             room_join=True,
             room=room_name,
             can_publish=True,
             can_subscribe=True,
         ))
 
-        logger.info(f"🎫 Created intake token for patient {patient_id}, room: {room_name}")
+        print(f"🎫 Created intake token for patient {patient_id}, room: {room_name}")
 
         return {
             "token": token.to_jwt(),
@@ -2015,7 +2013,9 @@ async def start_intake(request: dict):
         }
 
     except Exception as e:
-        logger.error(f"Error starting intake: {e}", exc_info=True)
+        print(f"❌ Error starting intake: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": str(e)}, 500
 
 

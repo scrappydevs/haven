@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.15",
+    "@livekit/components-styles": "^1.1.6",
     "@smplrspace/smplr-loader": "^2.42.0",
     "framer-motion": "^11.0.0",
     "livekit-client": "^2.15.13",
