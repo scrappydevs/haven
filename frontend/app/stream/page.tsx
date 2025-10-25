@@ -40,6 +40,7 @@ export default function StreamPage() {
 
       // Connect to WebSocket
       const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') + '/ws/stream';
+      console.log('🔌 Connecting to WebSocket:', wsUrl);
       const ws = new WebSocket(wsUrl || 'ws://localhost:8000/ws/stream');
       wsRef.current = ws;
 
@@ -49,14 +50,14 @@ export default function StreamPage() {
         startCapture();
       };
 
-      ws.onclose = () => {
-        console.log('❌ Disconnected from server');
+      ws.onclose = (event) => {
+        console.log('❌ Disconnected from server. Code:', event.code, 'Reason:', event.reason);
         setIsStreaming(false);
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setError('Failed to connect to server');
+        console.error('❌ WebSocket error:', error);
+        setError('Failed to connect to server. Make sure backend is running on port 8000.');
       };
 
     } catch (err) {
@@ -75,9 +76,11 @@ export default function StreamPage() {
 
     let frameCount = 0;
     let lastFpsUpdate = Date.now();
+    let isActive = true;  // Local flag instead of state
 
     const captureFrame = () => {
-      if (!isStreaming || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      if (!isActive || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.log('⏹️ Stopping capture. Active:', isActive, 'WS state:', wsRef.current?.readyState);
         return;
       }
 
@@ -97,8 +100,15 @@ export default function StreamPage() {
           type: 'frame',
           frame: frameData
         }));
+        
+        // Log every 30th frame (once per second at 30fps)
+        if (frameCount % 30 === 0) {
+          console.log('📤 Sent frame to backend, size:', frameData.length, 'bytes');
+        }
       } catch (error) {
-        console.error('Error sending frame:', error);
+        console.error('❌ Error sending frame:', error);
+        isActive = false;
+        return;
       }
 
       // Update FPS counter
@@ -115,6 +125,11 @@ export default function StreamPage() {
     };
 
     captureFrame();
+    
+    // Return cleanup function
+    return () => {
+      isActive = false;
+    };
   };
 
   const stopStreaming = () => {

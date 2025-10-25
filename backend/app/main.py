@@ -225,14 +225,22 @@ async def websocket_stream(websocket: WebSocket):
     Receives frames, processes with CV, broadcasts to viewers
     """
     await manager.connect_streamer(websocket)
+    frame_count = 0
     try:
         while True:
             # Receive frame from streamer
             data = await websocket.receive_json()
+            
+            frame_count += 1
+            if frame_count % 30 == 0:  # Log every 30th frame
+                print(f"📦 Received frame #{frame_count} from streamer")
 
             if data.get("type") == "frame":
                 # Process frame with computer vision
                 result = process_frame(data.get("frame"))
+                
+                if frame_count % 30 == 0:
+                    print(f"✨ Processed frame, CRS: {result.get('crs_score', 0)}, broadcasting to {len(manager.viewers)} viewers")
 
                 # Broadcast to all dashboard viewers
                 await manager.broadcast_frame({
@@ -244,6 +252,9 @@ async def websocket_stream(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         print("Streamer disconnected")
+    except Exception as e:
+        print(f"❌ Error in stream endpoint: {e}")
+        manager.disconnect(websocket)
 
 
 @app.websocket("/ws/view")
@@ -254,9 +265,11 @@ async def websocket_view(websocket: WebSocket):
     """
     await manager.connect_viewer(websocket)
     try:
+        # Keep connection alive - just wait forever
+        # Frames are sent via broadcast_frame(), not through this loop
+        import asyncio
         while True:
-            # Keep connection alive, wait for messages
-            await websocket.receive_text()
+            await asyncio.sleep(1)  # Keep alive, don't wait for messages
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         print("Viewer disconnected")

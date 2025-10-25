@@ -48,7 +48,8 @@ class ConnectionManager:
         for viewer in self.viewers:
             try:
                 await viewer.send_json(frame_data)
-            except:
+            except Exception as e:
+                print(f"❌ Error broadcasting to viewer: {e}")
                 disconnected.append(viewer)
 
         # Remove disconnected viewers
@@ -83,7 +84,10 @@ def process_frame(frame_base64: str) -> Dict:
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if frame is None:
+            print("❌ Failed to decode frame")
             raise ValueError("Failed to decode frame")
+        
+        print(f"✅ Decoded frame: {frame.shape}")
 
         # Convert BGR to RGB for MediaPipe
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

@@ -35,6 +35,7 @@ export default function VideoPlayer({ patient, isLive = false }: VideoPlayerProp
     if (isLive) {
       // Connect to WebSocket for live stream
       const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') + '/ws/view';
+      console.log('🔌 Viewer connecting to:', wsUrl);
       const ws = new WebSocket(wsUrl || 'ws://localhost:8000/ws/view');
       wsRef.current = ws;
 
@@ -44,11 +45,15 @@ export default function VideoPlayer({ patient, isLive = false }: VideoPlayerProp
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        console.log('📥 Received WebSocket data:', data.type, data.patient_id, 'Full data:', data);
 
         if (data.type === 'live_frame' && data.patient_id === 'live-1') {
           // Update image with new frame
-          if (imgRef.current) {
+          if (imgRef.current && data.data?.frame) {
             imgRef.current.src = data.data.frame;
+            console.log('🖼️ Updated live frame, CRS:', data.data.crs_score, 'HR:', data.data.heart_rate);
+          } else {
+            console.error('❌ Missing frame data or imgRef');
           }
 
           // Update CV metrics
@@ -57,6 +62,7 @@ export default function VideoPlayer({ patient, isLive = false }: VideoPlayerProp
           // Fire alert if CRS detected
           if (data.data.alert && !alertFired) {
             setAlertFired(true);
+            console.log('🚨 ALERT FIRED! CRS:', data.data.crs_score);
             const audio = new Audio('/alert.mp3');
             audio.play().catch(e => console.log('Audio play failed:', e));
           }
@@ -119,6 +125,7 @@ export default function VideoPlayer({ patient, isLive = false }: VideoPlayerProp
           ref={imgRef}
           className="w-full aspect-video object-cover bg-black"
           alt="Live stream"
+          src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
         />
       ) : (
         <video
@@ -176,10 +183,19 @@ export default function VideoPlayer({ patient, isLive = false }: VideoPlayerProp
         </motion.div>
       )}
 
-      {/* Loading State (when no CV data yet) */}
-      {!cvData && !isLive && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-          <div className="text-white text-sm">Loading CV analysis...</div>
+      {/* Loading State */}
+      {!cvData && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+          <div className="text-center">
+            <div className="text-white text-sm mb-2">
+              {isLive ? '⏳ Waiting for live stream...' : 'Loading CV analysis...'}
+            </div>
+            {isLive && (
+              <div className="text-slate-400 text-xs">
+                Make sure streaming is active on /stream page
+              </div>
+            )}
+          </div>
         </div>
       )}
     </motion.div>
