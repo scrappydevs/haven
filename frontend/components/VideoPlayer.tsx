@@ -220,7 +220,14 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch (e) {
+        console.error('❌ JSON parse error:', e);
+        console.error('📦 Raw data (first 200 chars):', typeof event.data === 'string' ? event.data.substring(0, 200) : event.data);
+        return; // Skip this message
+      }
 
       // Filter by patient_id if provided, otherwise accept all messages
       if (!patientId || data.patient_id === patientId) {

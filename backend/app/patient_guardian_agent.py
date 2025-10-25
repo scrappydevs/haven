@@ -11,8 +11,14 @@ from datetime import datetime
 import anthropic
 from app.monitoring_control import monitoring_manager, MonitoringLevel
 
-# Initialize Claude client
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+# Initialize Claude client (with fallback if no API key)
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+if ANTHROPIC_API_KEY:
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    print(f"✅ Claude API initialized with key: {ANTHROPIC_API_KEY[:10]}...")
+else:
+    client = None
+    print("⚠️ No ANTHROPIC_API_KEY found - Claude reasoning will use fallback rules")
 
 class PatientGuardianAgent:
     """
@@ -68,10 +74,15 @@ class PatientGuardianAgent:
             recent_alerts=recent_alerts
         )
 
-        # Get Claude's reasoning
+        # Get Claude's reasoning (or use fallback if no API key)
+        if client is None:
+            # Fallback: Use rule-based decision when Claude API unavailable
+            print("⚠️ Using fallback rules (no Claude API)")
+            return self._fallback_decision(current_level, metrics, hr_deviation, rr_deviation, crs_score)
+
         try:
             response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-3-5-sonnet-20241022",  # Sonnet 3.5 v2
                 max_tokens=1024,
                 messages=[{
                     "role": "user",

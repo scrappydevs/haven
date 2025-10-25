@@ -90,11 +90,12 @@ class RespiratoryRateMonitor:
     Respiratory rate detection from facial/head motion
     Tracks vertical movement of head/nose caused by breathing
     """
-    def __init__(self, window_size=90, fps=30):
-        self.window_size = window_size  # ~3 seconds
-        self.fps = fps
+    def __init__(self, window_size=30, fps=30):
+        self.window_size = window_size  # 30 samples = ~10 seconds worth of data points
+        self.fps = 3  # Effective sampling rate (called every 3 seconds)
         self.position_buffer = deque(maxlen=window_size)
         self.last_respiratory_rate = 14
+        print(f"🫁 RR Monitor initialized: window_size={window_size}, effective_fps={self.fps}")
 
     def process_frame(self, nose_y: float) -> int:
         """
@@ -129,6 +130,8 @@ class RespiratoryRateMonitor:
             fft_freq = np.fft.rfftfreq(len(signal), 1.0 / self.fps)
 
             # Physiological breathing range (8-30 breaths/min = 0.133-0.5 Hz)
+            # But since we sample slowly (every 3 sec), we need to adjust the frequency range
+            # Nyquist frequency = fps/2 = 1.5 Hz, max detectable rate = 90 breaths/min
             mask = (fft_freq >= 0.133) & (fft_freq <= 0.5)
             fft_data_masked = np.abs(fft_data[mask])
             fft_freq_masked = fft_freq[mask]
@@ -149,14 +152,16 @@ class RespiratoryRateMonitor:
             print(f"🫁 RR Debug: nose_y={nose_y:.4f}, signal_std={signal_std:.6f}, peak_freq={peak_freq:.3f}Hz, raw_rr={respiratory_rate}, peak_mag={peak_magnitude:.2f}")
 
             # Require minimum signal strength to avoid noise-based detection
-            if signal_std < 0.001:  # Very small movement threshold
+            # Lower threshold since we're sampling slowly (3 sec intervals)
+            if signal_std < 0.0005:  # Reduced threshold for slow sampling
                 print(f"⚠️ RR: Signal too weak (std={signal_std:.6f}), using previous: {self.last_respiratory_rate}")
                 return self.last_respiratory_rate
 
             # Sanity check
             if 8 <= respiratory_rate <= 30:
                 prev_rr = self.last_respiratory_rate
-                self.last_respiratory_rate = int(0.7 * self.last_respiratory_rate + 0.3 * respiratory_rate)
+                # Less aggressive smoothing (50/50) for faster response
+                self.last_respiratory_rate = int(0.5 * self.last_respiratory_rate + 0.5 * respiratory_rate)
                 print(f"✅ RR: Updated from {prev_rr} to {self.last_respiratory_rate} (raw: {respiratory_rate})")
             else:
                 print(f"⚠️ RR: Out of range ({respiratory_rate}), keeping: {self.last_respiratory_rate}")
