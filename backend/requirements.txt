@@ -18,7 +18,8 @@ anthropic==0.18.1
 pandas==2.2.0
 
 # Database
-supabase==2.3.4
+supabase==2.10.0
+httpx==0.27.2
 
 # Production
 gunicorn==21.2.0
