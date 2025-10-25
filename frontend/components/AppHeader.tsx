@@ -64,6 +64,16 @@ export default function AppHeader({ alerts = [], onAlertResolve, onPatientClick,
               Floor Plan
             </a>
             <a
+              href="/patient-view"
+              className={`px-6 py-2 label-uppercase text-xs transition-colors ${
+                pathname === '/patient-view'
+                  ? 'text-neutral-950 border-b-2 border-primary-700'
+                  : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
+              }`}
+            >
+              Patient View
+            </a>
+            <a
               href="/stream"
               className={`px-6 py-2 label-uppercase text-xs transition-colors ${
                 pathname === '/stream'

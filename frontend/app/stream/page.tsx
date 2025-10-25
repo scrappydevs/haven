@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import PatientSearchModal from '@/components/PatientSearchModal';
-import MonitoringConditionSelector from '@/components/MonitoringConditionSelector';
+import AnalysisModeSelector, { AnalysisMode } from '@/components/AnalysisModeSelector';
 import { getApiUrl, getWsUrl } from '@/lib/api';
 
 interface Patient {
@@ -24,10 +24,10 @@ export default function StreamPage() {
   const isConnectingRef = useRef<boolean>(false); // Prevent duplicate connections
 
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [tempPatient, setTempPatient] = useState<Patient | null>(null);  // Temporary until conditions confirmed
-  const [monitoringConditions, setMonitoringConditions] = useState<string[]>([]);
+  const [tempPatient, setTempPatient] = useState<Patient | null>(null);  // Temporary until mode confirmed
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('enhanced');
   const [showPatientModal, setShowPatientModal] = useState(false);
-  const [showConditionSelector, setShowConditionSelector] = useState(false);
+  const [showModeSelector, setShowModeSelector] = useState(false);
   const [activeStreams, setActiveStreams] = useState<string[]>([]);
 
   const [isStreaming, setIsStreaming] = useState(false);
@@ -181,10 +181,10 @@ export default function StreamPage() {
         console.log('   readyState:', ws.readyState);
         console.log('   url:', ws.url);
 
-        // Send initial handshake with monitoring conditions
+        // Send initial handshake with analysis mode
         const handshake = {
           type: 'handshake',
-          monitoring_conditions: monitoringConditions
+          analysis_mode: analysisMode
         };
         console.log(`📋 Sending handshake:`, JSON.stringify(handshake));
         ws.send(JSON.stringify(handshake));
@@ -489,16 +489,16 @@ export default function StreamPage() {
                   {selectedPatient.age}y/o • {selectedPatient.gender}
                 </p>
                 <p className="body-default text-neutral-950 font-medium">{selectedPatient.condition}</p>
-                {monitoringConditions.length > 0 && (
-                  <div className="flex items-center gap-2 mt-3">
-                    <span className="label-uppercase text-neutral-700">Monitoring:</span>
-                    {monitoringConditions.map(condition => (
-                      <span key={condition} className="label-uppercase bg-primary-100 text-primary-950 px-2 py-1 border border-primary-700">
-                        {condition}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="label-uppercase text-neutral-700">Mode:</span>
+                  <span className={`label-uppercase px-3 py-1 border ${
+                    analysisMode === 'enhanced' 
+                      ? 'bg-primary-700 text-white border-primary-700' 
+                      : 'bg-neutral-100 text-neutral-700 border-neutral-300'
+                  }`}>
+                    {analysisMode === 'enhanced' ? 'Enhanced AI Analysis' : 'Normal'}
+                  </span>
+                </div>
               </div>
               {!isStreaming && (
                 <button
@@ -638,43 +638,43 @@ export default function StreamPage() {
         onSelect={(patient) => {
           setTempPatient(patient);
           setShowPatientModal(false);
-          setShowConditionSelector(true);
+          setShowModeSelector(true);
         }}
         activeStreams={activeStreams}
       />
 
-      {/* Monitoring Condition Selector Modal (Step 2) */}
-      {showConditionSelector && tempPatient && (
+      {/* Analysis Mode Selector Modal (Step 2) */}
+      {showModeSelector && tempPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-neutral-950/80"
-            onClick={() => setShowConditionSelector(false)}
+            onClick={() => setShowModeSelector(false)}
           />
 
           {/* Modal */}
           <div className="relative max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-lg">
-            <MonitoringConditionSelector
+            <AnalysisModeSelector
               patient={tempPatient}
-              onConfirm={(conditions) => {
+              onConfirm={(mode) => {
                 setSelectedPatient(tempPatient);
-                setMonitoringConditions(conditions);
-                setShowConditionSelector(false);
+                setAnalysisMode(mode);
+                setShowModeSelector(false);
 
-                // Save monitoring config to localStorage for dashboard to read
+                // Save analysis mode to localStorage for dashboard to read
                 if (tempPatient) {
                   localStorage.setItem(
-                    `monitoring-${tempPatient.patient_id}`,
-                    JSON.stringify(conditions)
+                    `analysis-mode-${tempPatient.patient_id}`,
+                    mode
                   );
-                  console.log(`💾 Saved monitoring config for ${tempPatient.patient_id}:`, conditions);
+                  console.log(`💾 Saved analysis mode for ${tempPatient.patient_id}:`, mode);
                 }
 
                 setTempPatient(null);
-                console.log(`✅ Selected patient ${tempPatient.patient_id} with conditions:`, conditions);
+                console.log(`✅ Selected patient ${tempPatient.patient_id} with mode:`, mode);
               }}
               onBack={() => {
-                setShowConditionSelector(false);
+                setShowModeSelector(false);
                 setShowPatientModal(true);
               }}
             />
