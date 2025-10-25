@@ -36,7 +36,6 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
 
   useEffect(() => {
     const apiUrl = getApiUrl();
-
     // Fetch available protocols
     fetch(`${apiUrl}/monitoring/protocols`)
       .then(res => res.json())
