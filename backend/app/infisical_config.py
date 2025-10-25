@@ -6,6 +6,10 @@ Secrets are injected via: infisical run -- <command>
 
 import os
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load .env file at module import
+load_dotenv()
 
 class SecretManager:
     """

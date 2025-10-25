@@ -6,6 +6,7 @@ import InfoBar from '@/components/InfoBar';
 import DetailPanel from '@/components/DetailPanel';
 import StatsBar from '@/components/StatsBar';
 import PatientSearchModal from '@/components/PatientSearchModal';
+import { API_URL } from '@/lib/api-config';
 import GlobalActivityFeed from '@/components/GlobalActivityFeed';
 import AgentAlertToast from '@/components/AgentAlertToast';
 
@@ -113,15 +114,15 @@ export default function DashboardPage() {
 
     // Fetch active streams
     try {
-      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
       const res = await fetch(`${API_URL}/streams/active`);
       const data = await res.json();
       setActiveStreams(data.active_streams || []);
     } catch (error) {
       console.error('Error fetching active streams:', error);
+      setActiveStreams([]);
+    } finally {
+      setShowPatientModal(true);  // Always show modal
     }
-
-    setShowPatientModal(true);
   };
 
   // Assign patient to box (reads monitoring config from localStorage set by Stream page)
@@ -527,8 +528,6 @@ export default function DashboardPage() {
   }, [selectedPatientId, selectedCvData, addPatientEvent, addGlobalEvent, boxAssignments]);
 
   useEffect(() => {
-    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-    
     // Fetch patients from backend
     fetch(`${API_URL}/patients`)
       .then(res => res.json())

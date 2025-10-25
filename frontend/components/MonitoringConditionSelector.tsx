@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { API_URL } from '@/lib/api-config';
 import { motion } from 'framer-motion';
 
 interface Patient {
@@ -34,8 +35,6 @@ export default function MonitoringConditionSelector({ patient, onConfirm, onBack
   const [protocols, setProtocols] = useState<Record<string, Protocol>>({});
 
   useEffect(() => {
-    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-    
     // Fetch available protocols
     fetch(`${API_URL}/monitoring/protocols`)
       .then(res => res.json())

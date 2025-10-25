@@ -1,14 +1,16 @@
 """
 Supabase client for database operations
-Uses Infisical for secure secret management
+Reads from environment variables (Infisical CLI or Render dashboard)
 """
 
+import os
 from supabase import create_client, Client
-from app.infisical_config import get_secret
 
-# Get secrets from Infisical
-SUPABASE_URL = get_secret("SUPABASE_URL")
-SUPABASE_ANON_KEY = get_secret("SUPABASE_ANON_KEY")
+# Get secrets from environment - works with both:
+# 1. Infisical CLI (injects into environment when you run: infisical run -- python3 main.py)
+# 2. Render dashboard (sets env vars directly)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 print("=" * 60)
 print("🔧 Supabase Client Initialization")
