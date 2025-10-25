@@ -91,7 +91,7 @@ export default function PatientManagement() {
   const filteredPatients = getFilteredPatients();
 
   return (
-    <div className="bg-surface border border-neutral-200 flex flex-col h-full">
+    <div className="bg-surface border border-neutral-200 flex flex-col h-full rounded-lg overflow-hidden">
       {/* Header */}
       <div className="px-6 py-4 border-b-2 border-neutral-950">
         <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950">

@@ -746,6 +746,32 @@ async def create_alert(
         return {"error": str(e)}
 
 
+@app.patch("/alerts/{alert_id}")
+async def update_alert_status(alert_id: str, status: str = "resolved"):
+    """
+    Update alert status (e.g., mark as resolved/acknowledged)
+    """
+    if not supabase:
+        # Fallback to in-memory
+        global alerts
+        for alert in alerts:
+            if alert.get("id") == alert_id:
+                alert["status"] = status
+                return alert
+        return {"error": "Alert not found"}
+
+    try:
+        result = supabase.table("alerts").update({
+            "status": status,
+            "resolved_at": "now()" if status == "resolved" else None
+        }).eq("id", alert_id).execute()
+
+        return result.data[0] if result.data else {"error": "Alert not found"}
+    except Exception as e:
+        print(f"❌ Error updating alert: {e}")
+        return {"error": str(e)}
+
+
 @app.delete("/alerts")
 async def clear_alerts():
     """Clear all alerts (in-memory fallback only)"""

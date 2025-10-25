@@ -107,6 +107,8 @@ export default function DashboardPage() {
     escalationsToday: number;
   }>>({});
 
+  const [isManualAlertsOpen, setManualAlertsOpen] = useState(false);
+
 
   // Patient selection modal (one-step flow)
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -165,7 +167,7 @@ export default function DashboardPage() {
       timestamp: new Date().toISOString(),
       type: 'system',
       severity: conditions.length > 0 ? 'info' : 'warning',
-      message: '📹 Monitoring Started',
+      message: 'Monitoring Started',
       details: `Assigned ${patient.name} - ${protocolsText}`
     });
 
@@ -286,7 +288,7 @@ export default function DashboardPage() {
         timestamp: new Date().toISOString(),
         type: 'agent_thinking',  // Preserve specific type
         severity: 'info',
-        message: '🤖 Analyzing metrics...',
+        message: 'Analyzing metrics...',
         details: message.message || 'AI agent evaluating patient condition'
       });
 
@@ -358,6 +360,26 @@ export default function DashboardPage() {
   const onBackToOverview = () => {
     setViewMode('overview');
     // Keep selected patient ID so CV data still updates
+  };
+
+  // Handle alert resolution
+  const handleAlertResolve = async (alertId: string) => {
+    try {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/alerts/${alertId}?status=resolved`, {
+        method: 'PATCH',
+      });
+
+      if (response.ok) {
+        // Remove alert from local state immediately for responsive UI
+        setAlerts(prev => prev.filter(alert => alert.id !== alertId));
+        console.log('✅ Alert resolved:', alertId);
+      } else {
+        console.error('❌ Failed to resolve alert');
+      }
+    } catch (err) {
+      console.error('❌ Error resolving alert:', err);
+    }
   };
 
   // Throttle logging to reduce state updates (ref-based, no re-renders)
@@ -611,6 +633,12 @@ export default function DashboardPage() {
 
             {/* Right side: Alerts & User */}
             <div className="flex items-center gap-4">
+              <button
+                onClick={() => setManualAlertsOpen(true)}
+                className="px-4 py-2 text-xs font-medium uppercase tracking-wide border border-neutral-300 rounded-full text-neutral-700 hover:text-neutral-950 hover:border-neutral-950 transition-colors"
+              >
+                Manual Alerts
+              </button>
               {/* Notifications */}
               <button className="relative p-2 text-neutral-500 hover:text-neutral-950 transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -717,17 +745,15 @@ export default function DashboardPage() {
             </div>
             </div>
 
-            {/* Right Column - Activity Feed & Manual Alerts (4 columns) */}
-            <div className="col-span-4 space-y-6">
+            {/* Right Column - Activity Feed (4 columns) */}
+            <div className="col-span-4 h-[calc(100vh-180px)] min-h-[420px]">
               <GlobalActivityFeed
                 events={globalEventFeed}
                 alerts={alerts}
                 isLoading={isLoadingAlerts}
                 onPatientClick={onPatientClicked}
+                onAlertResolve={handleAlertResolve}
               />
-              
-              {/* Manual Alerts Panel */}
-              <ManualAlertsPanel />
             </div>
           </div>
         ) : (
@@ -811,6 +837,11 @@ export default function DashboardPage() {
           .filter((p): p is SupabasePatient => p !== null)
           .map(p => p.patient_id)}
         mode="assign-stream"
+      />
+
+      <ManualAlertsPanel
+        isOpen={isManualAlertsOpen}
+        onClose={() => setManualAlertsOpen(false)}
       />
     </div>
   );

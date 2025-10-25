@@ -30,9 +30,10 @@ interface GlobalActivityFeedProps {
   alerts: Alert[];
   isLoading?: boolean;
   onPatientClick?: (patientId: number) => void;
+  onAlertResolve?: (alertId: string) => void;
 }
 
-export default function GlobalActivityFeed({ events, alerts, isLoading = false, onPatientClick }: GlobalActivityFeedProps) {
+export default function GlobalActivityFeed({ events, alerts, isLoading = false, onPatientClick, onAlertResolve }: GlobalActivityFeedProps) {
   const formatTime = (timestamp: string) => {
     if (!timestamp) return '--:--:--';
     try {
@@ -87,7 +88,7 @@ export default function GlobalActivityFeed({ events, alerts, isLoading = false, 
   };
 
   return (
-    <div className="bg-surface border border-neutral-200 h-full flex flex-col overflow-hidden">
+    <div className="bg-surface border border-neutral-200 h-full flex flex-col overflow-hidden rounded-lg">
       {/* Header */}
       <div className="px-6 py-4 border-b-2 border-neutral-950 flex-shrink-0">
         <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950">
@@ -97,7 +98,7 @@ export default function GlobalActivityFeed({ events, alerts, isLoading = false, 
 
       {/* Alerts Section */}
       {isLoading ? (
-        <div className="px-8 py-6 border-b border-neutral-200 bg-neutral-50 flex-shrink-0">
+        <div className="px-8 py-6 border-b-2 border-neutral-200 bg-neutral-50 flex-shrink-0">
           <div className="flex items-center gap-2 text-neutral-500">
             <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -105,60 +106,88 @@ export default function GlobalActivityFeed({ events, alerts, isLoading = false, 
             <span className="text-sm font-light">Loading alerts...</span>
           </div>
         </div>
-      ) : alerts.length > 0 ? (
-        <div className="border-b border-neutral-200 bg-accent-terra/5 flex-shrink-0">
-          <div className="px-6 py-4">
-            <h3 className="text-accent-terra mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider">
-              Active Alerts ({alerts.filter(a => a.status === 'active').length})
-            </h3>
-          </div>
-          <div className="space-y-0 max-h-64 overflow-y-auto">
-            {alerts.filter(a => a.status === 'active').map((alert, i) => (
-              <div
-                key={alert.id || i}
-                className={`border-l-4 ${getSeverityColor(alert.severity)} px-6 py-3 cursor-pointer hover:bg-neutral-50 transition-colors border-b border-neutral-100 last:border-b-0`}
-                onClick={() => {
-                  if (alert.patient_id && onPatientClick) {
-                    // Convert patient_id string to number if needed
-                    const patientNum = parseInt(alert.patient_id.replace(/\D/g, '')) || 0;
-                    onPatientClick(patientNum);
-                  }
-                }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                      alert.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                      alert.severity === 'high' ? 'bg-orange-100 text-orange-700' :
-                      alert.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-neutral-100 text-neutral-700'
-                    }`}>
-                      {alert.severity}
-                    </span>
-                    {alert.patient_id && (
-                      <span className="text-neutral-950 text-xs font-medium">
-                        {alert.patient_id}
-                      </span>
-                    )}
-                    {alert.room_id && !alert.room_id.includes('-') && (
-                      <span className="text-neutral-500 text-xs">
-                        • {alert.room_id}
-                      </span>
+      ) : (() => {
+        const activeAlerts = alerts.filter(a => a.status === 'active');
+        return activeAlerts.length > 0 ? (
+          <div className="border-b-2 border-accent-terra/30 bg-accent-terra/10 flex-shrink-0 shadow-inner">
+            {/* Header */}
+            <div className="px-6 py-3 bg-accent-terra/20 border-b border-accent-terra/30">
+              <div className="flex items-center justify-between">
+                <h3 className="text-accent-terra flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  Active Alerts ({activeAlerts.length})
+                </h3>
+              </div>
+            </div>
+            
+            {/* Alerts List */}
+            <div className="space-y-0 max-h-80 overflow-y-auto">
+              {activeAlerts.map((alert, i) => (
+                <div
+                  key={alert.id || i}
+                  className={`border-l-4 ${getSeverityColor(alert.severity)} px-6 py-4 border-b border-neutral-200/50 last:border-b-0 bg-white hover:bg-neutral-50 transition-all`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    {/* Left: Alert Info */}
+                    <div 
+                      className="flex-1 cursor-pointer"
+                      onClick={() => {
+                        if (alert.patient_id && onPatientClick) {
+                          const patientNum = parseInt(alert.patient_id.replace(/\D/g, '')) || 0;
+                          onPatientClick(patientNum);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${
+                          alert.severity === 'critical' ? 'bg-red-600 text-white' :
+                          alert.severity === 'high' ? 'bg-orange-500 text-white' :
+                          alert.severity === 'medium' ? 'bg-yellow-500 text-white' :
+                          'bg-neutral-500 text-white'
+                        }`}>
+                          {alert.severity}
+                        </span>
+                        {alert.patient_id && (
+                          <span className="text-neutral-950 text-xs font-semibold">
+                            {alert.patient_id}
+                          </span>
+                        )}
+                        {alert.room_id && !alert.room_id.includes('-') && (
+                          <span className="text-neutral-500 text-xs">
+                            • {alert.room_id}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-light text-neutral-400 font-mono ml-auto">
+                          {formatTime(alert.triggered_at)}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-neutral-950 mb-1">{alert.title}</p>
+                      {alert.description && (
+                        <p className="text-xs font-light text-neutral-600">{alert.description}</p>
+                      )}
+                    </div>
+
+                    {/* Right: Action Button */}
+                    {onAlertResolve && alert.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAlertResolve(alert.id!);
+                        }}
+                        className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 hover:border-primary-300 rounded transition-all"
+                      >
+                        Dealt With
+                      </button>
                     )}
                   </div>
-                  <span className="text-[10px] font-light text-neutral-400 font-mono">
-                    {formatTime(alert.triggered_at)}
-                  </span>
                 </div>
-                <p className="text-sm font-medium text-neutral-950 mb-1">{alert.title}</p>
-                {alert.description && (
-                  <p className="text-xs font-light text-neutral-600">{alert.description}</p>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null;
+      })()}
 
       {/* Consolidated Event Log */}
       <div className="flex-1 overflow-hidden">

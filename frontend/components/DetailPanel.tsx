@@ -241,9 +241,9 @@ export default function DetailPanel({
             <h3 className="text-sm font-light text-neutral-950">
               {patient.name}
             </h3>
-            <span className="text-xs text-neutral-500">• {patient.age}y/o</span>
+            <span className="text-xs text-neutral-500">{patient.age}y/o</span>
             {patient.condition && (
-              <span className="text-xs text-neutral-500">• {patient.condition}</span>
+              <span className="text-xs text-neutral-500">{patient.condition}</span>
             )}
           </div>
           <div className={`px-2 py-0.5 label-uppercase border ${
