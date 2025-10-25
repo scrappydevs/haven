@@ -193,6 +193,7 @@ export default function StreamPage() {
           (errorEvent.error instanceof Error && errorEvent.error.message) ||
           (typeof errorEvent.reason === 'string' ? errorEvent.reason : undefined);
 
+        const apiUrl = getApiUrl();
         const fallbackMessage = `Failed to connect to server at ${apiUrl}. Make sure the backend is reachable.`;
         let userMessage = detailedMessage ? `WebSocket error: ${detailedMessage}` : fallbackMessage;
 
