@@ -35,7 +35,8 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
     const fetchPatients = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/search?q=${search}`);
+        const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+        const res = await fetch(`${API_URL}/patients/search?q=${search}`);
         const data = await res.json();
         setPatients(Array.isArray(data) ? data : []);
       } catch (error) {

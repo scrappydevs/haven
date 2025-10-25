@@ -208,9 +208,10 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   useEffect(() => {
     if (!isLive) return;
 
-    const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') + '/ws/view';
+    const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
+    const wsUrl = API_URL.replace('http', 'ws') + '/ws/view';
     console.log('🔌 Viewer connecting to:', wsUrl);
-    const ws = new WebSocket(wsUrl || 'ws://localhost:8000/ws/view');
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -291,8 +292,9 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       const time = video.currentTime;
       setCurrentTime(time);
 
+      const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
       const timestamp = time.toFixed(1);
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv-data/${patient.id}/${timestamp}`)
+      fetch(`${API_URL}/cv-data/${patient.id}/${timestamp}`)
         .then(res => res.json())
         .then(data => {
           // Normalize data structure to match live feed format
