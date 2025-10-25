@@ -77,11 +77,9 @@ async def startup_event():
     # Print service status
     print("🚀 TrialSentinel Backend Services:")
     print(f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
-    if supabase and SUPABASE_URL:
-        print(f"     └─ {SUPABASE_URL}")
     print(f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
     print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
-    print(f"   • Patients: {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
+    print(f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
     print(f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
     print("\n✅ Backend ready!\n")
 
@@ -138,7 +136,7 @@ async def search_patients(q: str = ""):
         List of patients matching the search query
     """
     if not supabase:
-        return {"error": "Supabase not configured", "patients": []}
+        return {"error": "Supabase not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables."}
 
     try:
         if q:
@@ -160,8 +158,8 @@ async def search_patients(q: str = ""):
 
         return response.data
     except Exception as e:
-        print(f"❌ Error searching patients: {e}")
-        return {"error": str(e), "patients": []}
+        print(f"❌ Error searching patients from Supabase: {e}")
+        return {"error": str(e)}
 
 
 @app.get("/patients/by-id/{patient_id}")
