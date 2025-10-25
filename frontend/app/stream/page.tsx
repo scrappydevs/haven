@@ -21,6 +21,7 @@ export default function StreamPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const captureCleanupRef = useRef<(() => void) | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isConnectingRef = useRef<boolean>(false); // Prevent duplicate connections
 
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [tempPatient, setTempPatient] = useState<Patient | null>(null);  // Temporary until conditions confirmed
@@ -36,10 +37,23 @@ export default function StreamPage() {
 
   useEffect(() => {
     return () => {
-      // Cleanup on unmount
-      stopStreaming();
+      // Cleanup on TRUE unmount (page navigation away)
+      // Check refs to see if there's actually something to clean up
+      if (wsRef.current || streamRef.current) {
+        console.log('🧹 Component unmounting - cleaning up stream');
+        // Direct cleanup without calling stopStreaming to avoid state updates during unmount
+        if (captureCleanupRef.current) {
+          captureCleanupRef.current();
+        }
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        }
+      }
     };
-  }, []);
+  }, []); // Empty deps - only run on mount/unmount
 
   // Fetch active streams and open patient selection modal
   const openPatientSelection = async () => {
@@ -62,11 +76,14 @@ export default function StreamPage() {
       return;
     }
 
-    // Prevent double-start
-    if (isStreaming || isConnecting) {
-      console.log('⚠️ Already streaming or connecting');
+    // Prevent double-start (using ref to survive React strict mode double-render)
+    if (isStreaming || isConnecting || isConnectingRef.current) {
+      console.log('⚠️ Already streaming or connecting (prevented duplicate)');
       return;
     }
+
+    // Set connecting flag immediately (ref-based, survives re-renders)
+    isConnectingRef.current = true;
 
     try {
       setIsConnecting(true);
@@ -76,6 +93,17 @@ export default function StreamPage() {
       if (captureCleanupRef.current) {
         captureCleanupRef.current();
         captureCleanupRef.current = null;
+      }
+
+      // Close any existing WebSocket connections
+      if (wsRef.current) {
+        console.log('⚠️  Closing existing WebSocket before starting new one');
+        try {
+          wsRef.current.close();
+        } catch (e) {
+          console.log('   (Error closing old WS, continuing anyway)');
+        }
+        wsRef.current = null;
       }
 
       // Request webcam access
@@ -121,29 +149,45 @@ export default function StreamPage() {
       // Connect to patient-specific WebSocket
       const wsUrl = getWsUrl(`/ws/stream/${selectedPatient.patient_id}`);
       console.log(`🔌 Connecting to WebSocket for patient ${selectedPatient.patient_id}:`, wsUrl);
+      console.log(`   Current wsRef state:`, wsRef.current ? 'HAS OLD CONNECTION' : 'clean');
+      console.log(`   Browser supports WebSocket:`, 'WebSocket' in window);
 
       const ws = new WebSocket(wsUrl);
+      console.log(`   WebSocket created, initial readyState:`, ws.readyState, '(0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)');
       wsRef.current = ws;
+
+      // Check state after a tiny delay to see if it failed immediately
+      setTimeout(() => {
+        console.log(`   WebSocket state after 10ms:`, ws.readyState);
+        if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+          console.error('❌ WebSocket closed immediately after creation - this suggests browser security blocking');
+        }
+      }, 10);
 
       // Set a connection timeout
       const connectionTimeout = setTimeout(() => {
         if (ws.readyState !== WebSocket.OPEN) {
+          console.warn(`⏱️  Connection timeout - current state: ${ws.readyState}`);
           ws.close();
           setError('Connection timeout. Is the backend running on port 8000?');
           setIsConnecting(false);
+          isConnectingRef.current = false;
         }
       }, 5000);
 
       ws.onopen = () => {
         clearTimeout(connectionTimeout);
-        console.log('✅ Connected to WebSocket server');
+        console.log('✅ WebSocket ONOPEN fired - connection established!');
+        console.log('   readyState:', ws.readyState);
+        console.log('   url:', ws.url);
 
         // Send initial handshake with monitoring conditions
-        ws.send(JSON.stringify({
+        const handshake = {
           type: 'handshake',
           monitoring_conditions: monitoringConditions
-        }));
-        console.log(`📋 Sent monitoring conditions:`, monitoringConditions);
+        };
+        console.log(`📋 Sending handshake:`, JSON.stringify(handshake));
+        ws.send(JSON.stringify(handshake));
       };
 
       ws.onmessage = (event) => {
@@ -161,6 +205,7 @@ export default function StreamPage() {
           console.log('✅ Handshake confirmed, starting stream');
           setIsStreaming(true);
           setIsConnecting(false);
+          isConnectingRef.current = false; // Clear connecting flag
 
           if (data.warning) {
             console.warn('⚠️ WebSocket warning:', data.warning);
@@ -174,23 +219,38 @@ export default function StreamPage() {
 
       ws.onclose = (event) => {
         clearTimeout(connectionTimeout);
-        console.log('❌ Disconnected from server. Code:', event.code, 'Reason:', event.reason);
+        
+        // Capture state before updating (use REF for accurate state, not async state)
+        const hadConnection = isStreaming;
+        const wasAttemptingConnection = isConnecting || isConnectingRef.current;
+        
+        console.log('❌ Disconnected from server. Code:', event.code, 'Reason:', event.reason, 
+                    'hadConnection:', hadConnection, 'wasAttempting:', wasAttemptingConnection,
+                    'connectingRef:', isConnectingRef.current);
+        
         setIsStreaming(false);
         setIsConnecting(false);
+        isConnectingRef.current = false; // Clear connecting flag
 
+        // Ignore transient failures during initial connection (React dev mode double-render issue)
+        if (!hadConnection && !wasAttemptingConnection && event.code === 1006) {
+          console.warn('⚠️  Ignoring transient connection close (likely React dev mode duplicate)');
+          return;
+        }
+
+        // Show errors only for real connection failures
         if (event.reason) {
           setError(event.reason);
         } else if (event.code === 4090) {
           setError('This patient already has an active stream. Please stop the other stream before starting a new one.');
-        }
-
-        if (event.code === 1006) {
+        } else if (event.code === 1006 && wasAttemptingConnection) {
           setError('Connection failed. Make sure backend is running: cd backend && python3 main.py');
         }
       };
 
       ws.onerror = (event) => {
-        clearTimeout(connectionTimeout);
+        // Don't clear timeout yet - connection might still succeed
+        // (React dev mode or browser can cause initial failed attempts)
         const errorEvent = event as ErrorEvent & {
           message?: string;
           reason?: string;
@@ -203,58 +263,21 @@ export default function StreamPage() {
           (errorEvent.error instanceof Error && errorEvent.error.message) ||
           (typeof errorEvent.reason === 'string' ? errorEvent.reason : undefined);
 
-        const apiUrl = getApiUrl();
-        const fallbackMessage = `Failed to connect to server at ${apiUrl}. Make sure the backend is reachable.`;
-        let userMessage = detailedMessage ? `WebSocket error: ${detailedMessage}` : fallbackMessage;
-
-        const hints: string[] = [];
-        if (typeof window !== 'undefined') {
-          if (!navigator.onLine) {
-            hints.push('You appear to be offline.');
-          }
-          try {
-            const apiOrigin = new URL(apiUrl);
-            if (window.location.protocol === 'https:' && apiOrigin.protocol === 'http:') {
-              hints.push('Browsers block insecure ws:// connections from an HTTPS page. Use an HTTPS backend or wss:// URL.');
-            }
-          } catch {
-            // Ignore URL parsing issues
-          }
-        }
-
-        if (!detailedMessage && hints.length > 0) {
-          userMessage = `${fallbackMessage} ${hints.join(' ')}`.trim();
-        }
-
-        console.error('❌ WebSocket error:', detailedMessage || 'unknown issue', {
+        console.warn('⚠️  WebSocket error (may be transient):', detailedMessage || 'unknown issue', {
           event,
           url: ws.url,
           readyState: ws.readyState,
         });
 
-        setError(userMessage);
-        setIsConnecting(false);
-        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-          ws.close();
-        }
-        if (captureCleanupRef.current) {
-          captureCleanupRef.current();
-          captureCleanupRef.current = null;
-        }
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-          streamRef.current = null;
-        }
-        if (videoRef.current) {
-          videoRef.current.srcObject = null;
-        }
-        setIsStreaming(false);
+        // Only show error and cleanup if we're not already connected
+        // Wait for onclose to handle cleanup
       };
 
     } catch (err: any) {
       console.error('Error starting stream:', err);
       setError(err.message || 'Could not access webcam. Please allow camera permissions.');
       setIsConnecting(false);
+      isConnectingRef.current = false; // Clear connecting flag
 
       // Cleanup on error
       if (streamRef.current) {
@@ -378,6 +401,7 @@ export default function StreamPage() {
 
     setIsStreaming(false);
     setIsConnecting(false);
+    isConnectingRef.current = false; // Clear connecting flag
     setFps(0);
     console.log('✅ Stream stopped');
   };
@@ -510,6 +534,7 @@ export default function StreamPage() {
             <video
               ref={videoRef}
               className="w-full h-full object-cover"
+              style={{ transform: 'scaleX(-1)' }}
               autoPlay
               muted
               playsInline
