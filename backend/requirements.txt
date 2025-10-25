@@ -17,5 +17,8 @@ anthropic==0.18.1
 # Data processing
 pandas==2.2.0
 
+# Database
+supabase==2.3.4
+
 # Production
 gunicorn==21.2.0

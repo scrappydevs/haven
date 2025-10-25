@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import PatientSearchModal from '@/components/PatientSearchModal';
+import MonitoringConditionSelector from '@/components/MonitoringConditionSelector';
 
 interface Patient {
   id: string;
@@ -21,7 +22,10 @@ export default function StreamPage() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [tempPatient, setTempPatient] = useState<Patient | null>(null);  // Temporary until conditions confirmed
+  const [monitoringConditions, setMonitoringConditions] = useState<string[]>([]);
   const [showPatientModal, setShowPatientModal] = useState(false);
+  const [showConditionSelector, setShowConditionSelector] = useState(false);
   const [activeStreams, setActiveStreams] = useState<string[]>([]);
 
   const [isStreaming, setIsStreaming] = useState(false);
@@ -131,12 +135,27 @@ export default function StreamPage() {
       ws.onopen = () => {
         clearTimeout(connectionTimeout);
         console.log('✅ Connected to WebSocket server');
-        setIsStreaming(true);
-        setIsConnecting(false);
 
-        // Start capturing and sending frames
-        const cleanup = startCapture();
-        captureCleanupRef.current = cleanup;
+        // Send initial handshake with monitoring conditions
+        ws.send(JSON.stringify({
+          type: 'handshake',
+          monitoring_conditions: monitoringConditions
+        }));
+        console.log(`📋 Sent monitoring conditions:`, monitoringConditions);
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'connected') {
+          console.log('✅ Handshake confirmed, starting stream');
+          setIsStreaming(true);
+          setIsConnecting(false);
+
+          // Start capturing and sending frames
+          const cleanup = startCapture();
+          captureCleanupRef.current = cleanup;
+        }
       };
 
       ws.onclose = (event) => {
@@ -328,6 +347,16 @@ export default function StreamPage() {
                   {selectedPatient.age}y/o • {selectedPatient.gender}
                 </p>
                 <p className="text-sm text-slate-300 mt-1">{selectedPatient.condition}</p>
+                {monitoringConditions.length > 0 && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-slate-500">Monitoring:</span>
+                    {monitoringConditions.map(condition => (
+                      <span key={condition} className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
+                        {condition}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               {!isStreaming && (
                 <button
@@ -442,13 +471,46 @@ export default function StreamPage() {
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      {/* Patient Search Modal */}
+      {/* Patient Search Modal (Step 1) */}
       <PatientSearchModal
         isOpen={showPatientModal}
         onClose={() => setShowPatientModal(false)}
-        onSelect={setSelectedPatient}
+        onSelect={(patient) => {
+          setTempPatient(patient);
+          setShowPatientModal(false);
+          setShowConditionSelector(true);
+        }}
         activeStreams={activeStreams}
       />
+
+      {/* Monitoring Condition Selector Modal (Step 2) */}
+      {showConditionSelector && tempPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowConditionSelector(false)}
+          />
+
+          {/* Modal */}
+          <div className="relative max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <MonitoringConditionSelector
+              patient={tempPatient}
+              onConfirm={(conditions) => {
+                setSelectedPatient(tempPatient);
+                setMonitoringConditions(conditions);
+                setShowConditionSelector(false);
+                setTempPatient(null);
+                console.log(`✅ Selected patient ${tempPatient.patient_id} with conditions:`, conditions);
+              }}
+              onBack={() => {
+                setShowConditionSelector(false);
+                setShowPatientModal(true);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

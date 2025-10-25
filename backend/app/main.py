@@ -5,10 +5,22 @@ FastAPI application serving pre-computed CV results and trial data
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import json
 from pathlib import Path
+import os
 from app.websocket import manager, process_frame
 from app.supabase_client import supabase
+from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
+
+# Try to import anthropic for LLM recommendations
+try:
+    import anthropic
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+except ImportError:
+    anthropic_client = None
+    print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
 
 app = FastAPI(
     title="TrialSentinel AI",
@@ -301,6 +313,107 @@ async def get_active_streams():
     }
 
 
+@app.get("/monitoring/protocols")
+async def get_monitoring_protocols():
+    """
+    Get all available monitoring protocols
+
+    Returns:
+        {
+            "CRS": {...},
+            "SEIZURE": {...}
+        }
+    """
+    return get_all_protocols()
+
+
+class MonitoringRecommendationRequest(BaseModel):
+    patient_id: str
+    name: str
+    age: int
+    gender: str
+    condition: str
+
+
+@app.post("/monitoring/recommend")
+async def recommend_monitoring(request: MonitoringRecommendationRequest):
+    """
+    Get AI-recommended monitoring protocols based on patient information
+
+    Args:
+        request: Patient information
+
+    Returns:
+        {
+            "recommended": ["CRS", "SEIZURE"],
+            "reasoning": "Patient has multiple myeloma...",
+            "method": "llm" | "keyword"
+        }
+    """
+    if anthropic_client:
+        # Use LLM for intelligent recommendations
+        try:
+            protocols = get_all_protocols()
+            protocol_descriptions = "\n".join([
+                f"- {name}: {config['label']} - {config['description']}"
+                for name, config in protocols.items()
+            ])
+
+            message = anthropic_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=500,
+                messages=[{
+                    "role": "user",
+                    "content": f"""You are a clinical trial safety AI assistant. Based on the patient information below, recommend which monitoring protocols should be activated.
+
+Patient Information:
+- Name: {request.name}
+- Age: {request.age}
+- Gender: {request.gender}
+- Condition: {request.condition}
+
+Available Monitoring Protocols:
+{protocol_descriptions}
+
+Respond in JSON format with:
+{{
+  "recommended": ["PROTOCOL1", "PROTOCOL2"],
+  "reasoning": "Brief explanation of why these protocols are recommended"
+}}
+
+Only recommend protocols that are clearly relevant based on the patient's condition. If no protocols are clearly relevant, return an empty list."""
+                }]
+            )
+
+            # Parse Claude's response
+            response_text = message.content[0].text
+            # Extract JSON from response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                result = json.loads(json_match.group())
+                return {
+                    "recommended": result.get("recommended", []),
+                    "reasoning": result.get("reasoning", ""),
+                    "method": "llm"
+                }
+            else:
+                # Fallback to keyword matching
+                raise ValueError("Could not parse LLM response")
+
+        except Exception as e:
+            print(f"LLM recommendation error: {e}, falling back to keyword matching")
+            # Fall through to keyword matching
+
+    # Keyword-based fallback
+    recommended = keyword_recommend(request.condition)
+    return {
+        "recommended": recommended,
+        "reasoning": f"Keyword matching detected relevant terms in patient condition: {request.condition}",
+        "method": "keyword"
+    }
+
+
 @app.websocket("/ws/stream/{patient_id}")
 async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""
@@ -331,7 +444,23 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
 
     # Accept connection and register streamer
     await websocket.accept()
-    manager.register_streamer(patient_id, websocket)
+
+    # Wait for initial handshake with monitoring conditions
+    try:
+        initial_data = await websocket.receive_json()
+        monitoring_conditions = initial_data.get("monitoring_conditions", [])
+        manager.register_streamer(patient_id, websocket, monitoring_conditions)
+        print(f"📋 Patient {patient_id} monitoring conditions: {monitoring_conditions}")
+
+        # Send acknowledgment
+        await websocket.send_json({
+            "type": "connected",
+            "patient_id": patient_id,
+            "monitoring_conditions": monitoring_conditions
+        })
+    except Exception as e:
+        print(f"❌ Handshake error for patient {patient_id}: {e}")
+        manager.register_streamer(patient_id, websocket, [])
 
     try:
         frame_count = 0
@@ -344,12 +473,13 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
             if data.get("type") == "frame":
                 # Process every 3rd frame with full CV, skip others for performance
                 if frame_count % 3 == 0:
-                    result = process_frame(data.get("frame"))
+                    result = process_frame(data.get("frame"), patient_id=patient_id)
                     last_cv_result = result
 
                     if frame_count % 30 == 0:
                         crs = result.get('metrics', {}).get('crs_score', 0)
-                        print(f"📦 Patient {patient_id} - Frame #{frame_count} [PROCESSED], CRS: {crs}, viewers: {len(manager.viewers)}")
+                        hr = result.get('metrics', {}).get('heart_rate', 0)
+                        print(f"📦 Patient {patient_id} - Frame #{frame_count} [PROCESSED], CRS: {crs}, HR: {hr}, viewers: {len(manager.viewers)}")
                 else:
                     # Use cached CV data for skipped frames, just update the image
                     if last_cv_result:
