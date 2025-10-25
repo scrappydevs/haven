@@ -11,6 +11,8 @@ import numpy as np
 import mediapipe as mp
 import json
 import threading
+import queue
+import time
 from app.cv_metrics import (
     HeartRateMonitor,
     RespiratoryRateMonitor,
@@ -19,9 +21,6 @@ from app.cv_metrics import (
     TremorDetector,
     UpperBodyPostureTracker
 )
-
-# Thread lock for MediaPipe processing (not thread-safe even in static mode)
-cv_processing_lock = threading.Lock()
 
 # Initialize MediaPipe Face Mesh - OPTIMIZED for speed
 face_mesh = mp.solutions.face_mesh.FaceMesh(
@@ -58,6 +57,11 @@ class ConnectionManager:
         self.viewers: List[WebSocket] = []
         self.patient_trackers: Dict[str, PatientMetricTrackers] = {}  # {patient_id: trackers}
 
+        # Queue-based processing (one queue per patient)
+        self.processing_queues: Dict[str, queue.Queue] = {}  # {patient_id: queue}
+        self.worker_threads: Dict[str, threading.Thread] = {}  # {patient_id: thread}
+        self.worker_stop_flags: Dict[str, threading.Event] = {}  # {patient_id: stop_event}
+
     def register_streamer(self, patient_id: str, websocket: WebSocket, monitoring_conditions: Optional[List[str]] = None):
         """Register a streamer for a specific patient"""
         self.streamers[patient_id] = websocket
@@ -68,15 +72,45 @@ class ConnectionManager:
             trackers.monitoring_conditions = monitoring_conditions
         self.patient_trackers[patient_id] = trackers
 
-        print(f"✅ Registered streamer for patient {patient_id}. Monitoring: {monitoring_conditions}. Total streamers: {len(self.streamers)}")
+        # Start dedicated processing worker for this patient
+        self.processing_queues[patient_id] = queue.Queue(maxsize=2)  # Small queue, discard old frames
+        self.worker_stop_flags[patient_id] = threading.Event()
+
+        worker = threading.Thread(
+            target=self._processing_worker,
+            args=(patient_id,),
+            daemon=True,
+            name=f"CV-Worker-{patient_id}"
+        )
+        worker.start()
+        self.worker_threads[patient_id] = worker
+
+        print(f"✅ Registered streamer for patient {patient_id}. Monitoring: {monitoring_conditions}. Worker started. Total streamers: {len(self.streamers)}")
 
     def unregister_streamer(self, patient_id: str):
         """Unregister a streamer for a specific patient"""
+        # Stop worker thread
+        if patient_id in self.worker_stop_flags:
+            self.worker_stop_flags[patient_id].set()
+
+        if patient_id in self.worker_threads:
+            worker = self.worker_threads[patient_id]
+            worker.join(timeout=2.0)  # Wait up to 2 seconds
+            del self.worker_threads[patient_id]
+
+        if patient_id in self.processing_queues:
+            del self.processing_queues[patient_id]
+
+        if patient_id in self.worker_stop_flags:
+            del self.worker_stop_flags[patient_id]
+
         if patient_id in self.streamers:
             del self.streamers[patient_id]
+
         if patient_id in self.patient_trackers:
             del self.patient_trackers[patient_id]
-        print(f"❌ Unregistered streamer for patient {patient_id}. Total streamers: {len(self.streamers)}")
+
+        print(f"❌ Unregistered streamer for patient {patient_id}. Worker stopped. Total streamers: {len(self.streamers)}")
 
     def get_trackers(self, patient_id: str) -> Optional[PatientMetricTrackers]:
         """Get metric trackers for a patient"""
@@ -96,6 +130,87 @@ class ConnectionManager:
         # Remove from viewers
         if websocket in self.viewers:
             self.viewers.remove(websocket)
+
+    def queue_frame_for_processing(self, patient_id: str, frame_data: str, frame_num: int):
+        """Add frame to processing queue (non-blocking, discards if full)"""
+        if patient_id not in self.processing_queues:
+            return
+
+        try:
+            # Non-blocking put - if queue is full, discard frame (keep video real-time)
+            self.processing_queues[patient_id].put_nowait({
+                "frame_data": frame_data,
+                "frame_num": frame_num
+            })
+        except queue.Full:
+            # Queue full, skip this frame (worker is busy)
+            pass
+
+    def _processing_worker(self, patient_id: str):
+        """
+        Worker thread that processes frames sequentially (NO concurrency = NO lock needed)
+        Runs in background, processes one frame at a time
+        """
+        import asyncio
+
+        print(f"🔧 CV Worker started for patient {patient_id}")
+
+        frame_count = 0
+        last_slow_frame = 0
+
+        while not self.worker_stop_flags[patient_id].is_set():
+            try:
+                # Get frame from queue (blocking with timeout)
+                frame_task = self.processing_queues[patient_id].get(timeout=0.5)
+                frame_data = frame_task["frame_data"]
+                frame_num = frame_task["frame_num"]
+                frame_count += 1
+
+                # FAST: Process overlay every frame (pose only, ~50ms)
+                start_time = time.time()
+                fast_result = process_frame_fast(frame_data, patient_id)
+                fast_time = time.time() - start_time
+
+                # SLOW: Process metrics every 5 seconds
+                slow_result = None
+                if frame_num - last_slow_frame >= 150:  # Every 5 seconds at 30 FPS
+                    slow_start = time.time()
+                    slow_result = process_frame_metrics(frame_data, patient_id)
+                    slow_time = time.time() - slow_start
+                    last_slow_frame = frame_num
+                    print(f"📊 Patient {patient_id} - Frame #{frame_num} [METRICS] CRS: {slow_result['metrics'].get('crs_score', 0)}, HR: {slow_result['metrics'].get('heart_rate', 0)} (took {slow_time*1000:.0f}ms)")
+
+                # Merge fast overlays with slow metrics
+                overlay_data = {
+                    "landmarks": fast_result["landmarks"],
+                    "connections": fast_result["connections"],
+                    "head_pose_axes": fast_result["head_pose_axes"],
+                    "metrics": slow_result["metrics"] if slow_result else None
+                }
+
+                # Broadcast overlay data (async operation, need event loop)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.broadcast_frame({
+                    "type": "overlay_data",
+                    "patient_id": patient_id,
+                    "frame_num": frame_num,
+                    "data": overlay_data
+                }))
+                loop.close()
+
+                if fast_time > 0.1:
+                    print(f"⚠️ Fast processing slow: {fast_time*1000:.0f}ms (frame {frame_num})")
+
+            except queue.Empty:
+                # No frames to process, continue waiting
+                continue
+            except Exception as e:
+                print(f"❌ Worker error for patient {patient_id}: {e}")
+                import traceback
+                traceback.print_exc()
+
+        print(f"🔧 CV Worker stopped for patient {patient_id}")
 
     async def broadcast_frame(self, frame_data: Dict):
         """Send processed frame to all viewers in parallel"""
@@ -151,10 +266,9 @@ def process_frame_fast(frame_base64: str, patient_id: Optional[str] = None) -> D
 
         resize_time = time.time() - start - decode_time
 
-        # Thread-safe MediaPipe: ONLY Pose (no face mesh - too slow)
+        # MediaPipe Pose (no lock needed - single worker thread per patient)
         mediapipe_start = time.time()
-        with cv_processing_lock:
-            pose_results = pose.process(rgb_frame)
+        pose_results = pose.process(rgb_frame)
         mediapipe_time = time.time() - mediapipe_start
 
         # Extract pose landmarks as simple overlay
@@ -252,10 +366,9 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None) -
         small_frame = cv2.resize(frame, (320, 180))
         rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
-        # Thread-safe MediaPipe processing
-        with cv_processing_lock:
-            face_results = face_mesh.process(rgb_frame)
-            pose_results = pose.process(rgb_frame)
+        # MediaPipe processing (no lock needed - single worker thread per patient)
+        face_results = face_mesh.process(rgb_frame)
+        pose_results = pose.process(rgb_frame)
 
         # Get trackers for this patient
         trackers = manager.get_trackers(patient_id) if patient_id else None
