@@ -1,4 +1,4 @@
-# TrialSentinel AI 🏥
+# Haven AI 🏥
 
 Real-time computer vision monitoring for clinical trial safety - detect adverse events 2-4 hours earlier
 
@@ -21,7 +21,7 @@ Regeneron's BCMA bispecific antibodies (Linvoseltamab, Odronextamab):
 
 ## 💡 Our Solution
 
-**TrialSentinel AI** monitors 47 patients simultaneously via video feeds, detecting CRS **2-4 hours earlier** than human observation.
+**Haven AI** monitors 47 patients simultaneously via video feeds, detecting CRS **2-4 hours earlier** than human observation.
 
 ### Key Features:
 - 🎥 Multi-patient video dashboard (6+ feeds)
@@ -35,7 +35,7 @@ Regeneron's BCMA bispecific antibodies (Linvoseltamab, Odronextamab):
 ## 🏗️ Project Structure
 
 ```
-trialsentinel/
+haven/
 ├── frontend/          # Next.js 15 + React 19 dashboard
 ├── backend/           # FastAPI + CV processing
 │   ├── app/          # API routes
@@ -61,7 +61,7 @@ trialsentinel/
 ```bash
 # Clone repository
 git clone <your-repo-url>
-cd trialsentinel
+cd haven
 
 # Frontend setup
 cd frontend
@@ -280,7 +280,7 @@ To stay focused (36 hours is tight!):
 
 ## 📚 Resources
 
-- **Live Demo**: https://trialsentinel.vercel.app (coming soon)
+- **Live Demo**: https://use-haven.vercel.app (coming soon)
 - **Demo Video**: https://youtube.com/... (coming soon)
 - **Pitch Deck**: https://figma.com/... (coming soon)
 - **ClinicalTrials.gov**: https://clinicaltrials.gov/study/NCT04649359

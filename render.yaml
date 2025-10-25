@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: trialsentinel-backend
+    name: haven-backend
     env: python
     region: oregon
     plan: starter
@@ -21,4 +21,3 @@ services:
         value: 14641fd2-4afc-48b6-a138-c18fd6d65181
     healthCheckPath: /health
     rootDir: backend
-

@@ -1,5 +1,5 @@
 #!/bin/bash
-# TrialSentinel AI - Unified Startup Script
+# Haven AI - Unified Startup Script
 # Starts both backend and frontend with automatic port detection
 
 set -e
@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║          TrialSentinel AI - Startup Script                    ║${NC}"
+echo -e "${BLUE}║          Haven AI - Startup Script                           ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -90,7 +90,7 @@ echo ""
 
 # Summary
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║                 🎉 TrialSentinel AI is Running!               ║${NC}"
+echo -e "${BLUE}║                 🎉 Haven AI is Running!                      ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${GREEN}📡 Frontend:${NC}  http://localhost:3000"
@@ -110,4 +110,3 @@ echo ""
 
 # Show logs
 tail -f /tmp/backend.log /tmp/frontend.log
-

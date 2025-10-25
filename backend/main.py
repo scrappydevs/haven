@@ -1,5 +1,5 @@
 """
-TrialSentinel AI - Backend Application
+Haven AI - Backend Application
 Entry point for Gunicorn deployment
 """
 

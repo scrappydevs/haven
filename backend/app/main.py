@@ -1,5 +1,5 @@
 """
-TrialSentinel AI - Backend API
+Haven AI - Backend API
 FastAPI application serving pre-computed CV results and trial data
 """
 
@@ -26,7 +26,7 @@ except ImportError:
     print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
 
 app = FastAPI(
-    title="TrialSentinel AI",
+    title="Haven AI",
     description="Real-time computer vision monitoring for clinical trial safety",
     version="1.0.0"
 )
@@ -82,7 +82,7 @@ alerts = []
 async def root():
     """Root endpoint"""
     return {
-        "name": "TrialSentinel AI",
+        "name": "Haven AI",
         "version": "1.0.0",
         "status": "running",
         "docs": "/docs"
@@ -274,7 +274,7 @@ async def get_trial_protocol():
 
 @app.get("/roi-calculation")
 async def calculate_roi():
-    """Calculate ROI metrics for TrialSentinel"""
+    """Calculate ROI metrics for Haven"""
     return {
         "patients": 47,
         "manual_monitoring_cost_per_day": 18800,

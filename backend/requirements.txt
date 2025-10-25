@@ -2,7 +2,7 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
-websockets>=11.0,<13.0
+websockets>=13.0  # realtime package requires websockets.asyncio from 13.0+
 
 # Computer Vision
 opencv-python==4.10.0.84

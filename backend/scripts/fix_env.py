@@ -14,7 +14,7 @@ def fix_env_file():
     env_file = backend_dir / ".env"
     
     print("\n" + "="*70)
-    print("  TRIALSENTINEL AI - .env FILE FIXER")
+    print("  HAVEN AI - .env FILE FIXER")
     print("="*70 + "\n")
     
     if not env_file.exists():
@@ -101,7 +101,7 @@ def fix_env_file():
     corrected_content = []
     
     # Add header
-    corrected_content.append("# TrialSentinel AI - Backend Environment Variables")
+    corrected_content.append("# Haven AI - Backend Environment Variables")
     corrected_content.append("# Auto-corrected by fix_env.py")
     corrected_content.append("")
     
@@ -165,4 +165,3 @@ def fix_env_file():
 
 if __name__ == "__main__":
     fix_env_file()
-
