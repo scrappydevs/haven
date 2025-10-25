@@ -6,8 +6,8 @@ import { Activity, Map, BarChart3, Settings } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Activity },
-  { name: 'Floor Plan', href: '/floorplan', icon: Map },
- {name: 'Stream', href: '/stream', icon: BarChart3 },
+  { name: 'Floor Plan', href: '/dashboard/floorplan', icon: Map },
+  { name: 'Stream', href: '/stream', icon: BarChart3 },
 ];
 
 export default function AppSidebar() {
@@ -18,7 +18,7 @@ export default function AppSidebar() {
       {/* Logo */}
       <div className="h-12 flex items-center justify-center border-b border-neutral-200">
         <div className="w-8 h-8 bg-primary-700 flex items-center justify-center text-white text-xs font-bold">
-          TS
+          H
         </div>
       </div>
 

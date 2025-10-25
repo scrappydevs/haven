@@ -39,8 +39,8 @@ except ImportError:
     print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
 
 app = FastAPI(
-    title="Haven AI",
-    description="Real-time computer vision monitoring for clinical trial safety",
+    title="Haven",
+    description="Real-time patient monitoring and floor plan management for clinical trials",
     version="1.0.0"
 )
 
@@ -95,13 +95,13 @@ async def startup_event():
     secret_manager.print_status()
     
     # Print service status
-    print("🚀 TrialSentinel Backend Services:")
+    print("🏥 Haven Backend Services:")
     print(f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
     print(f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
     print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
     print(f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
     print(f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
-    print("\n✅ Backend ready!\n")
+    print("\n✅ Haven ready!\n")
 
 # In-memory alert storage
 alerts = []

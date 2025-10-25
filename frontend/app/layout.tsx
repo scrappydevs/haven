@@ -18,8 +18,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Haven AI - Clinical Trial Monitoring",
-  description: "Real-time computer vision monitoring for clinical trial safety",
+  title: "Haven - Patient Monitoring Platform",
+  description: "Real-time patient monitoring and floor plan management for clinical trials",
 };
 
 export default function RootLayout({

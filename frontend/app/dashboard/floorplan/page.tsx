@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import FloorPlanLegend from '@/components/FloorPlanLegend';
 import RoomDetailsPanel from '@/components/RoomDetailsPanel';
-import AppLayout from '@/components/AppLayout';
 
 // Declare smplr global type
 declare global {
@@ -64,11 +63,27 @@ export default function FloorPlanPage() {
   const [availablePatients, setAvailablePatients] = useState<SupabasePatient[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [roomsLoaded, setRoomsLoaded] = useState(false);
+  const [legendCollapsed, setLegendCollapsed] = useState(false);
+  const [roomsListCollapsed, setRoomsListCollapsed] = useState(false);
+
+  // Reset states on mount to ensure clean initialization
+  useEffect(() => {
+    console.log('🔄 Floor plan page mounted/remounted');
+    setIsViewerReady(false);
+    setRoomsLoaded(false);
+    setRooms([]);
+    setViewerError(null);
+    setUseDemoMode(false);
+    
+    // Fetch rooms on mount
+    fetchRoomAssignments();
+  }, []);
 
   // Initialize Smplrspace viewer
   useEffect(() => {
     if (!containerRef.current || !smplrLoaded || !window.smplr) return;
 
+    console.log('🎬 Initializing Smplrspace viewer...');
     let space: any = null;
 
     const initViewer = async () => {
@@ -143,11 +158,17 @@ export default function FloorPlanPage() {
     initViewer();
 
     return () => {
-      if (space) {
-        space.remove();
+      console.log('🧹 Cleaning up Smplrspace viewer...');
+      if (spaceRef.current) {
+        try {
+          spaceRef.current.remove();
+          spaceRef.current = null;
+        } catch (e) {
+          console.error('Error removing space:', e);
+        }
       }
     };
-  }, [smplrLoaded, roomsLoaded]);
+  }, [smplrLoaded]);
 
   // Update furniture colors when rooms change (patient assignment status)
   useEffect(() => {
@@ -258,7 +279,7 @@ export default function FloorPlanPage() {
 
       console.log('🔄 Detecting rooms from walls using Smplrspace API...');
 
-      // Get space definition to access furniture
+      // Get space definition to access annotations
       const space = spaceRef.current;
       if (!space) {
         console.error('❌ Space not initialized');
@@ -266,33 +287,58 @@ export default function FloorPlanPage() {
       }
 
       const definition = space.getDefinition();
+      console.log('📐 Space definition:', definition);
       
-      // Get all furniture labeled "Hospital Room"
-      const hospitalFurniture = definition?.furniture?.filter((f: any) => 
-        f.name?.toLowerCase().includes('hospital room')
+      // Get all annotations labeled "Hospital Room"
+      let hospitalAnnotations = definition?.annotations?.filter((a: any) => 
+        a.text?.toLowerCase().includes('hospital room')
       ) || [];
 
-      if (hospitalFurniture.length === 0) {
-        console.log('⚠️ No furniture labeled "Hospital Room" found');
-        return;
+      console.log('📋 All annotations:', definition?.annotations);
+      console.log('🏥 Hospital Room annotations:', hospitalAnnotations);
+
+      // Fallback: if no "Hospital Room" annotations found, try furniture
+      if (hospitalAnnotations.length === 0) {
+        console.log('⚠️ No annotations labeled "Hospital Room" found');
+        console.log('💡 TIP: In Smplrspace editor, add text annotations labeled "Hospital Room" to mark patient rooms');
+        console.log('📦 Trying furniture as fallback...');
+        
+        hospitalAnnotations = definition?.furniture?.filter((f: any) => 
+          f.name?.toLowerCase().includes('hospital room')
+        ) || [];
+        
+        if (hospitalAnnotations.length === 0) {
+          console.log('❌ No "Hospital Room" annotations or furniture found');
+          console.log('💡 Add text annotations in Smplrspace editor: Right-click → Add annotation → "Hospital Room"');
+          return;
+        }
+        
+        console.log(`📦 Found ${hospitalAnnotations.length} furniture items as fallback`);
+      } else {
+        console.log(`🏥 Found ${hospitalAnnotations.length} Hospital Room annotations`);
       }
 
-      console.log(`🏥 Found ${hospitalFurniture.length} Hospital Room markers`);
-
-      // For each hospital room marker, find which room it's in
+      // For each hospital room annotation/marker, find which room it's in
       const rooms: any[] = [];
-      for (let i = 0; i < hospitalFurniture.length; i++) {
-        const furniture = hospitalFurniture[i];
+      for (let i = 0; i < hospitalAnnotations.length; i++) {
+        const annotation = hospitalAnnotations[i];
         
         try {
-          // Get the room at this furniture's position
+          // Get the room at this annotation's position
           const roomData = await smplrClient.getRoomAtPoint({
             spaceId: spaceId,
             point: {
-              levelIndex: furniture.levelIndex || 0,
-              x: furniture.position.x,
-              z: furniture.position.z,
+              levelIndex: annotation.levelIndex || 0,
+              x: annotation.position?.x || annotation.x || 0,
+              z: annotation.position?.z || annotation.z || 0,
             },
+          });
+
+          console.log(`📍 Checking annotation "${annotation.text || annotation.name}" at position:`, {
+            levelIndex: annotation.levelIndex,
+            x: annotation.position?.x || annotation.x,
+            z: annotation.position?.z || annotation.z,
+            roomFound: !!roomData
           });
 
           if (roomData && roomData.room) {
@@ -301,16 +347,16 @@ export default function FloorPlanPage() {
             const centerZ = roomData.room.reduce((sum: number, p: any) => sum + p.z, 0) / roomData.room.length;
 
             rooms.push({
-              id: furniture.id || `room-${i + 1}`,
-              name: furniture.name || `Room ${i + 1}`,
-              levelIndex: furniture.levelIndex || 0,
+              id: annotation.id || `room-${i + 1}`,
+              name: annotation.text || annotation.name || `Room ${i + 1}`,
+              levelIndex: annotation.levelIndex || 0,
               position: { x: centerX, z: centerZ },
               polygon: roomData.room,
               holes: roomData.holes || [],
             });
           }
         } catch (error) {
-          console.warn(`⚠️ Could not find room for furniture: ${furniture.name}`, error);
+          console.warn(`⚠️ Could not find room for annotation: ${annotation.text || annotation.name}`, error);
         }
       }
 
@@ -347,11 +393,20 @@ export default function FloorPlanPage() {
   // Fetch room assignments from backend
   const fetchRoomAssignments = async () => {
     try {
+      console.log('🔄 Fetching rooms from backend...');
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/rooms`);
       const assignments = await res.json();
       
+      console.log('📦 Backend response:', assignments);
+      
       if (Array.isArray(assignments) && assignments.length > 0) {
         console.log(`✅ Loaded ${assignments.length} room assignments from backend`);
+        console.log('📋 Room details:', assignments.map(a => ({
+          id: a.room_id,
+          name: a.room_name,
+          type: a.room_type,
+          patient: a.patient_id ? a.patient_name : 'Empty'
+        })));
         
         // Convert backend room assignments to frontend Room format
         const backendRooms: Room[] = assignments.map((assignment: any) => ({
@@ -359,7 +414,7 @@ export default function FloorPlanPage() {
           name: assignment.room_name,
           type: assignment.room_type,
           position: {
-            levelIndex: assignment.floor - 1 || 0,
+            levelIndex: assignment.floor_id ? 0 : 0, // Use floor_id
             x: assignment.metadata?.smplrspace_data?.position?.x || 0,
             z: assignment.metadata?.smplrspace_data?.position?.z || 0,
           },
@@ -372,10 +427,12 @@ export default function FloorPlanPage() {
           } : undefined,
         }));
         
+        console.log('🏠 Frontend rooms:', backendRooms);
         setRooms(backendRooms);
         setRoomsLoaded(true);
       } else {
-        console.log('⚠️ No rooms found in backend');
+        console.log('⚠️ No rooms found in backend (empty array or non-array response)');
+        console.log('Response type:', typeof assignments, 'Value:', assignments);
         setRoomsLoaded(true);
       }
     } catch (error) {
@@ -497,7 +554,7 @@ export default function FloorPlanPage() {
   );
 
   return (
-    <AppLayout title="Floor Plan" subtitle="Interactive Room & Staff Management">
+    <div className="h-full">
       {/* Load Smplrspace library */}
       <Script
         src="https://app.smplrspace.com/lib/smplr.js"
@@ -516,27 +573,23 @@ export default function FloorPlanPage() {
       <link href="https://app.smplrspace.com/lib/smplr.css" rel="stylesheet" />
       
       {/* Main Content */}
-      <div className="grid grid-cols-12 gap-6 p-6">
+      <div className="grid grid-cols-12 gap-4 p-4">
         {/* Floor Plan Viewer (Left - 8 columns) */}
-        <div className="col-span-8 space-y-6">
-          <div className="bg-surface border border-neutral-200 p-6">
-            <div className="mb-4 pb-3">
-              <h2 className="text-base font-light text-neutral-950">
-                {useDemoMode ? '2D Floor Plan View (Demo Mode)' : '3D Floor Plan View'}
-              </h2>
-              <p className="text-xs font-light text-neutral-400 mt-1">
-                Click rooms to assign patients • Click nurse stations to assign staff
+        <div className="col-span-8 space-y-4">
+          <div className="bg-surface border border-neutral-200">
+            <div className="px-4 py-3 border-b border-neutral-200">
+              <p className="text-xs font-light text-neutral-500">
+                {useDemoMode ? '2D Floor Plan View' : '3D Floor Plan View'}
               </p>
             </div>
 
+            <div className="p-4">
+
             {/* Error Message */}
             {viewerError && (
-              <div className="bg-yellow-50 border-l-2 border-yellow-400 p-3 mb-4">
-                <p className="text-xs font-light text-neutral-950">
-                  <span className="font-medium">Note:</span> {viewerError}
-                </p>
-                <p className="text-xs text-neutral-600 mt-1">
-                  To enable 3D view, add your Smplrspace credentials to `.env.local`
+              <div className="bg-yellow-50 border border-yellow-200 p-2 mb-3">
+                <p className="text-[10px] font-light text-neutral-600">
+                  {viewerError}
                 </p>
               </div>
             )}
@@ -544,7 +597,7 @@ export default function FloorPlanPage() {
             {/* Smplrspace Container or Demo Grid */}
             {useDemoMode ? (
               // Demo Mode: Simple 2D Grid
-              <div className="w-full h-[600px] bg-neutral-50 border border-neutral-200 p-6">
+              <div className="w-full h-[600px] bg-neutral-50 p-6">
                 <div className="grid grid-cols-3 gap-4 h-full">
                   {rooms.filter(r => r.type === 'patient').map((room: Room) => (
                     <button
@@ -600,22 +653,16 @@ export default function FloorPlanPage() {
               <div
                 id="smplr-container"
                 ref={containerRef}
-                className="w-full h-[600px] bg-neutral-50 border border-neutral-200"
+                className="w-full h-[600px] bg-neutral-50"
                 style={{ position: 'relative' }}
               />
             )}
+            </div>
           </div>
-
-          {/* Legend */}
-          <FloorPlanLegend
-            totalRooms={rooms.filter(r => r.type === 'patient').length}
-            occupiedRooms={rooms.filter(r => r.assignedPatient).length}
-            totalNurses={rooms.reduce((sum, r) => sum + (r.assignedNurses?.length || 0), 0)}
-          />
         </div>
 
-        {/* Room Management Panel (Right - 4 columns) */}
-        <div className="col-span-4">
+        {/* Right Panel - Legend & Room List (4 columns) */}
+        <div className="col-span-4 space-y-4">
           {selectedRoom ? (
             <RoomDetailsPanel
               room={selectedRoom}
@@ -631,49 +678,90 @@ export default function FloorPlanPage() {
               }}
             />
           ) : (
-            <div className="bg-surface border border-neutral-200">
-              <div className="px-6 py-4 border-b-2 border-neutral-950">
-                <h3 className="text-lg font-light tracking-tight text-neutral-950">
-                  All Rooms
-                </h3>
-                <p className="text-sm font-light text-neutral-500 mt-1">
-                  Click any room for details
-                </p>
+            <>
+              {/* Legend - Collapsible */}
+              <div className="bg-surface border border-neutral-200">
+                <button
+                  onClick={() => setLegendCollapsed(!legendCollapsed)}
+                  className="w-full px-4 py-3 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors"
+                >
+                  <p className="text-xs font-light text-neutral-500">Legend</p>
+                  <svg 
+                    className={`w-4 h-4 text-neutral-400 transition-transform ${legendCollapsed ? '' : 'rotate-180'}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+
+                {!legendCollapsed && (
+                  <div className="px-4 py-3">
+                    <FloorPlanLegend
+                      totalRooms={rooms.filter(r => r.type === 'patient').length}
+                      occupiedRooms={rooms.filter(r => r.assignedPatient).length}
+                      totalNurses={rooms.reduce((sum, r) => sum + (r.assignedNurses?.length || 0), 0)}
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="overflow-y-auto max-h-[calc(100vh-300px)]">
+              {/* All Rooms - Collapsible */}
+              <div className="bg-surface border border-neutral-200">
+                <button
+                  onClick={() => setRoomsListCollapsed(!roomsListCollapsed)}
+                  className="w-full px-4 py-3 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors"
+                >
+                  <p className="text-xs font-light text-neutral-500">All Rooms</p>
+                  <svg 
+                    className={`w-4 h-4 text-neutral-400 transition-transform ${roomsListCollapsed ? '' : 'rotate-180'}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+
+                {!roomsListCollapsed && (
+                  <div className="overflow-y-auto max-h-[calc(100vh-400px)]">
                 {rooms.filter(r => r.type === 'patient').map((room: Room) => (
                   <div
                     key={room.id}
-                    className={`border-b border-neutral-200 p-4 hover:bg-neutral-50 transition-colors cursor-pointer ${
-                      selectedRoom?.id === room.id ? 'bg-primary-100' : ''
+                    className={`border-b border-neutral-200 p-3 hover:bg-neutral-50 transition-colors cursor-pointer ${
+                      selectedRoom?.id === room.id ? 'bg-primary-50' : ''
                     }`}
                     onClick={() => {
                       setSelectedRoom(room);
                     }}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 ${
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${
                           room.assignedPatient ? 'bg-primary-700' : 'bg-neutral-300'
                         }`} />
                         <div>
-                          <p className="font-light text-neutral-950 text-sm">{room.name}</p>
+                          <p className="font-light text-neutral-950 text-xs">{room.name}</p>
                           {room.assignedPatient && (
-                            <p className="text-xs label-uppercase text-primary-700">
-                              {room.assignedPatient.patient_id}
+                            <p className="text-[10px] font-light text-neutral-500 mt-0.5">
+                              {room.assignedPatient.name}
                             </p>
                           )}
                         </div>
                       </div>
-                      <span className="label-uppercase text-xs text-neutral-500">
+                      <span className="text-[10px] font-light text-neutral-400">
                         {room.assignedPatient ? 'Occupied' : 'Empty'}
                       </span>
                     </div>
                   </div>
                 ))}
+                  </div>
+                )}
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -803,7 +891,7 @@ export default function FloorPlanPage() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </div>
   );
 }
 
