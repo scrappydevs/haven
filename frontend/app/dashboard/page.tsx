@@ -566,6 +566,39 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b-2 border-neutral-950 bg-surface">
+        <div className="container mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="text-4xl font-playfair font-black bg-gradient-to-r from-primary-950 to-primary-700 bg-clip-text text-transparent">
+                  Haven
+                </h1>
+                <p className="text-sm label-uppercase text-neutral-500 mt-1">Linvoseltamab Phase III - NCT04649359</p>
+              </div>
+            </div>
+
+            {/* Right side: Alerts & User */}
+            <div className="flex items-center gap-4">
+              {/* Notifications */}
+              <button className="relative p-2 text-neutral-500 hover:text-neutral-950 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+              </button>
+
+              {/* User avatar */}
+              <div className="w-9 h-9 rounded-full bg-neutral-200 border border-neutral-300 flex items-center justify-center text-neutral-600 text-sm font-medium">
+                U
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
       {/* Main Content */}
       <div className="container mx-auto px-6 py-6">
         {/* Stats Bar */}

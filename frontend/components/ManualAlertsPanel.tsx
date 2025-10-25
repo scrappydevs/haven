@@ -76,7 +76,7 @@ export default function ManualAlertsPanel() {
 
   return (
     <>
-      <div className="bg-white border border-neutral-200 p-6">
+      <div className="bg-white border border-neutral-200 p-6 rounded-lg">
         {/* Header */}
         <div className="mb-6 pb-4 border-b border-neutral-200">
           <h2 className="text-xl font-light uppercase tracking-wider text-neutral-950 mb-1">
@@ -181,4 +181,3 @@ export default function ManualAlertsPanel() {
     </>
   );
 }
-

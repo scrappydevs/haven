@@ -31,7 +31,8 @@ from app.rooms import (
 try:
     import anthropic
     ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")
-    anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+    anthropic_client = anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
     if anthropic_client:
         print("✅ Anthropic client initialized")
 except ImportError:
@@ -89,18 +90,24 @@ else:
     print("⚠️  Warning: nct04649359.json not found. Run scripts/pull_trial_data.py first!")
 
 # Print secret manager status after all imports
+
+
 @app.on_event("startup")
 async def startup_event():
     """Print configuration status on startup"""
     secret_manager.print_status()
-    
+
     # Print service status
     print("🏥 Haven Backend Services:")
-    print(f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
-    print(f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
+    print(
+        f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
+    print(
+        f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
     print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
-    print(f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
-    print(f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
+    print(
+        f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
+    print(
+        f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
     print("\n✅ Haven ready!\n")
 
 # In-memory alert storage
@@ -150,7 +157,7 @@ async def trigger_sms_alert(request: SMSAlertRequest):
         TWILIO_ACCOUNT_SID = get_secret("TWILIO_ACCOUNT_SID")
         TWILIO_AUTH_TOKEN = get_secret("TWILIO_AUTH_TOKEN")
         TWILIO_PHONE_NUMBER = get_secret("TWILIO_PHONE_NUMBER")
-        
+
         if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
             return {
                 "status": "error",
@@ -158,31 +165,32 @@ async def trigger_sms_alert(request: SMSAlertRequest):
                 "mock_sent": True,
                 "details": "In production, this would send via Twilio"
             }
-        
+
         # Import Twilio client
         from twilio.rest import Client
-        
+
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        
+
         # Send SMS
         message = client.messages.create(
             body=f"[Haven Alert] {request.message}",
             from_=TWILIO_PHONE_NUMBER,
             to=request.phone_number
         )
-        
+
         print(f"✅ SMS sent to {request.phone_number}: {message.sid}")
-        
+
         return {
             "status": "success",
             "message": "Alert sent successfully",
             "sid": message.sid,
             "to": request.phone_number
         }
-        
+
     except ImportError:
         # Twilio not installed - return mock success
-        print(f"⚠️ Twilio not installed - mock sending SMS to {request.phone_number}")
+        print(
+            f"⚠️ Twilio not installed - mock sending SMS to {request.phone_number}")
         return {
             "status": "success",
             "message": "Alert sent (mock mode - Twilio not installed)",
@@ -247,22 +255,31 @@ async def search_patients(q: str = ""):
             response = supabase.table("patients") \
                 .select("*") \
                 .ilike("name", f"%{q}%") \
-                .eq("enrollment_status", "active") \
                 .order("name") \
                 .execute()
         else:
-            # Return all active patients if no search query
-            print("📋 Fetching all active patients")
+            # Return all patients if no search query
+            print("📋 Fetching all patients")
             response = supabase.table("patients") \
                 .select("*") \
-                .eq("enrollment_status", "active") \
                 .order("name") \
                 .limit(50) \
                 .execute()
 
         result_count = len(response.data) if response.data else 0
         print(f"✅ Found {result_count} patients")
-        return response.data if response.data else []
+
+        # Filter to active patients if enrollment_status field exists, otherwise return all
+        if response.data:
+            # Only filter by enrollment_status if the field exists and has a value
+            filtered_data = [
+                p for p in response.data
+                if p.get('enrollment_status') in ['active', None] or 'enrollment_status' not in p
+            ]
+            print(
+                f"📊 After enrollment_status filter: {len(filtered_data)} patients")
+            return filtered_data
+        return []
     except Exception as e:
         print(f"❌ Error searching patients: {e}")
         import traceback
@@ -283,7 +300,8 @@ async def debug_patients():
 
     try:
         # Get all patients (no filter)
-        all_response = supabase.table("patients").select("*").limit(10).execute()
+        all_response = supabase.table(
+            "patients").select("*").limit(10).execute()
 
         # Get active patients
         active_response = supabase.table("patients") \
@@ -358,10 +376,13 @@ async def get_cv_data(patient_id: int, timestamp: str):
     try:
         timestamp_float = float(timestamp)
         available_times = [float(t) for t in patient_data.keys()]
-        closest_time = min(available_times, key=lambda t: abs(t - timestamp_float))
-        closest_time_str = str(closest_time) if closest_time == int(closest_time) else f"{closest_time:.1f}"
+        closest_time = min(
+            available_times, key=lambda t: abs(t - timestamp_float))
+        closest_time_str = str(closest_time) if closest_time == int(
+            closest_time) else f"{closest_time:.1f}"
 
-        data = patient_data.get(closest_time_str, patient_data.get(str(int(closest_time))))
+        data = patient_data.get(
+            closest_time_str, patient_data.get(str(int(closest_time))))
 
         # If alert, store it
         if data and data.get("alert"):
@@ -564,7 +585,8 @@ Only recommend protocols that are clearly relevant based on the patient's condit
                 raise ValueError("Could not parse LLM response")
 
         except Exception as e:
-            print(f"LLM recommendation error: {e}, falling back to keyword matching")
+            print(
+                f"LLM recommendation error: {e}, falling back to keyword matching")
             # Fall through to keyword matching
 
     # Keyword-based fallback
@@ -580,7 +602,7 @@ Only recommend protocols that are clearly relevant based on the patient's condit
 async def get_floors():
     """
     Get all floor definitions
-    
+
     Returns:
         List of floor definitions with Smplrspace references
     """
@@ -592,10 +614,10 @@ async def get_rooms(floor_id: str = None):
     """
     Get all rooms with their current patient assignments
     Optionally filter by floor_id
-    
+
     Args:
         floor_id: Optional floor ID to filter rooms
-    
+
     Returns:
         List of rooms with optional patient information
     """
@@ -607,7 +629,7 @@ async def get_room_assignments():
     """
     DEPRECATED: Use /rooms instead
     Get all rooms with their current patient assignments
-    
+
     Returns:
         List of rooms with optional patient information
     """
@@ -618,10 +640,10 @@ async def get_room_assignments():
 async def assign_patient(request: AssignPatientRequest):
     """
     Assign a patient to a room
-    
+
     Args:
         request: Room ID, patient ID, and optional notes
-    
+
     Returns:
         Patient-room assignment record
     """
@@ -639,11 +661,11 @@ async def assign_patient(request: AssignPatientRequest):
 async def unassign_patient(room_id: str, patient_id: str = None):
     """
     Remove patient from a room
-    
+
     Args:
         room_id: Room identifier
         patient_id: Optional patient ID to remove specific patient
-    
+
     Returns:
         Success message
     """
@@ -657,10 +679,10 @@ async def unassign_patient(room_id: str, patient_id: str = None):
 async def get_patient_room(patient_id: str):
     """
     Get the current room assignment for a patient
-    
+
     Args:
         patient_id: Patient identifier
-    
+
     Returns:
         Room info if assigned, None otherwise
     """
@@ -682,10 +704,10 @@ class SyncRoomsRequest(BaseModel):
 async def sync_rooms_from_smplrspace(request: SyncRoomsRequest):
     """
     Sync rooms from Smplrspace automatic room detection
-    
+
     Args:
         request: { rooms: [...], floor_id: 'floor-1' } from smplrClient.getRoomsOnLevel()
-    
+
     Returns:
         { synced_count: number, rooms: [...] }
     """
@@ -694,8 +716,9 @@ async def sync_rooms_from_smplrspace(request: SyncRoomsRequest):
         for room_item in request.rooms:
             room = sync_room_from_smplrspace(room_item, request.floor_id)
             synced_rooms.append(room)
-        
-        print(f"✅ Synced {len(synced_rooms)} rooms to floor {request.floor_id}")
+
+        print(
+            f"✅ Synced {len(synced_rooms)} rooms to floor {request.floor_id}")
         return {
             "synced_count": len(synced_rooms),
             "rooms": synced_rooms,
@@ -746,7 +769,8 @@ async def set_enhanced_monitoring(
     reason: str = "Agent detected concerning metrics"
 ):
     """Agent tool: Activate enhanced monitoring (tremor, attention tracking)"""
-    config = monitoring_manager.set_enhanced_monitoring(patient_id, duration_minutes, reason)
+    config = monitoring_manager.set_enhanced_monitoring(
+        patient_id, duration_minutes, reason)
 
     # Broadcast state change to dashboard
     await manager.broadcast_frame({
@@ -824,6 +848,7 @@ class PatientBaseline(BaseModel):
     respiratory_rate: int = 14
     crs_score: float = 0.0
 
+
 @app.post("/agent/set-baseline")
 async def set_patient_baseline(baseline: PatientBaseline):
     """Set baseline vitals for a patient (used by agent for deviation calculations)"""
@@ -845,6 +870,7 @@ async def set_patient_baseline(baseline: PatientBaseline):
         }
     }
 
+
 @app.get("/agent/alert-history/{patient_id}")
 async def get_alert_history(patient_id: str):
     """Get agent alert history for a patient"""
@@ -854,6 +880,7 @@ async def get_alert_history(patient_id: str):
         "alerts": history,
         "count": len(history)
     }
+
 
 @app.post("/agent/analyze/{patient_id}")
 async def trigger_agent_analysis(patient_id: str):
@@ -896,7 +923,8 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
 
     # Check if patient is already streaming
     if patient_id in manager.streamers:
-        print(f"❌ Connection rejected: Patient {patient_id} already has an active stream")
+        print(
+            f"❌ Connection rejected: Patient {patient_id} already has an active stream")
         # Don't accept duplicate streams
         return
 
@@ -911,11 +939,13 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         print(f"📨 Received handshake data: {initial_data}")
 
         monitoring_conditions = initial_data.get("monitoring_conditions", [])
-        print(f"📋 Registering streamer for patient {patient_id} with conditions: {monitoring_conditions}")
+        print(
+            f"📋 Registering streamer for patient {patient_id} with conditions: {monitoring_conditions}")
 
         manager.register_streamer(patient_id, websocket, monitoring_conditions)
         print(f"✅ Streamer registered successfully for patient {patient_id}")
-        print(f"📊 Total active streamers: {len(manager.streamers)} - {list(manager.streamers.keys())}")
+        print(
+            f"📊 Total active streamers: {len(manager.streamers)} - {list(manager.streamers.keys())}")
 
         # Send acknowledgment
         await websocket.send_json({
@@ -953,7 +983,8 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                 # Step 2: QUEUE FOR PROCESSING - Worker thread will handle CV processing
                 # Queue every 3rd frame (10 FPS) for better performance on limited CPU
                 if frame_count % 3 == 0:
-                    manager.queue_frame_for_processing(patient_id, raw_frame, frame_count)
+                    manager.queue_frame_for_processing(
+                        patient_id, raw_frame, frame_count)
 
     except WebSocketDisconnect:
         print(f"❌ Patient {patient_id} stream disconnected")

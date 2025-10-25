@@ -668,7 +668,7 @@ export default function FloorPlanPage() {
       <div className="grid grid-cols-12 gap-4 p-4">
         {/* Floor Plan Viewer (Left - 8 columns) */}
         <div className="col-span-8 space-y-4">
-          <div className="bg-surface border border-neutral-200">
+          <div className="bg-surface border border-neutral-200 rounded-xl">
             <div className="px-4 py-3 border-b border-neutral-200">
               <p className="text-xs font-light text-neutral-500">
                 {useDemoMode ? '2D Floor Plan View' : '3D Floor Plan View'}
@@ -679,7 +679,7 @@ export default function FloorPlanPage() {
 
             {/* Error Message */}
             {viewerError && (
-              <div className="bg-yellow-50 border border-yellow-200 p-2 mb-3">
+              <div className="bg-yellow-50 border border-yellow-200 p-2 mb-3 rounded-lg">
                 <p className="text-[10px] font-light text-neutral-600">
                   {viewerError}
                 </p>
@@ -689,7 +689,7 @@ export default function FloorPlanPage() {
             {/* Smplrspace Container or Demo Grid */}
             {useDemoMode ? (
               // Demo Mode: Simple 2D Grid
-              <div className="w-full h-[600px] bg-neutral-50 p-6">
+              <div className="w-full h-[600px] bg-neutral-50 p-6 rounded-lg">
                 <div className="grid grid-cols-3 gap-4 h-full">
                   {rooms.filter(r => r.type === 'patient').map((room: Room) => (
                     <button
@@ -700,14 +700,14 @@ export default function FloorPlanPage() {
                           setShowPatientModal(true);
                         }
                       }}
-                      className={`border p-4 transition-all ${
+                      className={`border p-4 transition-all rounded-xl ${
                         room.assignedPatient
                           ? 'bg-primary-50 border-primary-700'
                           : 'bg-surface border-neutral-200 hover:border-primary-700'
                       } ${selectedRoom?.id === room.id ? 'ring-1 ring-primary-700' : ''}`}
                     >
                       <div className="text-center">
-                        <div className={`w-12 h-12 mx-auto mb-2 border flex items-center justify-center ${
+                        <div className={`w-12 h-12 mx-auto mb-2 border flex items-center justify-center rounded-lg ${
                           room.assignedPatient
                             ? 'bg-primary-700 border-primary-700'
                             : 'bg-neutral-100 border-neutral-200'
@@ -745,7 +745,7 @@ export default function FloorPlanPage() {
               <div
                 id="smplr-container"
                 ref={containerRef}
-                className="w-full h-[600px] bg-neutral-50"
+                className="w-full h-[600px] bg-neutral-50 rounded-lg"
                 style={{ position: 'relative' }}
               />
             )}
@@ -772,7 +772,7 @@ export default function FloorPlanPage() {
           ) : (
             <>
               {/* Legend - Always Visible */}
-              <div className="bg-surface border border-neutral-200 px-4 py-3">
+              <div className="bg-surface border border-neutral-200 px-4 py-3 rounded-xl">
                 <FloorPlanLegend
                   totalRooms={rooms.filter(r => r.type === 'patient').length}
                   occupiedRooms={rooms.filter(r => r.assignedPatient).length}
@@ -781,7 +781,7 @@ export default function FloorPlanPage() {
               </div>
 
               {/* All Rooms - Collapsible */}
-              <div className="bg-surface border border-neutral-200">
+              <div className="bg-surface border border-neutral-200 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setRoomsListCollapsed(!roomsListCollapsed)}
                   className="w-full px-4 py-3 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors"
@@ -856,7 +856,7 @@ export default function FloorPlanPage() {
             }}
           />
 
-          <div className="relative bg-surface border border-neutral-200 max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-lg">
+          <div className="relative bg-surface border border-neutral-200 max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-lg rounded-2xl">
             {/* Header */}
             <div className="p-4 border-b border-neutral-200">
               <div className="flex items-center justify-between mb-3">
@@ -883,7 +883,7 @@ export default function FloorPlanPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search patients by name..."
-                className="w-full bg-white border border-neutral-200 px-4 py-3 font-light text-sm text-neutral-950 placeholder:text-neutral-400 focus:outline-none focus:border-primary-700 transition-all"
+                className="w-full bg-white border border-neutral-200 px-4 py-3 font-light text-sm text-neutral-950 placeholder:text-neutral-400 focus:outline-none focus:border-primary-700 transition-all rounded-lg"
                 autoFocus
               />
             </div>
@@ -891,7 +891,7 @@ export default function FloorPlanPage() {
             {/* Patient List */}
             <div className="p-4 overflow-y-auto max-h-[calc(80vh-180px)]">
               {filteredPatients.length === 0 ? (
-                <div className="text-center py-12 border border-neutral-200 bg-neutral-50">
+                <div className="text-center py-12 border border-neutral-200 bg-neutral-50 rounded-lg">
                   <p className="text-neutral-500 text-sm font-light">
                     {searchQuery ? 'No patients found' : 'Start typing to search patients'}
                   </p>
@@ -902,19 +902,19 @@ export default function FloorPlanPage() {
                     <button
                       key={patient.id}
                       onClick={() => assignPatientToRoom(patient)}
-                      className="flex items-start gap-3 p-3 bg-surface hover:bg-neutral-50 border border-neutral-200 hover:border-primary-700 transition-all text-left"
+                      className="flex items-start gap-3 p-3 bg-surface hover:bg-neutral-50 border border-neutral-200 hover:border-primary-700 transition-all text-left rounded-xl"
                     >
                       <img
                         src={patient.photo_url}
                         alt={patient.name}
-                        className="w-12 h-12 object-cover border border-neutral-300"
+                        className="w-12 h-12 object-cover border border-neutral-300 rounded-lg"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2 mb-1">
                           <h3 className="font-light text-neutral-950 text-sm">
                             {patient.name}
                           </h3>
-                          <span className="label-uppercase bg-primary-100 text-primary-700 px-2 py-1 text-xs">
+                          <span className="label-uppercase bg-primary-100 text-primary-700 px-2 py-1 text-xs rounded-md">
                             {patient.patient_id}
                           </span>
                         </div>
@@ -945,7 +945,7 @@ export default function FloorPlanPage() {
             }}
           />
 
-          <div className="relative bg-surface border border-neutral-200 max-w-md w-full shadow-lg">
+          <div className="relative bg-surface border border-neutral-200 max-w-md w-full shadow-lg rounded-2xl overflow-hidden">
             <div className="p-4 border-b border-neutral-200">
               <h2 className="text-base font-light text-neutral-950">
                 Manage {selectedRoom.name}
@@ -961,7 +961,7 @@ export default function FloorPlanPage() {
                   setShowNurseModal(false);
                   setSelectedRoom(null);
                 }}
-                className="w-full border border-neutral-200 px-4 py-2 text-xs font-light hover:bg-neutral-50 transition-all"
+                className="w-full border border-neutral-200 px-4 py-2 text-xs font-light hover:bg-neutral-50 transition-all rounded-lg"
               >
                 Close
               </button>

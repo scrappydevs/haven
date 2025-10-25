@@ -15,12 +15,8 @@ export default function AppSidebar() {
 
   return (
     <aside className="w-16 bg-surface border-r border-neutral-200 flex flex-col">
-      {/* Logo */}
-      <div className="h-12 flex items-center justify-center border-b border-neutral-200">
-        <div className="w-8 h-8 bg-primary-700 flex items-center justify-center text-white text-xs font-bold">
-          H
-        </div>
-      </div>
+      {/* Top spacer - matches header height */}
+      <div className="h-[88px] border-b border-neutral-200" />
 
       {/* Navigation */}
       <nav className="flex-1 py-4 space-y-1">

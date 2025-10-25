@@ -65,7 +65,7 @@ export default function GlobalActivityFeed({ events, alerts, onPatientClick }: G
   };
 
   return (
-    <div className="bg-surface border border-neutral-200 h-full flex flex-col">
+    <div className="bg-surface border border-neutral-200 h-full flex flex-col rounded-lg overflow-hidden">
       {/* Header */}
       <div className="px-8 py-6 border-b-2 border-neutral-950 flex-shrink-0">
         <h2 className="text-2xl font-light tracking-tight text-neutral-950">

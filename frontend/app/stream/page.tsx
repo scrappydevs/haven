@@ -520,23 +520,23 @@ export default function StreamPage() {
         <div className="bg-white border border-neutral-200 p-8 rounded-lg">
           <h2 className="heading-section text-neutral-950 mb-6 border-b border-neutral-200 pb-3">How to Use</h2>
           <ol className="space-y-4 body-default text-neutral-950">
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">01</span>
               <span>Click &quot;Start Streaming&quot; button above</span>
             </li>
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">02</span>
               <span>Allow camera permissions when prompted</span>
             </li>
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">03</span>
               <span>On another computer, open the dashboard</span>
             </li>
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">04</span>
               <span>Look for your patient in the live feed section</span>
             </li>
-            <li className="flex gap-4">
+            <li className="flex items-baseline gap-4">
               <span className="label-uppercase text-neutral-700 flex-shrink-0">05</span>
               <span>Try rubbing your face to simulate CRS → Alert fires!</span>
             </li>
