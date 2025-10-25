@@ -1,5 +1,5 @@
 """
-Generate 47 synthetic patients for TrialSentinel demo
+Generate 47 synthetic patients for Haven demo
 Run this BEFORE the hackathon to have patient data ready
 """
 

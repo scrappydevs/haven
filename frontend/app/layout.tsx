@@ -18,7 +18,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TrialSentinel AI - Clinical Trial Monitoring",
+  title: "Haven AI - Clinical Trial Monitoring",
   description: "Real-time computer vision monitoring for clinical trial safety",
 };
 
@@ -35,4 +35,3 @@ export default function RootLayout({
     </html>
   );
 }
-

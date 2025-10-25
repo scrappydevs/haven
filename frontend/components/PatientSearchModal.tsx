@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getApiUrl } from '@/lib/api';
 
 interface Patient {
   id: string;
@@ -35,12 +36,20 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
     const fetchPatients = async () => {
       setLoading(true);
       try {
-        const API_URL = 'http://localhost:8000'; // Will be replaced by Vercel env var in production
-        const res = await fetch(`${API_URL}/patients/search?q=${search}`);
+        const apiUrl = getApiUrl();
+        const res = await fetch(`${apiUrl}/patients/search?q=${search}`);
         const data = await res.json();
-        setPatients(Array.isArray(data) ? data : []);
+        console.log('📦 Received data:', data);
+
+        if (Array.isArray(data)) {
+          console.log(`✅ Found ${data.length} patients`);
+          setPatients(data);
+        } else {
+          console.warn('⚠️ Response is not an array:', data);
+          setPatients([]);
+        }
       } catch (error) {
-        console.error('Error fetching patients:', error);
+        console.error('❌ Error fetching patients:', error);
         setPatients([]);
       } finally {
         setLoading(false);
@@ -88,10 +97,10 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
           initial={{ opacity: 0, scale: 0.98, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.98, y: 20 }}
-          className="relative bg-surface border-2 border-neutral-950 max-w-4xl w-full max-h-[80vh] overflow-hidden"
+          className="relative bg-surface border border-neutral-200 max-w-4xl w-full max-h-[80vh] overflow-hidden rounded-lg"
         >
           {/* Header */}
-          <div className="p-8 border-b-2 border-neutral-950">
+          <div className="p-8 border-b border-neutral-200">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-light tracking-tight text-neutral-950">
                 {mode === 'assign-stream' ? 'ASSIGN ACTIVE STREAM' : 'SELECT PATIENT TO STREAM'}
@@ -155,7 +164,7 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
                     <img
                       src={patient.photo_url}
                       alt={patient.name}
-                      className="w-16 h-16 object-cover border-2 border-neutral-300 group-hover:border-primary-700 transition-colors"
+                      className="w-16 h-16 object-cover rounded-lg"
                     />
 
                     {/* Info */}
@@ -164,7 +173,7 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
                         <h3 className="font-light text-neutral-950 text-base truncate">
                           {patient.name}
                         </h3>
-                        <span className="label-uppercase bg-primary-100 text-primary-700 px-2 py-1 whitespace-nowrap">
+                        <span className="bg-primary-100 text-primary-700 px-2 py-1 whitespace-nowrap rounded text-sm">
                           {patient.patient_id}
                         </span>
                       </div>

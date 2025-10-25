@@ -17,7 +17,7 @@ def check_secrets():
     """Check all secrets and their sources"""
     
     print("\n" + "="*70)
-    print("  TRIALSENTINEL AI - SECRETS CONFIGURATION CHECK")
+    print("  HAVEN AI - SECRETS CONFIGURATION CHECK")
     print("="*70 + "\n")
     
     # Check Infisical status
@@ -91,4 +91,3 @@ def check_secrets():
 
 if __name__ == "__main__":
     sys.exit(check_secrets())
-

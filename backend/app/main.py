@@ -1,5 +1,5 @@
 """
-TrialSentinel AI - Backend API
+Haven AI - Backend API
 FastAPI application serving pre-computed CV results and trial data
 """
 
@@ -13,6 +13,8 @@ from app.websocket import manager, process_frame_fast, process_frame_metrics
 from app.supabase_client import supabase, SUPABASE_URL
 from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
 from app.infisical_config import get_secret, secret_manager
+from app.monitoring_control import monitoring_manager, MonitoringLevel
+from app.patient_guardian_agent import patient_guardian
 from app.rooms import (
     get_all_floors,
     get_all_rooms_with_patients,
@@ -37,7 +39,7 @@ except ImportError:
     print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
 
 app = FastAPI(
-    title="TrialSentinel AI",
+    title="Haven AI",
     description="Real-time computer vision monitoring for clinical trial safety",
     version="1.0.0"
 )
@@ -49,6 +51,7 @@ app.add_middleware(
         "https://use-haven.vercel.app",  # Production frontend
         "http://localhost:3000",          # Local development
         "http://localhost:3001",          # Alternative local port
+        "http://localhost:3002",          # Alternative local port
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -85,6 +88,21 @@ if protocol_file.exists():
 else:
     print("⚠️  Warning: nct04649359.json not found. Run scripts/pull_trial_data.py first!")
 
+# Print secret manager status after all imports
+@app.on_event("startup")
+async def startup_event():
+    """Print configuration status on startup"""
+    secret_manager.print_status()
+    
+    # Print service status
+    print("🚀 TrialSentinel Backend Services:")
+    print(f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
+    print(f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
+    print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
+    print(f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
+    print(f"   • Trial Protocol: {'✅ Loaded' if trial_protocol else '⚠️  Not loaded'}")
+    print("\n✅ Backend ready!\n")
+
 # In-memory alert storage
 alerts = []
 
@@ -93,7 +111,7 @@ alerts = []
 async def root():
     """Root endpoint"""
     return {
-        "name": "TrialSentinel AI",
+        "name": "Haven AI",
         "version": "1.0.0",
         "status": "running",
         "docs": "/docs"
@@ -138,11 +156,13 @@ async def search_patients(q: str = ""):
         List of patients matching the search query
     """
     if not supabase:
-        return {"error": "Supabase not configured", "patients": []}
+        print("⚠️ Supabase not configured - returning empty patient list")
+        return []
 
     try:
         if q:
             # Search by name (case-insensitive)
+            print(f"🔍 Searching patients with query: '{q}'")
             response = supabase.table("patients") \
                 .select("*") \
                 .ilike("name", f"%{q}%") \
@@ -151,6 +171,7 @@ async def search_patients(q: str = ""):
                 .execute()
         else:
             # Return all active patients if no search query
+            print("📋 Fetching all active patients")
             response = supabase.table("patients") \
                 .select("*") \
                 .eq("enrollment_status", "active") \
@@ -158,10 +179,52 @@ async def search_patients(q: str = ""):
                 .limit(50) \
                 .execute()
 
-        return response.data
+        result_count = len(response.data) if response.data else 0
+        print(f"✅ Found {result_count} patients")
+        return response.data if response.data else []
     except Exception as e:
         print(f"❌ Error searching patients: {e}")
-        return {"error": str(e), "patients": []}
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+@app.get("/patients/debug")
+async def debug_patients():
+    """Diagnostic endpoint to check patient database status"""
+    if not supabase:
+        return {
+            "status": "error",
+            "message": "Supabase not configured",
+            "supabase_url_present": bool(SUPABASE_URL),
+            "patients": []
+        }
+
+    try:
+        # Get all patients (no filter)
+        all_response = supabase.table("patients").select("*").limit(10).execute()
+
+        # Get active patients
+        active_response = supabase.table("patients") \
+            .select("*") \
+            .eq("enrollment_status", "active") \
+            .limit(10) \
+            .execute()
+
+        return {
+            "status": "success",
+            "supabase_url": SUPABASE_URL[:30] + "..." if SUPABASE_URL else None,
+            "total_patients": len(all_response.data) if all_response.data else 0,
+            "active_patients": len(active_response.data) if active_response.data else 0,
+            "sample_patients": all_response.data[:3] if all_response.data else [],
+            "sample_active": active_response.data[:3] if active_response.data else []
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "error_type": type(e).__name__
+        }
 
 
 @app.get("/patients/by-id/{patient_id}")
@@ -285,7 +348,7 @@ async def get_trial_protocol():
 
 @app.get("/roi-calculation")
 async def calculate_roi():
-    """Calculate ROI metrics for TrialSentinel"""
+    """Calculate ROI metrics for Haven"""
     return {
         "patients": 47,
         "manual_monitoring_cost_per_day": 18800,
@@ -561,6 +624,173 @@ async def sync_rooms_from_smplrspace(request: SyncRoomsRequest):
         return {"error": str(e)}
 
 
+# ============================================================================
+# MCP-Inspired Agent Monitoring Control Tools
+# ============================================================================
+
+@app.get("/monitoring/config/{patient_id}")
+async def get_monitoring_config(patient_id: str):
+    """Get current monitoring configuration for a patient"""
+    config = monitoring_manager.get_config(patient_id)
+    return config.to_dict()
+
+
+@app.get("/monitoring/configs")
+async def get_all_monitoring_configs():
+    """Get all patient monitoring configurations"""
+    return monitoring_manager.get_all_configs()
+
+
+@app.post("/monitoring/baseline/{patient_id}")
+async def set_baseline_monitoring(patient_id: str, reason: str = "Manual activation"):
+    """Agent tool: Set patient to baseline monitoring"""
+    config = monitoring_manager.set_baseline_monitoring(patient_id, reason)
+
+    # Broadcast state change to dashboard
+    await manager.broadcast_frame({
+        "type": "monitoring_state_change",
+        "patient_id": patient_id,
+        "level": "BASELINE",
+        "reason": reason,
+        "enabled_metrics": config.enabled_metrics
+    })
+
+    return {"status": "success", "config": config.to_dict()}
+
+
+@app.post("/monitoring/enhanced/{patient_id}")
+async def set_enhanced_monitoring(
+    patient_id: str,
+    duration_minutes: int = 15,
+    reason: str = "Agent detected concerning metrics"
+):
+    """Agent tool: Activate enhanced monitoring (tremor, attention tracking)"""
+    config = monitoring_manager.set_enhanced_monitoring(patient_id, duration_minutes, reason)
+
+    # Broadcast state change to dashboard
+    await manager.broadcast_frame({
+        "type": "monitoring_state_change",
+        "patient_id": patient_id,
+        "level": "ENHANCED",
+        "reason": reason,
+        "duration_minutes": duration_minutes,
+        "enabled_metrics": config.enabled_metrics,
+        "expires_at": config.expires_at.isoformat() if config.expires_at else None
+    })
+
+    # Also send an alert notification
+    await manager.broadcast_frame({
+        "type": "agent_alert",
+        "patient_id": patient_id,
+        "severity": "MONITORING",
+        "message": f"Enhanced monitoring activated for {duration_minutes} minutes",
+        "reasoning": reason,
+        "actions": [
+            f"Monitoring: {', '.join(config.enabled_metrics)}",
+            f"Duration: {duration_minutes} minutes",
+            "Will auto-return to baseline if stable"
+        ]
+    })
+
+    return {"status": "success", "config": config.to_dict()}
+
+
+@app.post("/monitoring/critical/{patient_id}")
+async def set_critical_monitoring(patient_id: str, reason: str = "Critical condition detected"):
+    """Agent tool: Activate critical monitoring protocol"""
+    config = monitoring_manager.set_critical_monitoring(patient_id, reason)
+
+    # Broadcast state change to dashboard
+    await manager.broadcast_frame({
+        "type": "monitoring_state_change",
+        "patient_id": patient_id,
+        "level": "CRITICAL",
+        "reason": reason,
+        "enabled_metrics": config.enabled_metrics
+    })
+
+    return {"status": "success", "config": config.to_dict()}
+
+
+@app.post("/monitoring/enable-metric/{patient_id}")
+async def enable_metric(patient_id: str, metric: str):
+    """Agent tool: Enable a specific metric for monitoring"""
+    config = monitoring_manager.enable_metric(patient_id, metric)
+    return {"status": "success", "config": config.to_dict()}
+
+
+@app.post("/monitoring/disable-metric/{patient_id}")
+async def disable_metric(patient_id: str, metric: str):
+    """Agent tool: Disable a specific metric"""
+    config = monitoring_manager.disable_metric(patient_id, metric)
+    return {"status": "success", "config": config.to_dict()}
+
+
+@app.post("/monitoring/frequency/{patient_id}")
+async def set_monitoring_frequency(patient_id: str, seconds: int):
+    """Agent tool: Change monitoring frequency"""
+    config = monitoring_manager.set_frequency(patient_id, seconds)
+    return {"status": "success", "config": config.to_dict()}
+
+
+# ============================================================================
+# Patient Guardian Agent Endpoints
+# ============================================================================
+
+class PatientBaseline(BaseModel):
+    patient_id: str
+    heart_rate: int = 75
+    respiratory_rate: int = 14
+    crs_score: float = 0.0
+
+@app.post("/agent/set-baseline")
+async def set_patient_baseline(baseline: PatientBaseline):
+    """Set baseline vitals for a patient (used by agent for deviation calculations)"""
+    patient_guardian.set_baseline(
+        patient_id=baseline.patient_id,
+        baseline={
+            "heart_rate": baseline.heart_rate,
+            "respiratory_rate": baseline.respiratory_rate,
+            "crs_score": baseline.crs_score
+        }
+    )
+    return {
+        "status": "success",
+        "patient_id": baseline.patient_id,
+        "baseline": {
+            "heart_rate": baseline.heart_rate,
+            "respiratory_rate": baseline.respiratory_rate,
+            "crs_score": baseline.crs_score
+        }
+    }
+
+@app.get("/agent/alert-history/{patient_id}")
+async def get_alert_history(patient_id: str):
+    """Get agent alert history for a patient"""
+    history = patient_guardian.alert_history.get(patient_id, [])
+    return {
+        "patient_id": patient_id,
+        "alerts": history,
+        "count": len(history)
+    }
+
+@app.post("/agent/analyze/{patient_id}")
+async def trigger_agent_analysis(patient_id: str):
+    """
+    Manually trigger agent analysis (for testing/demo)
+    Uses the most recent metrics from CV processing
+    """
+    # This would be called by demo scenarios to force agent analysis
+    return {
+        "status": "success",
+        "message": "Agent analysis will occur on next metric calculation",
+        "patient_id": patient_id
+    }
+
+
+# ============================================================================
+# WebSocket Endpoints
+# ============================================================================
 @app.websocket("/ws/stream/{patient_id}")
 async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""
