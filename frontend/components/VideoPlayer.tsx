@@ -265,6 +265,22 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
           }
         }
 
+        // Handle agent thinking (analyzing)
+        if (data.type === 'agent_thinking') {
+          console.log(`🤖 Agent thinking for ${data.patient_id}:`, data.message);
+          if (onAgentMessage) {
+            onAgentMessage(patient.id, data);
+          }
+        }
+
+        // Handle agent reasoning (Claude's analysis)
+        if (data.type === 'agent_reasoning') {
+          console.log(`🤖 Agent reasoning for ${data.patient_id}:`, data.reasoning);
+          if (onAgentMessage) {
+            onAgentMessage(patient.id, data);
+          }
+        }
+
         // Handle monitoring state changes from agent
         if (data.type === 'monitoring_state_change') {
           console.log(`🤖 Monitoring state change for ${data.patient_id}:`, data.level);

@@ -207,6 +207,14 @@ class ConnectionManager:
                 # Agent analysis: if we just calculated metrics, analyze them
                 if slow_result and slow_result.get("metrics"):
                     try:
+                        # Broadcast "thinking" message
+                        loop.run_until_complete(self.broadcast_frame({
+                            "type": "agent_thinking",
+                            "patient_id": patient_id,
+                            "message": "Analyzing metrics...",
+                            "timestamp": time.time()
+                        }))
+
                         # Analyze metrics with Patient Guardian Agent
                         decision = patient_guardian.analyze_metrics(patient_id, slow_result["metrics"])
 

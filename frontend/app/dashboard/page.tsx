@@ -76,6 +76,29 @@ export default function DashboardPage() {
   // Monitoring levels for each box (BASELINE, ENHANCED, CRITICAL)
   const [boxMonitoringLevels, setBoxMonitoringLevels] = useState<Record<number, 'BASELINE' | 'ENHANCED' | 'CRITICAL'>>({});
 
+  // Monitoring expiration times
+  const [boxMonitoringExpires, setBoxMonitoringExpires] = useState<Record<number, string | null>>({});
+
+  // Enabled metrics per box
+  const [boxEnabledMetrics, setBoxEnabledMetrics] = useState<Record<number, string[]>>({});
+
+  // Agent analyzing state
+  const [boxAgentAnalyzing, setBoxAgentAnalyzing] = useState<Record<number, boolean>>({});
+
+  // Last agent decision per box
+  const [boxLastDecision, setBoxLastDecision] = useState<Record<number, {
+    timestamp: Date;
+    action: string;
+    reason: string;
+    confidence: number;
+  } | null>>({});
+
+  // Agent stats per box
+  const [boxAgentStats, setBoxAgentStats] = useState<Record<number, {
+    decisionsToday: number;
+    escalationsToday: number;
+  }>>({});
+
   // Agent alerts (for toast notifications)
   const [agentAlerts, setAgentAlerts] = useState<any[]>([]);
 
@@ -165,6 +188,41 @@ export default function DashboardPage() {
         [boxIndex]: message.level
       }));
 
+      // Update expiration time
+      setBoxMonitoringExpires(prev => ({
+        ...prev,
+        [boxIndex]: message.expires_at || null
+      }));
+
+      // Update enabled metrics
+      setBoxEnabledMetrics(prev => ({
+        ...prev,
+        [boxIndex]: message.enabled_metrics || []
+      }));
+
+      // Update agent stats (increment decisions)
+      setBoxAgentStats(prev => {
+        const current = prev[boxIndex] || { decisionsToday: 0, escalationsToday: 0 };
+        return {
+          ...prev,
+          [boxIndex]: {
+            decisionsToday: current.decisionsToday + 1,
+            escalationsToday: message.level !== 'BASELINE' ? current.escalationsToday + 1 : current.escalationsToday
+          }
+        };
+      });
+
+      // Update last decision
+      setBoxLastDecision(prev => ({
+        ...prev,
+        [boxIndex]: {
+          timestamp: new Date(),
+          action: `Changed to ${message.level}`,
+          reason: message.reason || 'Monitoring level changed',
+          confidence: 0.85 // Default confidence
+        }
+      }));
+
       // Add event to patient log
       addPatientEvent(boxIndex, {
         timestamp: new Date().toISOString(),
@@ -189,6 +247,53 @@ export default function DashboardPage() {
       }
     }
 
+    if (message.type === 'agent_thinking') {
+      // Set analyzing state
+      setBoxAgentAnalyzing(prev => ({
+        ...prev,
+        [boxIndex]: true
+      }));
+
+      // Add to activity log
+      addPatientEvent(boxIndex, {
+        timestamp: new Date().toISOString(),
+        type: 'agent',
+        severity: 'info',
+        message: '🤖 Analyzing metrics...',
+        details: 'AI agent evaluating patient condition'
+      });
+
+      // Clear after 3 seconds
+      setTimeout(() => {
+        setBoxAgentAnalyzing(prev => ({
+          ...prev,
+          [boxIndex]: false
+        }));
+      }, 3000);
+    }
+
+    if (message.type === 'agent_reasoning') {
+      // Add reasoning to activity log
+      addPatientEvent(boxIndex, {
+        timestamp: new Date().toISOString(),
+        type: 'agent',
+        severity: 'info',
+        message: '🤖 Agent Reasoning',
+        details: `"${message.reasoning}" (Confidence: ${(message.confidence * 100).toFixed(0)}%)`
+      });
+
+      // Add concerns if present
+      if (message.concerns && message.concerns.length > 0) {
+        addPatientEvent(boxIndex, {
+          timestamp: new Date().toISOString(),
+          type: 'agent',
+          severity: 'moderate',
+          message: '⚠️ Concerns Identified',
+          details: message.concerns.join(', ')
+        });
+      }
+    }
+
     if (message.type === 'agent_alert') {
       // Add to agent alerts for toast display
       setAgentAlerts(prev => [...prev, {
@@ -197,6 +302,17 @@ export default function DashboardPage() {
         boxIndex,
         patientName: boxAssignments[boxIndex]?.name || 'Unknown'
       }]);
+
+      // Update last decision with full details
+      setBoxLastDecision(prev => ({
+        ...prev,
+        [boxIndex]: {
+          timestamp: new Date(),
+          action: message.message || 'Alert triggered',
+          reason: message.reasoning || message.reason || 'Alert condition detected',
+          confidence: message.confidence || 0.8
+        }
+      }));
 
       // Add event to patient log
       addPatientEvent(boxIndex, {
@@ -592,6 +708,12 @@ export default function DashboardPage() {
                   isLive={true}
                   monitoringConditions={selectedPatientId !== null ? (boxMonitoringConditions[selectedPatientId] || []) : []}
                   events={selectedPatientId !== null ? (patientEvents[selectedPatientId] || []) : []}
+                  monitoringLevel={selectedPatientId !== null ? (boxMonitoringLevels[selectedPatientId] || 'BASELINE') : 'BASELINE'}
+                  monitoringExpiresAt={selectedPatientId !== null ? (boxMonitoringExpires[selectedPatientId] || null) : null}
+                  enabledMetrics={selectedPatientId !== null ? (boxEnabledMetrics[selectedPatientId] || ['heart_rate', 'respiratory_rate', 'crs_score']) : []}
+                  isAgentAnalyzing={selectedPatientId !== null ? (boxAgentAnalyzing[selectedPatientId] || false) : false}
+                  lastAgentDecision={selectedPatientId !== null ? (boxLastDecision[selectedPatientId] || null) : null}
+                  agentStats={selectedPatientId !== null ? (boxAgentStats[selectedPatientId] || { decisionsToday: 0, escalationsToday: 0 }) : { decisionsToday: 0, escalationsToday: 0 }}
                 />
               </div>
             </div>

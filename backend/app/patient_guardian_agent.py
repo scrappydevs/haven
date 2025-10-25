@@ -269,6 +269,16 @@ Provide your clinical decision:"""
         print(f"🤖 Agent Decision for {patient_id}: {action}")
         print(f"   Reasoning: {reasoning}")
 
+        # Broadcast agent reasoning (so dashboard can show AI thinking)
+        await manager.broadcast_frame({
+            "type": "agent_reasoning",
+            "patient_id": patient_id,
+            "reasoning": reasoning,
+            "concerns": decision.get("concerns", []),
+            "confidence": decision.get("confidence", 0.7),
+            "timestamp": datetime.now().isoformat()
+        })
+
         # Execute monitoring change
         if action == "ESCALATE_TO_ENHANCED":
             duration = decision.get("duration_minutes", 15)
