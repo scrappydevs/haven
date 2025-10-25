@@ -13,27 +13,49 @@ interface GlobalEvent {
 }
 
 interface Alert {
-  patient_id: number;
-  message: string;
-  crs_score: number;
-  heart_rate: number;
-  timestamp: string;
+  id?: string;
+  alert_type: string;
+  severity: string;
+  patient_id?: string;
+  room_id?: string;
+  title: string;
+  description?: string;
+  status: string;
+  triggered_at: string;
+  metadata?: any;
 }
 
 interface GlobalActivityFeedProps {
   events: GlobalEvent[];
   alerts: Alert[];
+  isLoading?: boolean;
   onPatientClick?: (patientId: number) => void;
 }
 
-export default function GlobalActivityFeed({ events, alerts, onPatientClick }: GlobalActivityFeedProps) {
+export default function GlobalActivityFeed({ events, alerts, isLoading = false, onPatientClick }: GlobalActivityFeedProps) {
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
+    if (!timestamp) return '--:--:--';
+    try {
+      return new Date(timestamp).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    } catch (e) {
+      return '--:--:--';
+    }
+  };
+
+  const getSeverityColor = (severity: string) => {
+    const colors: Record<string, string> = {
+      critical: 'border-red-600 bg-red-50',
+      high: 'border-orange-500 bg-orange-50',
+      medium: 'border-yellow-500 bg-yellow-50',
+      low: 'border-blue-500 bg-blue-50',
+      info: 'border-neutral-300 bg-neutral-50'
+    };
+    return colors[severity] || colors.info;
   };
 
   const getLogColor = (type: string) => {
@@ -65,46 +87,78 @@ export default function GlobalActivityFeed({ events, alerts, onPatientClick }: G
   };
 
   return (
-    <div className="bg-surface border border-neutral-200 h-full flex flex-col rounded-lg overflow-hidden">
+    <div className="bg-surface border border-neutral-200 h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="px-8 py-6 border-b-2 border-neutral-950 flex-shrink-0">
-        <h2 className="text-lg font-normal uppercase tracking-wider text-neutral-950">
-          LIVE ACTIVITY FEED
+      <div className="px-6 py-4 border-b-2 border-neutral-950 flex-shrink-0">
+        <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950">
+          Live Activity Feed
         </h2>
-        {/* <p className="text-sm font-light text-neutral-500 mt-2">All active streams • Real-time</p> */}
       </div>
 
       {/* Alerts Section */}
-      {alerts.length > 0 && (
-        <div className="px-8 py-6 border-b border-neutral-200 bg-accent-terra/5 flex-shrink-0">
-          <h3 className="text-accent-terra mb-4 flex items-center gap-2 text-sm font-medium">
-            Active Alerts ({alerts.length})
-          </h3>
-          <div className="space-y-3 max-h-32 overflow-y-auto">
-            {alerts.map((alert, i) => (
+      {isLoading ? (
+        <div className="px-8 py-6 border-b border-neutral-200 bg-neutral-50 flex-shrink-0">
+          <div className="flex items-center gap-2 text-neutral-500">
+            <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span className="text-sm font-light">Loading alerts...</span>
+          </div>
+        </div>
+      ) : alerts.length > 0 ? (
+        <div className="border-b border-neutral-200 bg-accent-terra/5 flex-shrink-0">
+          <div className="px-6 py-4">
+            <h3 className="text-accent-terra mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider">
+              Active Alerts ({alerts.filter(a => a.status === 'active').length})
+            </h3>
+          </div>
+          <div className="space-y-0 max-h-64 overflow-y-auto">
+            {alerts.filter(a => a.status === 'active').map((alert, i) => (
               <div
-                key={i}
-                className="bg-surface border-l-4 border-accent-terra border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
-                onClick={() => onPatientClick && onPatientClick(alert.patient_id)}
+                key={alert.id || i}
+                className={`border-l-4 ${getSeverityColor(alert.severity)} px-6 py-3 cursor-pointer hover:bg-neutral-50 transition-colors border-b border-neutral-100 last:border-b-0`}
+                onClick={() => {
+                  if (alert.patient_id && onPatientClick) {
+                    // Convert patient_id string to number if needed
+                    const patientNum = parseInt(alert.patient_id.replace(/\D/g, '')) || 0;
+                    onPatientClick(patientNum);
+                  }
+                }}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-neutral-950 text-sm">
-                    Patient #{alert.patient_id}
-                  </span>
-                  <span className="text-xs font-light text-neutral-500">
-                    {formatTime(alert.timestamp)}
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                      alert.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                      alert.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                      alert.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-neutral-100 text-neutral-700'
+                    }`}>
+                      {alert.severity}
+                    </span>
+                    {alert.patient_id && (
+                      <span className="text-neutral-950 text-xs font-medium">
+                        {alert.patient_id}
+                      </span>
+                    )}
+                    {alert.room_id && !alert.room_id.includes('-') && (
+                      <span className="text-neutral-500 text-xs">
+                        • {alert.room_id}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-light text-neutral-400 font-mono">
+                    {formatTime(alert.triggered_at)}
                   </span>
                 </div>
-                <p className="text-sm font-light text-neutral-700">{alert.message}</p>
-                <div className="flex gap-4 mt-2 text-xs font-light text-neutral-500">
-                  <span>CRS: {(alert.crs_score * 100).toFixed(0)}%</span>
-                  <span>HR: {alert.heart_rate} bpm</span>
-                </div>
+                <p className="text-sm font-medium text-neutral-950 mb-1">{alert.title}</p>
+                {alert.description && (
+                  <p className="text-xs font-light text-neutral-600">{alert.description}</p>
+                )}
               </div>
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Consolidated Event Log */}
       <div className="flex-1 overflow-hidden">

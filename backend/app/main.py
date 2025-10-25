@@ -5,7 +5,10 @@ FastAPI application serving pre-computed CV results and trial data
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
+from typing import Optional, Dict
+from datetime import datetime
 import json
 from pathlib import Path
 import os
@@ -670,14 +673,82 @@ async def get_cv_data(patient_id: int, timestamp: str):
 
 
 @app.get("/alerts")
-async def get_alerts():
-    """Get all active alerts"""
-    return alerts
+async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
+    """
+    Get alerts from database
+    Optionally filter by status and/or severity
+    """
+    if not supabase:
+        # Fallback to in-memory alerts if no database
+        return alerts
+
+    try:
+        query = supabase.table("alerts").select("*")
+
+        if status:
+            query = query.eq("status", status)
+        if severity:
+            query = query.eq("severity", severity)
+
+        response = query.order(
+            "triggered_at", desc=True).limit(limit).execute()
+
+        return response.data or []
+    except Exception as e:
+        print(f"⚠️ Error fetching alerts from database: {e}")
+        # Fallback to in-memory
+        return alerts
+
+
+@app.post("/alerts")
+async def create_alert(
+    alert_type: str,
+    severity: str,
+    title: str,
+    description: str = None,
+    patient_id: str = None,
+    room_id: str = None,
+    triggered_by: str = "system"
+):
+    """
+    Create a new alert in the database
+    """
+    if not supabase:
+        # Fallback to in-memory
+        global alerts
+        alert = {
+            "alert_type": alert_type,
+            "severity": severity,
+            "title": title,
+            "description": description,
+            "patient_id": patient_id,
+            "room_id": room_id,
+            "status": "active"
+        }
+        alerts.append(alert)
+        return alert
+
+    try:
+        result = supabase.table("alerts").insert({
+            "alert_type": alert_type,
+            "severity": severity,
+            "title": title,
+            "description": description,
+            "patient_id": patient_id,
+            "room_id": room_id,
+            "triggered_by": triggered_by,
+            "status": "active"
+        }).execute()
+
+        return result.data[0] if result.data else {}
+    except Exception as e:
+        print(f"❌ Error creating alert: {e}")
+        return {"error": str(e)}
 
 
 @app.delete("/alerts")
 async def clear_alerts():
-    """Clear all alerts"""
+    """Clear all alerts (in-memory fallback only)"""
     global alerts
     alerts = []
     return {"message": "Alerts cleared"}
@@ -808,7 +879,7 @@ async def recommend_monitoring(request: MonitoringRecommendationRequest):
             ])
 
             message = anthropic_client.messages.create(
-                model="claude-3-5-sonnet-20241022",  # Sonnet 3.5 v2
+                model="claude-haiku-4-5-20251001",
                 max_tokens=500,
                 messages=[{
                     "role": "user",
@@ -923,19 +994,47 @@ async def assign_patient(request: AssignPatientRequest):
 
 
 @app.delete("/rooms/unassign-patient/{room_id}")
-async def unassign_patient(room_id: str, patient_id: str = None):
+async def unassign_patient(room_id: str, patient_id: str = None, generate_report: bool = False):
     """
     Remove patient from a room
 
     Args:
         room_id: Room identifier
         patient_id: Optional patient ID to remove specific patient
+        generate_report: Whether to generate PDF discharge report
 
     Returns:
-        Success message
+        Success message with optional PDF report ID
     """
     try:
-        return unassign_patient_from_room(room_id, patient_id)
+        # Get patient ID if not provided
+        if not patient_id:
+            assignment = supabase.table("patients_room").select(
+                "patient_id").eq("room_id", room_id).execute()
+            if assignment.data:
+                patient_id = assignment.data[0]['patient_id']
+
+        # Generate PDF report if requested
+        report_generated = False
+        if generate_report and patient_id:
+            try:
+                from app.pdf_generator import generate_patient_discharge_report
+                pdf_bytes = await generate_patient_discharge_report(patient_id, room_id)
+                # Store PDF or trigger download
+                print(
+                    f"✅ Generated discharge report for {patient_id} from {room_id}")
+                report_generated = True
+            except Exception as pdf_error:
+                print(f"⚠️ Failed to generate PDF: {pdf_error}")
+
+        # Remove patient from room
+        result = unassign_patient_from_room(room_id, patient_id)
+
+        if report_generated:
+            result['report_generated'] = True
+            result['report_message'] = 'Discharge report generated successfully'
+
+        return result
     except Exception as e:
         return {"error": str(e)}
 
@@ -1292,13 +1391,16 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    messages: list[ChatMessage]
+    message: str
+    session_id: Optional[str] = None
+    user_id: str = "default_user"
+    chat_state: Optional[Dict] = None
 
 
 @app.post("/ai/chat")
 async def ai_chat(request: ChatRequest):
     """
-    AI chat endpoint using Anthropic Claude
+    Context-aware AI chat endpoint using Anthropic Claude
     """
     if not anthropic_client:
         return {
@@ -1307,41 +1409,203 @@ async def ai_chat(request: ChatRequest):
         }
 
     try:
+        from app.chat_context import (
+            create_session, read_context, write_context, build_system_prompt
+        )
+        from app.ai_tools import HAVEN_TOOLS, execute_tool
+
+        # Get or create session
+        session_title = None
+        if request.session_id:
+            try:
+                context = await read_context(request.session_id)
+                session_id = request.session_id
+                # Get session title
+                session_data = supabase.table("chat_sessions").select(
+                    "title").eq("id", session_id).single().execute()
+                if session_data.data:
+                    session_title = session_data.data.get("title")
+            except Exception as e:
+                print(f"⚠️ Failed to load session {request.session_id}: {e}")
+                # Create new session on error
+                session = await create_session(request.user_id, request.message[:100])
+                session_id = session["id"]
+                session_title = session["title"]
+                context = await read_context(session_id)
+        else:
+            # Create new session
+            session = await create_session(request.user_id, request.message[:100])
+            session_id = session["id"]
+            session_title = session["title"]
+            context = await read_context(session_id)
+
+        # Update context state with current info
+        if request.chat_state:
+            context.state.update(request.chat_state)
+
+        # Add user message to context
+        context.messages.append({
+            "role": "user",
+            "content": request.message
+        })
+
         # Convert messages to Anthropic format
         anthropic_messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in request.messages
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in context.messages
         ]
 
-        # System prompt with context about Haven
-        system_prompt = """You are Haven AI, an intelligent assistant for a hospital patient monitoring system. 
-You help clinical staff with:
-- Patient information and room assignments
-- Clinical protocols and monitoring guidelines
-- Real-time patient data and alerts
-- Hospital operations and logistics
+        # Build context-aware system prompt
+        system_prompt = await build_system_prompt(context)
 
-Provide helpful, concise, and accurate responses. When you don't have specific information, guide users on how to find it in the system."""
-
-        # Call Anthropic API
+        # Call Anthropic API with tool use capability
         message = anthropic_client.messages.create(
-            model="claude-3-sonnet-20240229",
-            max_tokens=1024,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2048,
             system=system_prompt,
+            tools=HAVEN_TOOLS,  # Enable tool calling
             messages=anthropic_messages
         )
 
+        # Handle tool use
+        assistant_response = ""
+        tool_results = []
+
+        # Check if Claude wants to use tools
+        if message.stop_reason == "tool_use":
+            # Execute tool calls
+            for content_block in message.content:
+                if content_block.type == "text":
+                    assistant_response += content_block.text
+                elif content_block.type == "tool_use":
+                    print(f"🔧 Tool call: {content_block.name}")
+                    tool_result = await execute_tool(content_block.name, content_block.input)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": content_block.id,
+                        "content": json.dumps(tool_result)
+                    })
+
+            # Continue conversation with tool results
+            anthropic_messages.append({
+                "role": "assistant",
+                "content": message.content
+            })
+            anthropic_messages.append({
+                "role": "user",
+                "content": tool_results
+            })
+
+            # Get final response with tool results
+            final_message = anthropic_client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=2048,
+                system=system_prompt,
+                tools=HAVEN_TOOLS,
+                messages=anthropic_messages
+            )
+
+            # Extract final text response
+            for content_block in final_message.content:
+                if content_block.type == "text":
+                    assistant_response += content_block.text
+        else:
+            # No tool use, just get text response
+            for content_block in message.content:
+                if content_block.type == "text":
+                    assistant_response = content_block.text
+
+        # Add assistant response to context
+        context.messages.append({
+            "role": "assistant",
+            "content": assistant_response
+        })
+
+        # Save updated context
+        await write_context(session_id, context)
         return {
-            "response": message.content[0].text,
-            "model": "claude-3-5-sonnet"
+            "response": assistant_response,
+            "model": "claude-haiku-4.5",
+            "session_id": session_id,
+            "session_title": session_title,
+            "tool_calls": len(tool_results) if tool_results else 0
         }
 
     except Exception as e:
         print(f"❌ Error in AI chat: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "response": "I'm having trouble processing your request. Please try again.",
             "error": str(e)
         }
+
+
+@app.get("/ai/sessions")
+async def get_sessions(user_id: str = "default_user"):
+    """
+    Get all chat sessions for a user
+    """
+    try:
+        from app.chat_context import get_user_sessions
+        sessions = await get_user_sessions(user_id)
+        return {"sessions": sessions}
+    except Exception as e:
+        print(f"❌ Error fetching sessions: {e}")
+        return {"sessions": [], "error": str(e)}
+
+
+@app.get("/ai/sessions/{session_id}")
+async def get_session(session_id: str):
+    """
+    Get a specific session with full message history
+    """
+    try:
+        from app.chat_context import read_context
+        context = await read_context(session_id)
+        return {
+            "session_id": session_id,
+            "messages": context.messages
+        }
+    except Exception as e:
+        print(f"❌ Error fetching session {session_id}: {e}")
+        return {"messages": [], "error": str(e)}
+
+
+@app.get("/reports/discharge/{patient_id}/{room_id}")
+async def download_discharge_report(patient_id: str, room_id: str):
+    """
+    Generate and download PDF discharge report for a patient
+    """
+    try:
+        from app.pdf_generator import generate_patient_discharge_report, REPORTLAB_AVAILABLE, generate_simple_text_report
+        from fastapi.responses import Response
+
+        if not REPORTLAB_AVAILABLE:
+            # Fallback to text report
+            text_report = generate_simple_text_report(patient_id, room_id)
+            return Response(
+                content=text_report,
+                media_type="text/plain",
+                headers={
+                    "Content-Disposition": f"attachment; filename=discharge-report-{patient_id}-{datetime.now().strftime('%Y%m%d')}.txt"
+                }
+            )
+
+        pdf_bytes = await generate_patient_discharge_report(patient_id, room_id)
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=discharge-report-{patient_id}-{datetime.now().strftime('%Y%m%d')}.pdf"
+            }
+        )
+    except Exception as e:
+        print(f"❌ Error generating discharge report: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":

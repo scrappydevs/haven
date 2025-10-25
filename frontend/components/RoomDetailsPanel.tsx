@@ -36,16 +36,37 @@ interface RoomDetailsPanelProps {
   onUnassignPatient: () => void;
   availablePatients: AvailablePatient[];
   onAssignPatient: (patient: AvailablePatient) => void;
+  onGenerateReport?: (patientId: string, roomId: string) => void;
 }
 
-export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, availablePatients, onAssignPatient }: RoomDetailsPanelProps) {
+export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, availablePatients, onAssignPatient, onGenerateReport }: RoomDetailsPanelProps) {
   if (!room) return null;
+
+  const handleDownloadReport = async () => {
+    if (!room.assignedPatient) return;
+    
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/reports/discharge/${room.assignedPatient.patient_id}/${room.id}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `discharge-report-${room.assignedPatient.patient_id}-${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      alert('Failed to generate report. Please try again.');
+    }
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="bg-surface border border-neutral-200 rounded-xl p-6 h-full overflow-y-auto"
+      className="bg-surface border-l-2 border-neutral-950 p-6 h-full overflow-y-auto"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-6 pb-4 border-b-2 border-neutral-950">
@@ -71,21 +92,29 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, ava
           <h4 className="label-uppercase text-neutral-700 mb-4">Assigned Patient</h4>
           
           {room.assignedPatient ? (
-            <div className="border border-neutral-200 rounded-xl p-4">
+            <div className="border border-neutral-200 p-4">
               <div className="flex items-start gap-3 mb-4">
-                {room.assignedPatient.photo_url ? (
+                {room.assignedPatient.photo_url && room.assignedPatient.photo_url.trim() !== '' ? (
                   <img
                     src={room.assignedPatient.photo_url}
                     alt={room.assignedPatient.name}
-                    className="w-16 h-16 rounded-lg object-cover border border-neutral-950"
+                    className="w-16 h-16 object-cover border border-neutral-950"
+                    onError={(e) => {
+                      // Hide broken image and show initials instead
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
                   />
-                ) : (
-                  <div className="w-16 h-16 rounded-lg border border-neutral-950 bg-primary-100 flex items-center justify-center">
-                    <span className="text-xl font-light text-primary-700">
-                      {room.assignedPatient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </span>
-                  </div>
-                )}
+                ) : null}
+                <div 
+                  className="w-16 h-16 border border-neutral-950 bg-primary-100 flex items-center justify-center"
+                  style={{ display: (room.assignedPatient.photo_url && room.assignedPatient.photo_url.trim() !== '') ? 'none' : 'flex' }}
+                >
+                  <span className="text-xl font-light text-primary-700">
+                    {room.assignedPatient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </span>
+                </div>
                 <div className="flex-1">
                   <h5 className="font-light text-neutral-950 mb-1">
                     {room.assignedPatient.name}
@@ -93,25 +122,38 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, ava
                   <p className="label-uppercase text-primary-700 mb-2">
                     {room.assignedPatient.patient_id}
                   </p>
-                  <p className="text-xs text-neutral-500">
-                    {room.assignedPatient.age}y/o
-                  </p>
+                  {room.assignedPatient.age > 0 && (
+                    <p className="text-xs text-neutral-500">
+                      {room.assignedPatient.age}y/o
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-3 mb-4">
+              <div className="bg-neutral-50 border border-neutral-200 p-3 mb-4">
                 <p className="label-uppercase text-neutral-600 mb-2">Condition</p>
                 <p className="text-sm font-light text-neutral-950">
                   {room.assignedPatient.condition}
                 </p>
               </div>
 
-              <button
-                onClick={onUnassignPatient}
-                className="w-full border border-accent-terra rounded-lg px-4 py-2 font-light text-xs uppercase tracking-wider text-accent-terra hover:bg-accent-terra hover:text-white transition-all"
-              >
-                Remove from Room
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={handleDownloadReport}
+                  className="w-full border border-primary-700 px-4 py-2 font-light text-xs uppercase tracking-wider text-primary-700 hover:bg-primary-700 hover:text-white transition-all flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                  Generate Discharge Report
+                </button>
+                <button
+                  onClick={onUnassignPatient}
+                  className="w-full border border-accent-terra px-4 py-2 font-light text-xs uppercase tracking-wider text-accent-terra hover:bg-accent-terra hover:text-white transition-all"
+                >
+                  Remove from Room
+                </button>
+              </div>
             </div>
           ) : (
             <div>
@@ -133,10 +175,10 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, ava
                         <img
                           src={patient.photo_url}
                           alt={patient.name}
-                          className="w-10 h-10 rounded-lg object-cover border border-neutral-300"
+                          className="w-10 h-10 object-cover border border-neutral-300"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-lg border border-neutral-300 bg-primary-100 flex items-center justify-center">
+                        <div className="w-10 h-10 border border-neutral-300 bg-primary-100 flex items-center justify-center">
                           <span className="text-xs font-light text-primary-700">
                             {patient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                           </span>
@@ -150,7 +192,7 @@ export default function RoomDetailsPanel({ room, onClose, onUnassignPatient, ava
                       </div>
                       <button
                         onClick={() => onAssignPatient(patient)}
-                        className="w-7 h-7 rounded-md flex items-center justify-center border border-primary-700 text-primary-700 hover:bg-primary-700 hover:text-white transition-colors flex-shrink-0"
+                        className="w-7 h-7 flex items-center justify-center border border-primary-700 text-primary-700 hover:bg-primary-700 hover:text-white transition-colors flex-shrink-0"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
