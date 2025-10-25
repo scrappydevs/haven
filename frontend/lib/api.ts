@@ -18,12 +18,14 @@ export function getApiUrl(): string {
 }
 
 /**
- * Get the WebSocket URL
+ * Get the WebSocket URL with optional path
  * Converts http to ws protocol
+ * @param path Optional path to append (e.g., '/ws/stream/P-001')
  */
-export function getWsUrl(): string {
+export function getWsUrl(path?: string): string {
   const apiUrl = getApiUrl();
-  return apiUrl.replace('http', 'ws');
+  const baseWsUrl = apiUrl.replace('http', 'ws');
+  return path ? `${baseWsUrl}${path}` : baseWsUrl;
 }
 
 // Export constants for convenience
