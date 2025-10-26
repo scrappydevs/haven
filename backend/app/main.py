@@ -4,6 +4,7 @@ FastAPI application serving pre-computed CV results and trial data
 """
 
 import logging
+import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -32,7 +33,16 @@ from app.monitoring_control import monitoring_manager, MonitoringLevel
 # from app.agent_system import agent_system
 # from app.health_agent import health_agent  # Old non-Fetch.ai agent
 from app.fetch_health_agent import fetch_health_agent
-from app.fetch_handoff_agent import fetch_handoff_agent
+
+# Try to import Fetch.ai handoff agent (requires uagents)
+try:
+    from app.fetch_handoff_agent import fetch_handoff_agent
+    FETCH_HANDOFF_AVAILABLE = True
+except ImportError:
+    fetch_handoff_agent = None
+    FETCH_HANDOFF_AVAILABLE = False
+    print("⚠️  Fetch.ai handoff agent not available - install uagents if needed")
+
 from app.rooms import (
     get_all_floors,
     get_all_rooms_with_patients,
@@ -670,8 +680,19 @@ async def get_smplrspace_config():
 
 @app.get("/patients")
 async def get_patients():
-    """Get list of all patients (first 47) - LEGACY"""
-    return patients[:47]
+    """Get list of all patients from database"""
+    if not supabase:
+        # Fallback to legacy data if Supabase not configured
+        return patients[:47]
+    
+    try:
+        # Fetch all active patients from Supabase with all fields including photo_url
+        response = supabase.table("patients").select("*").eq("enrollment_status", "active").execute()
+        return response.data or []
+    except Exception as e:
+        print(f"❌ Error fetching patients: {e}")
+        # Fallback to legacy data on error
+        return patients[:47]
 
 
 @app.get("/patient/{patient_id}")
@@ -879,17 +900,31 @@ async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
         
         # Enrich alerts with patient and room names
         for alert in alerts_data:
-            # Add patient name
+            # Add patient name and room info
             if alert.get('patient_id'):
                 try:
+                    # Get patient name
                     patient = supabase.table("patients").select("name").eq("patient_id", alert['patient_id']).execute()
                     if patient.data and len(patient.data) > 0:
                         alert['patient_name'] = patient.data[0]['name']
+                    
+                    # Get room assignment for this patient
+                    room_assignment = supabase.table("patients_room").select("room_id").eq("patient_id", alert['patient_id']).execute()
+                    if room_assignment.data and len(room_assignment.data) > 0:
+                        assigned_room_id = room_assignment.data[0]['room_id']
+                        # If alert doesn't have room_id, use patient's current room
+                        if not alert.get('room_id'):
+                            alert['room_id'] = assigned_room_id
+                        
+                        # Get room name
+                        room = supabase.table("rooms").select("room_name").eq("room_id", assigned_room_id).execute()
+                        if room.data and len(room.data) > 0:
+                            alert['room_name'] = room.data[0]['room_name']
                 except Exception as e:
-                    print(f"Error fetching patient name: {e}")
+                    print(f"Error enriching alert with patient/room data: {e}")
             
-            # Add room name
-            if alert.get('room_id'):
+            # If alert has room_id but no room_name yet
+            if alert.get('room_id') and not alert.get('room_name'):
                 try:
                     room = supabase.table("rooms").select("room_name").eq("room_id", alert['room_id']).execute()
                     if room.data and len(room.data) > 0:
@@ -897,6 +932,7 @@ async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
                 except Exception as e:
                     print(f"Error fetching room name: {e}")
         
+        print(f"✅ Enriched {len(alerts_data)} alerts with patient/room data")
         return alerts_data
     except Exception as e:
         print(f"⚠️ Error fetching alerts from database: {e}")
@@ -2100,7 +2136,16 @@ async def websocket_view(websocket: WebSocket):
 
     try:
         import asyncio
+        last_ping = time.time()
         while True:
+            # Send ping every 30 seconds to keep connection alive
+            if time.time() - last_ping > 30:
+                try:
+                    await websocket.send_json({"type": "ping", "timestamp": time.time()})
+                    last_ping = time.time()
+                except:
+                    break  # Connection died
+            
             await asyncio.sleep(1)
     except WebSocketDisconnect:
         print("Viewer disconnected")
@@ -3164,6 +3209,12 @@ async def get_active_haven_sessions():
 @app.get("/handoff-agent/status")
 async def get_handoff_agent_status():
     """Get Fetch.ai handoff agent status"""
+    if not FETCH_HANDOFF_AVAILABLE:
+        return {
+            "enabled": False,
+            "error": "Fetch.ai handoff agent not available - install uagents package"
+        }
+    
     return {
         "enabled": True,
         "agent_address": fetch_handoff_agent.agent.address,
@@ -3192,6 +3243,12 @@ async def generate_handoff_form_manual(request: GenerateHandoffRequest):
     Returns:
         Form generation result with PDF path and email status
     """
+    if not FETCH_HANDOFF_AVAILABLE:
+        return {
+            "success": False,
+            "message": "Fetch.ai handoff agent not available - install uagents package"
+        }
+    
     try:
         # Use configured nurse emails if not provided
         recipient_emails = request.recipient_emails

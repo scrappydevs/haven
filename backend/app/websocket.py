@@ -150,6 +150,12 @@ class ConnectionManager:
             del self.worker_threads[patient_id]
 
         if patient_id in self.processing_queues:
+            # Clear the queue before deleting
+            try:
+                while True:
+                    self.processing_queues[patient_id].get_nowait()
+            except queue.Empty:
+                pass
             del self.processing_queues[patient_id]
 
         if patient_id in self.worker_stop_flags:
@@ -160,6 +166,12 @@ class ConnectionManager:
 
         if patient_id in self.patient_trackers:
             del self.patient_trackers[patient_id]
+        
+        # Clean up fetch health agent state
+        from app.fetch_health_agent import fetch_health_agent
+        if patient_id in fetch_health_agent.patients:
+            del fetch_health_agent.patients[patient_id]
+            print(f"🧹 Cleaned up health agent data for {patient_id}")
 
         print(
             f"❌ Unregistered streamer for patient {patient_id}. Worker stopped. Total streamers: {len(self.streamers)}")
@@ -188,6 +200,21 @@ class ConnectionManager:
         if patient_id not in self.processing_queues:
             return
 
+        # IMMEDIATELY broadcast raw frame to viewers (30 FPS smooth video)
+        # This happens BEFORE CV processing to ensure no lag
+        if self.viewers:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.broadcast_frame({
+                "type": "live_frame",
+                "patient_id": patient_id,
+                "data": {
+                    "frame": frame_data
+                }
+            }))
+            loop.close()
+
         try:
             # Non-blocking put - if queue is full, discard frame (keep video real-time)
             self.processing_queues[patient_id].put_nowait({
@@ -212,6 +239,11 @@ class ConnectionManager:
 
         while not self.worker_stop_flags[patient_id].is_set():
             try:
+                # Double-check stream is still active
+                if patient_id not in self.streamers:
+                    print(f"⏹️  Worker exiting - {patient_id} stream no longer active")
+                    break
+                
                 # Get trackers to check analysis mode
                 trackers = self.get_trackers(patient_id)
                 analysis_mode = trackers.analysis_mode if trackers else "normal"
@@ -324,6 +356,11 @@ class ConnectionManager:
                         def agent_worker():
                             """Background thread for agent analysis - never blocks CV"""
                             try:
+                                # Check if stream is still active before running agent
+                                if patient_id not in self.streamers:
+                                    print(f"⏹️  Skipping agent analysis - {patient_id} stream closed")
+                                    return
+                                
                                 # Create new event loop for this thread
                                 import asyncio
                                 thread_loop = asyncio.new_event_loop()
@@ -432,7 +469,11 @@ class ConnectionManager:
                                 print(f"⚠️ Agent thread error: {e}")
                         
                         # Start agent in background thread - CV processing continues immediately
-                        threading.Thread(target=agent_worker, daemon=True).start()
+                        # Only start if stream is still active
+                        if patient_id in self.streamers:
+                            threading.Thread(target=agent_worker, daemon=True).start()
+                        else:
+                            print(f"⏹️  Skipping agent thread - {patient_id} stream closed")
                         
                         # LEGACY AGENTS (DISABLED - using Fetch.ai Health Agent instead)
                         # if agent_system.enabled:
@@ -473,9 +514,15 @@ class ConnectionManager:
 
         async def send_to_viewer(viewer):
             try:
-                await viewer.send_json(frame_data)
-                return None
+                # Check if viewer is still connected before sending
+                if viewer.client_state.value == 1:  # WebSocketState.CONNECTED
+                    await viewer.send_json(frame_data)
+                    return None
+                else:
+                    # Connection not in connected state, mark for removal
+                    return viewer
             except Exception as e:
+                # Connection died, mark for removal
                 print(f"❌ Failed to send to viewer: {e}")
                 return viewer
 

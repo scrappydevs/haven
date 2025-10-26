@@ -127,9 +127,17 @@ export default function DashboardPage() {
     // Fetch active streams
     try {
       const apiUrl = getApiUrl();
+      console.log('📡 Dashboard fetching active streams from:', `${apiUrl}/streams/active`);
       const res = await fetch(`${apiUrl}/streams/active`);
       const data = await res.json();
+      console.log('📡 Dashboard received active streams:', data);
       setActiveStreams(data.active_streams || []);
+      
+      // Also log current box assignments
+      const currentAssignments = boxAssignments
+        .filter((p): p is SupabasePatient => p !== null)
+        .map(p => p.patient_id);
+      console.log('📡 Dashboard current assignments:', currentAssignments);
     } catch (error) {
       console.error('Error fetching active streams:', error);
     }
@@ -701,7 +709,7 @@ export default function DashboardPage() {
                 href="/dashboard/floorplan"
                 className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
               >
-                Floor Plan
+                Hospital Map
               </a>
               <a
                 href="/patient-view"

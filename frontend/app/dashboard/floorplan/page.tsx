@@ -277,8 +277,8 @@ export default function FloorPlanPage() {
           if (alertSeverity === 'low') return '#10b981';      // Green
           if (alertSeverity === 'info') return '#3b82f6';     // Blue
           
-          // Occupied but no alerts - green (stable patient)
-          return '#10b981';
+          // Occupied but no alerts - light cyan (stable, healthy patient)
+          return '#67e8f9'; // Cyan-300 - clearly occupied and healthy
         },
         onClick: (data: any) => {
           const room = data.room as Room;
@@ -366,8 +366,8 @@ export default function FloorPlanPage() {
           if (alertSeverity === 'medium') return '#eab308';   // Yellow
           if (alertSeverity === 'low') return '#10b981';       // Green
           
-          // Occupied, no alerts - green
-          return '#10b981';
+          // Occupied, no alerts - cyan (healthy, stable)
+          return '#67e8f9';
         },
         onClick: (data: any) => {
           const room = data.room as Room;
@@ -414,7 +414,7 @@ export default function FloorPlanPage() {
           const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
           console.log(`🔤 Creating initials PNG for ${patient?.name}: ${initials}`);
           
-          const size = 160; // 2x larger for much better visibility
+          const size = 160; // Optimal size for smplr.js rendering
           const canvas = document.createElement('canvas');
           canvas.width = size;
           canvas.height = size;
@@ -450,7 +450,7 @@ export default function FloorPlanPage() {
           
           img.onload = () => {
             console.log(`✅ Photo loaded: ${patient.name}`, img.width, 'x', img.height);
-            const size = 160; // 2x larger for much better visibility
+            const size = 160; // Optimal size for smplr.js rendering
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -470,17 +470,23 @@ export default function FloorPlanPage() {
             let drawWidth, drawHeight, drawX, drawY;
             
             if (imgAspect > 1) {
-              // Image is wider - fit to height
+              // Image is wider - fit to height, center horizontally
               drawHeight = size;
               drawWidth = size * imgAspect;
               drawX = (size - drawWidth) / 2;
               drawY = 0;
-            } else {
-              // Image is taller - fit to width
+            } else if (imgAspect < 1) {
+              // Image is taller - fit to width, center vertically
               drawWidth = size;
               drawHeight = size / imgAspect;
               drawX = 0;
               drawY = (size - drawHeight) / 2;
+            } else {
+              // Image is square - perfect fit
+              drawWidth = size;
+              drawHeight = size;
+              drawX = 0;
+              drawY = 0;
             }
             
             // Draw image
@@ -507,7 +513,7 @@ export default function FloorPlanPage() {
             const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
             console.log(`🔤 Using initials fallback: ${initials}`);
             
-            const size = 160; // Match main size
+            const size = 160; // Match main size - optimal for smplr.js
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -550,8 +556,8 @@ export default function FloorPlanPage() {
           data: dataWithPhotos,
           icon: (data: any) => ({
             url: data.photoUrl,
-            width: 160,  // 2x larger for better visibility
-            height: 160,
+            width: 180,  // World-space units - 2x room icon size (was working before)
+            height: 180,
           }),
           // No color property = photos keep natural colors (not tinted like rooms)
           onClick: (data: any) => {
@@ -1271,17 +1277,17 @@ export default function FloorPlanPage() {
       <link href="https://app.smplrspace.com/lib/smplr.css" rel="stylesheet" />
       
       {/* Main Content */}
-      <div className="grid grid-cols-12 gap-6 p-6 h-[calc(100vh-4rem)]">
+      <div className="grid grid-cols-12 gap-4 p-4 h-[calc(100vh-5rem)]">
         {/* Floor Plan Viewer (Left - 8 columns) */}
         <div className="col-span-8 flex flex-col">
           <div className="bg-surface border border-neutral-200 flex-1 flex flex-col">
-            <div className="px-5 py-4 border-b border-neutral-200">
+            <div className="px-4 py-3 border-b border-neutral-200">
               <p className="text-sm font-light text-neutral-600">
                 Hospital View
               </p>
             </div>
 
-            <div className="p-6 flex-1 flex flex-col">
+            <div className="p-4 flex-1 flex flex-col">
 
             {/* Error Message */}
             {viewerError && (
@@ -1367,7 +1373,11 @@ export default function FloorPlanPage() {
                   setSelectedRoom(null);
                 }
               }}
-              availablePatients={filteredPatients}
+              availablePatients={filteredPatients.filter(p => {
+                // Only show patients who are NOT already assigned to any room
+                const isAssigned = rooms.some(r => r.assignedPatient?.patient_id === p.patient_id);
+                return !isAssigned;
+              })}
               onAssignPatient={(patient) => assignPatientToRoom(patient, selectedRoom.id)}
             />
           ) : (

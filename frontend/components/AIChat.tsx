@@ -34,7 +34,7 @@ export default function AIChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [showSessions, setShowSessions] = useState(false);
-  const [panelSize, setPanelSize] = useState({ width: 550, height: typeof window !== 'undefined' ? window.innerHeight - 80 : 900 });
+  const [panelSize, setPanelSize] = useState({ width: 550, height: 650 });
   const [isResizing, setIsResizing] = useState(false);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteItems, setAutocompleteItems] = useState<any[]>([]);
@@ -59,16 +59,6 @@ export default function AIChat() {
       setCurrentTime(new Date());
     }, 60000); // Update every minute
     return () => clearInterval(timer);
-  }, []);
-  
-  // Update panel height on window resize
-  useEffect(() => {
-    const handleResize = () => {
-      setPanelSize(prev => ({ ...prev, height: window.innerHeight - 80 }));
-    };
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Close dropdown when clicking outside

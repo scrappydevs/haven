@@ -126,7 +126,7 @@ def analyze_patient(patient_id: str, vitals: dict, cv_metrics: dict) -> Movement
     )
 
 # Patient monitoring protocol
-monitoring_proto = Protocol()
+monitoring_proto = Protocol(name="patient_monitoring", version="1.0.0")
 
 @monitoring_proto.on_message(model=PatientUpdate)
 async def handle_patient_update(ctx: Context, sender: str, msg: PatientUpdate):

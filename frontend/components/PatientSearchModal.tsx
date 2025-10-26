@@ -37,10 +37,16 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
     const fetchActiveStreams = async () => {
       try {
         const apiUrl = getApiUrl();
+        console.log('🔄 Fetching active streams from:', `${apiUrl}/streams/active`);
         const res = await fetch(`${apiUrl}/streams/active`);
         const data = await res.json();
         const freshStreams = data.active_streams || [];
-        console.log('🔄 Refreshed active streams:', freshStreams);
+        console.log('🔄 Refreshed active streams:', {
+          freshStreams,
+          fullResponse: data,
+          mode,
+          assignedPatients
+        });
         setActiveStreams(freshStreams);
       } catch (error) {
         console.error('❌ Error refreshing active streams:', error);
@@ -49,7 +55,7 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
     };
 
     fetchActiveStreams();
-  }, [isOpen]);
+  }, [isOpen, mode, assignedPatients]);
 
   // Fetch patients based on search query
   useEffect(() => {
@@ -87,11 +93,36 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
   const availablePatients = patients.filter(p => {
     if (mode === 'assign-stream') {
       // Dashboard mode: Show only patients who ARE streaming but NOT yet assigned to a box
-      return activeStreams.includes(p.patient_id) && !assignedPatients.includes(p.patient_id);
+      const isStreaming = activeStreams.includes(p.patient_id);
+      const isAssigned = assignedPatients.includes(p.patient_id);
+      console.log(`🔍 Filtering patient ${p.patient_id}:`, {
+        isStreaming,
+        isAssigned,
+        willShow: isStreaming && !isAssigned,
+        activeStreams,
+        assignedPatients,
+        patientData: p
+      });
+      return isStreaming && !isAssigned;
     } else {
       // Stream page mode: Show only patients who are NOT currently streaming
-      return !activeStreams.includes(p.patient_id);
+      const notStreaming = !activeStreams.includes(p.patient_id);
+      console.log(`🔍 Filtering patient ${p.patient_id} (start-stream mode):`, {
+        notStreaming,
+        willShow: notStreaming,
+        activeStreams
+      });
+      return notStreaming;
     }
+  });
+
+  // Log final result
+  console.log(`📊 Filter results for ${mode} mode:`, {
+    totalPatients: patients.length,
+    availablePatients: availablePatients.length,
+    activeStreams,
+    assignedPatients,
+    availablePatientIds: availablePatients.map(p => p.patient_id)
   });
 
   const handleSelect = (patient: Patient) => {

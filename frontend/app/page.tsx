@@ -156,13 +156,31 @@ export default function LandingPage() {
         className="absolute inset-0 w-full h-full"
       />
       
-      {/* Hide Smplrspace toolbar */}
+      {/* Hide ALL Smplrspace UI elements including branding */}
       <style jsx global>{`
-        #landing-smplr-container .smplr-toolbar {
+        #landing-smplr-container .smplr-toolbar,
+        #landing-smplr-container .smplr-controls,
+        #landing-smplr-container .smplr-embed,
+        #landing-smplr-container .smplr-watermark,
+        #landing-smplr-container .smplr-branding,
+        #landing-smplr-container .smplr-attribution,
+        #landing-smplr-container .smplr-mode-switcher,
+        #landing-smplr-container .smplr-navigation,
+        #landing-smplr-container .smplr-zoom-controls,
+        #landing-smplr-container [class*="toolbar"],
+        #landing-smplr-container [class*="controls"],
+        #landing-smplr-container [class*="watermark"],
+        #landing-smplr-container [class*="branding"],
+        #landing-smplr-container [class*="attribution"],
+        #landing-smplr-container [class*="powered"],
+        #landing-smplr-container button,
+        #landing-smplr-container .smplr-ui,
+        #landing-smplr-container a[href*="smplrspace"],
+        #landing-smplr-container a[href*="smplr"] {
           display: none !important;
-        }
-        #landing-smplr-container .smplr-controls {
-          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
         }
       `}</style>
       
