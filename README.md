@@ -7,13 +7,13 @@
 ---
 
 <div align="center">
-  <img src="Haven AI.gif" alt="Haven AI Dashboard" width="49%" />
-  <img src="Haven AI Chat.gif" alt="Haven AI Chat" width="49%" />
-</div>
-
-<div align="center">
-  <img src="Haven Seizure Example.gif" alt="Haven Seizure Detection" width="49%" />
-  <img src="Haven Shoulder Pain Relief.gif" alt="Haven Shoulder Pain Relief" width="49%" />
+  <img src="Haven AI.gif" alt="Haven AI Dashboard" width="800"/>
+  <br/>
+  <img src="Haven AI Chat.gif" alt="Haven AI Chat" width="800"/>
+  <br/>
+  <img src="Haven Seizure Example.gif" alt="Haven Seizure Detection" width="800"/>
+  <br/>
+  <img src="Haven Shoulder Pain Relief.gif" alt="Haven Shoulder Pain Relief" width="800"/>
 </div>
 
 ---
@@ -54,6 +54,30 @@ Haven operates as a multi-agent hospital command center that coordinates autonom
 - Reinforcement Learning from Clinical Feedback: nurses would rate agent suggestions, allowing the system to improve accuracy over time and learn hospital-specific workflows
 - Multi-modal Patient Monitoring: Integrate computer vision to detect patient movement patterns, fall risk, and behavioral changes that complement vital sign monitoring
 - Federated Learning Across Hospitals: Enable Haven deployments to learn from each other while maintaining patient privacy, creating a collective intelligence that improves with every installation
+
+## Fetch.ai Agent Network
+
+Haven leverages the Fetch.ai uAgents framework and ASI Alliance (asi.one) ecosystem to deploy autonomous agents that coordinate real-time healthcare operations across decentralized infrastructure. Each agent operates independently while communicating through the ASI Alliance network, enabling inter-hospital coordination and access to decentralized AI services from Ocean Protocol and SingularityNET.
+
+### Deployed Agents
+
+**haven_nurse** - Primary clinical triage and monitoring agent using Claude AI for real-time patient assessment. Processes vital sign alerts, coordinates emergency responses, escalates critical conditions, and ensures clinical trial compliance. Handles 369 interactions with 2.5 rating on Agentverse.
+
+**haven_asi_coordinator** - Central orchestration hub connecting Haven to the broader ASI Alliance ecosystem. Routes complex health queries to Ocean Protocol ML models for predictive analytics, SingularityNET AI services for diagnostic pattern recognition, and Fetch.ai agent networks for resource coordination. Publishes Haven's capabilities to the asi.one marketplace and monitors network health across all three alliance partners.
+
+**haven_resource_allocation** - Dynamic hospital resource optimizer managing ICU beds, ventilators, specialist assignments, and equipment allocation based on real-time patient acuity. Coordinates with regional hospitals through ASI Alliance for cross-facility resource sharing during capacity constraints. Monitors utilization metrics and predicts future resource needs using decentralized ML models. Handles 21 interactions on Agentverse.
+
+**haven_reconciliation** - Medication safety agent that cross-references patient medication lists against new prescriptions to identify dangerous drug interactions before administration. Maintains connection to ASI Alliance drug interaction database and performs periodic audits of all active patients. Generates critical alerts for interactions like warfarin-aspirin bleeding risks or metformin-contrast contraindications. Handles 10 interactions on Agentverse.
+
+### Agent Interlinking Architecture
+
+The agents form a coordinated network where each specialized agent handles its domain while communicating through Fetch.ai's message-passing protocol:
+
+**Clinical Workflow**: haven_nurse detects abnormal vitals and sends alerts. When resource escalation is needed (e.g., ICU transfer), nurse agent messages haven_resource_allocation which allocates appropriate beds and equipment. If new medications are prescribed, nurse agent triggers haven_reconciliation to validate safety before administration.
+
+**ASI Alliance Integration**: Complex queries requiring external intelligence route through haven_asi_coordinator. When haven_resource_allocation faces local capacity constraints, coordinator queries ASI Alliance network for regional hospital availability via Ocean Protocol data sharing. When haven_reconciliation needs advanced drug interaction analysis, coordinator accesses SingularityNET AI diagnostic services. All agents publish their availability to asi.one marketplace for discoverability by other healthcare networks.
+
+**Multi-Agent Orchestration**: haven_asi_coordinator orchestrates workflows spanning multiple alliance services - aggregating patient cohort data through Ocean Protocol, running predictive models via SingularityNET, and coordinating resource transfers through Fetch.ai agent networks. This enables capabilities beyond any single agent, such as predicting ICU demand 6 hours ahead using decentralized ML while simultaneously arranging resource pre-positioning.
 
 ## Live Agent Access
 
