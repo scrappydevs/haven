@@ -370,7 +370,7 @@ export default function PatientViewPage() {
       assistantQuestions,
       assistantTurns
     };
-  }, []);
+  }, [conversationLogRef]);
 
   // Ensure video element has stream when it becomes visible
   useEffect(() => {
