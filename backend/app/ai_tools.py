@@ -10,6 +10,20 @@ from .supabase_client import supabase
 # Tool definitions for Anthropic API
 HAVEN_TOOLS = [
     {
+        "name": "list_all_patients",
+        "description": "Get a complete list of ALL patients in the system with their basic info. Use when asked 'show all patients', 'list patients', 'describe all my patients', etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_inactive": {
+                    "type": "boolean",
+                    "description": "Include inactive/discharged patients (default: false, only show active)"
+                }
+            },
+            "required": []
+        }
+    },
+    {
         "name": "search_patients",
         "description": "Search for patients by name or patient ID. Returns patient details including name, age, condition, and room assignment.",
         "input_schema": {
@@ -334,7 +348,10 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
     Execute a tool call and return results
     """
     try:
-        if tool_name == "search_patients":
+        if tool_name == "list_all_patients":
+            return await list_all_patients(tool_input.get("include_inactive", False))
+        
+        elif tool_name == "search_patients":
             return await search_patients(tool_input.get("query", ""))
         
         elif tool_name == "get_patient_details":
@@ -434,6 +451,50 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
 
 
 # Individual tool implementations
+async def list_all_patients(include_inactive: bool = False) -> Dict[str, Any]:
+    """Get ALL patients in the system"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        print(f"\n📋 Fetching ALL patients (include_inactive={include_inactive})")
+        
+        # Query patients
+        query = supabase.table("patients").select("*")
+        
+        if not include_inactive:
+            query = query.eq("enrollment_status", "active")
+        
+        response = query.execute()
+        patients = response.data or []
+        
+        print(f"   ✅ Found {len(patients)} patients")
+        
+        # Enrich with room assignments
+        for patient in patients:
+            room_assignment = supabase.table("patients_room").select("room_id, assigned_at").eq("patient_id", patient["patient_id"]).execute()
+            if room_assignment.data:
+                room_id = room_assignment.data[0]["room_id"]
+                room_data = supabase.table("rooms").select("room_name, room_type").eq("room_id", room_id).execute()
+                if room_data.data:
+                    patient["current_room"] = room_data.data[0]["room_name"]
+                    patient["room_type"] = room_data.data[0]["room_type"]
+                    patient["assigned_at"] = room_assignment.data[0]["assigned_at"]
+            else:
+                patient["current_room"] = None
+        
+        return {
+            "patients": patients,
+            "count": len(patients),
+            "active_count": sum(1 for p in patients if p.get('enrollment_status') == 'active'),
+            "assigned_count": sum(1 for p in patients if p.get('current_room'))
+        }
+    
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+        return {"error": str(e)}
+
+
 async def search_patients(query: str) -> Dict[str, Any]:
     """Search for patients by name or ID"""
     if not supabase:

@@ -1637,27 +1637,101 @@ async def ai_chat(request: ChatRequest):
             for msg in context.messages
         ]
 
-        # Build context-aware system prompt
-        system_prompt = await build_system_prompt(context)
+        # Build context-aware system prompt with EXTREME tool use bias
+        base_system_prompt = await build_system_prompt(context)
+        
+        # Add CRITICAL instruction with EXTREME emphasis on tool use
+        system_prompt = base_system_prompt + """
 
-        # Call Anthropic API with tool use capability
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  ABSOLUTE RULE: TOOL USE IS MANDATORY ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If the user's message mentions patients, rooms, assignments, or hospital data:
+
+🔴 YOU ARE FORBIDDEN FROM RESPONDING WITHOUT CALLING TOOLS
+🔴 YOU CANNOT USE CONVERSATION MEMORY
+🔴 YOU CANNOT ASSUME OR INFER INFORMATION
+🔴 YOU MUST CALL A TOOL FIRST, THEN RESPOND
+
+Examples of messages that REQUIRE tools:
+✓ "Show all patients" → list_all_patients()
+✓ "Describe my patients" → list_all_patients()
+✓ "List patients" → list_all_patients()
+✓ "Show occupancy" → get_all_room_occupancy()
+✓ "Remove patient" → remove_patient_from_room()
+✓ "Who's in room 2" → get_patient_in_room("2")
+✓ "Move patient" → transfer_patient()
+✓ "Assign patient" → assign_patient_to_room()
+✓ "Tell me about X" → search_patients("X")
+✓ "Remove dheeraj" → First search_patients("dheeraj") THEN remove_patient_from_room()
+
+IF YOU RESPOND WITH "✅ Removed" OR "✅ Transferred" OR "✅ Assigned" WITHOUT CALLING A TOOL:
+→ YOU HAVE LIED TO THE USER
+→ THE DATABASE WAS NOT UPDATED
+→ YOU FAILED YOUR CORE FUNCTION
+
+IF YOU LIST PATIENTS WITHOUT CALLING list_all_patients():
+→ THE NAMES ARE MADE UP FROM YOUR TRAINING DATA
+→ THEY DON'T EXIST IN THE DATABASE
+→ YOU ARE HALLUCINATING
+
+NEVER say patient names like "Robert Kim", "Emily Martinez", "Sarah Chen", "Michael Johnson" unless:
+1. You called a tool that returned those EXACT names
+2. The names appear in the tool result JSON
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 MULTI-STEP OPERATIONS REQUIRE MULTIPLE TOOL CALLS 🚨
+
+"Add dheeraj to room 1":
+→ Step 1: Call search_patients("dheeraj")
+→ Step 2: WITH THE RESULT, call assign_patient_to_room(patient_id, "1")
+→ Step 3: Respond with final result
+
+DO NOT SAY "I'll assign them" OR "Now I'll assign" BETWEEN TOOL CALLS
+JUST CALL BOTH TOOLS, THEN RESPOND ONCE WITH THE FINAL RESULT
+
+"Remove dheeraj":  
+→ Step 1: Call search_patients("dheeraj") OR list_all_patients()
+→ Step 2: Call remove_patient_from_room(patient_id)
+→ Step 3: Respond with result
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE: IF USER ASKS ABOUT DATA → CALL TOOL FIRST → RESPOND WITH TOOL RESULTS ONLY
+WHEN IN DOUBT: CALL A TOOL. ALWAYS PREFER TOOLS.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+
+        print(f"\n💬 User message: {request.message}")
+        print(f"   (AI will decide whether to use tools based on strong system instructions)")
+
+        # Call Anthropic API - let AI decide but with strong prompt bias toward tools
         message = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=2048,
             system=system_prompt,
-            tools=HAVEN_TOOLS,  # Enable tool calling
+            tools=HAVEN_TOOLS,
             messages=anthropic_messages
         )
 
-        # Handle tool use
+        # Handle tool use with MULTI-ROUND support 
         assistant_response = ""
-        tool_results = []
+        all_tool_results = []
+        max_rounds = 5  # Prevent infinite loops
+        round_num = 0
+        
+        current_message = message
 
-        # Check if Claude wants to use tools
-        if message.stop_reason == "tool_use":
-            # Execute tool calls
-            tool_call_log = []
-            for content_block in message.content:
+        # LOOP until Claude stops calling tools (multi-step operations)
+        while current_message.stop_reason == "tool_use" and round_num < max_rounds:
+            round_num += 1
+            print(f"\n{'='*60}")
+            print(f"🔄 TOOL ROUND {round_num}")
+            print(f"{'='*60}")
+            
+            tool_results = []
+            
+            # Execute all tools in this round
+            for content_block in current_message.content:
                 if content_block.type == "text":
                     assistant_response += content_block.text
                 elif content_block.type == "tool_use":
@@ -1666,68 +1740,58 @@ async def ai_chat(request: ChatRequest):
                     tool_result = await execute_tool(content_block.name, content_block.input)
                     print(f"   Result: {tool_result}")
                     
-                    tool_call_log.append(f"{content_block.name}: {json.dumps(tool_result)}")
-                    
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": content_block.id,
                         "content": json.dumps(tool_result)
                     })
+                    all_tool_results.append(tool_result)
             
-            print(f"\n📊 Tool execution summary:")
-            for log in tool_call_log:
-                print(f"   ✓ {log[:100]}...")
-            
-            # Build fresh system prompt emphasizing tool results are THE TRUTH
-            tool_results_system = f"""You are Haven AI, a clinical decision support assistant.
-
-**CRITICAL: CONVERSATION MEMORY IS DISABLED**
-DO NOT use ANY patient names, room statuses, or information from earlier messages.
-The conversation history is STALE and WRONG.
-
-**ONLY USE THE TOOL RESULTS YOU JUST RECEIVED**
-The tool results below are the ONLY accurate information:
-- If tool result says "Room 1: Patient X", that's who's there NOW
-- If tool result says "Room empty", it IS empty NOW
-- IGNORE all previous mentions of patients like "David Rodriguez", "Robert Kim", etc.
-- ONLY mention patients/rooms that appear in the LATEST tool results
-
-**FORBIDDEN:**
-- ❌ Mentioning ANY patient name not in current tool results
-- ❌ Saying "as we discussed" or "earlier you mentioned"
-- ❌ Using room status from previous queries
-- ❌ Referencing any information older than the current tool call
-
-Base your ENTIRE response on tool results ONLY. If no tool was called, you have NO information."""
-            
-            # Continue conversation with tool results
+            # Add this round to conversation
             anthropic_messages.append({
                 "role": "assistant",
-                "content": message.content
+                "content": current_message.content
             })
             anthropic_messages.append({
                 "role": "user",
                 "content": tool_results
             })
+            
+            # Build system prompt for next round
+            next_system = f"""You are Haven AI. 
 
-            # Get final response with tool results
-            final_message = anthropic_client.messages.create(
+**CRITICAL: You just received tool results. You can:**
+1. Call MORE tools if you need additional information
+2. Respond with final text if you have enough information
+
+**MULTI-STEP OPERATIONS:**
+If user said "Add dheeraj to room 1":
+- Round 1: You called search_patients("dheeraj") → got patient_id
+- Round 2: NOW call assign_patient_to_room(patient_id, "1") ← DO THIS NOW
+- Round 3: Respond with "✅ Assigned"
+
+DO NOT respond with text until the FULL operation is complete.
+Only use information from tool results. Never use conversation memory."""
+
+            # Call Claude again - it can call MORE tools or respond
+            current_message = anthropic_client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=2048,
-                system=tool_results_system,  # Use modified prompt
+                system=next_system,
                 tools=HAVEN_TOOLS,
                 messages=anthropic_messages
             )
-
-            # Extract final text response
-            for content_block in final_message.content:
+            
+            print(f"\n📊 Round {round_num} complete. Stop reason: {current_message.stop_reason}")
+        
+        # Extract final text response
+        if current_message.stop_reason != "tool_use":
+            for content_block in current_message.content:
                 if content_block.type == "text":
                     assistant_response += content_block.text
-        else:
-            # No tool use, just get text response
-            for content_block in message.content:
-                if content_block.type == "text":
-                    assistant_response = content_block.text
+        
+        print(f"\n✅ Tool execution complete after {round_num} rounds")
+        print(f"   Total tools called: {len(all_tool_results)}")
 
         # Add assistant response to context
         context.messages.append({
@@ -1738,28 +1802,26 @@ Base your ENTIRE response on tool results ONLY. If no tool was called, you have 
         # Save updated context
         await write_context(session_id, context)
         
-        # Check if any write operations were performed
+        # Check if any write operations were performed (check ALL rounds)
         invalidate_cache = False
         cache_keys = set()
         
-        print(f"\n📊 Checking {len(tool_results)} tool results for cache invalidation...")
+        print(f"\n📊 Checking {len(all_tool_results)} total tool results for cache invalidation...")
         
-        for tool_result in tool_results:
-            result_data = json.loads(tool_result.get("content", "{}"))
-            print(f"   Tool result: {result_data.get('success', False)} - {list(result_data.keys())[:3]}")
-            
-            if result_data.get("success"):
+        for tool_result in all_tool_results:
+            if isinstance(tool_result, dict) and tool_result.get("success"):
                 invalidate_cache = True
                 cache_keys.update(["rooms", "patients", "patients_room", "assignments"])
-                print(f"   ✅ Success detected - will invalidate cache: rooms, patients, patients_room")
+                print(f"   ✅ Success detected - will invalidate cache")
         
-        cache_keys_list = list(cache_keys) if cache_keys else ["rooms", "patients"]
+        cache_keys_list = list(cache_keys) if cache_keys else []
         
         print(f"\n{'='*60}")
         print(f"📤 Returning to frontend:")
         print(f"   invalidate_cache: {invalidate_cache}")
         print(f"   cache_keys: {cache_keys_list}")
-        print(f"   tool_calls: {len(tool_results)}")
+        print(f"   tool_calls: {len(all_tool_results)}")
+        print(f"   rounds: {round_num}")
         print(f"{'='*60}\n")
         
         return {
@@ -1767,7 +1829,8 @@ Base your ENTIRE response on tool results ONLY. If no tool was called, you have 
             "model": "claude-haiku-4.5",
             "session_id": session_id,
             "session_title": session_title,
-            "tool_calls": len(tool_results) if tool_results else 0,
+            "tool_calls": len(all_tool_results),
+            "tool_rounds": round_num,
             "invalidate_cache": invalidate_cache,
             "cache_keys": cache_keys_list
         }
@@ -1904,6 +1967,505 @@ Active Alerts: {summary_data.get('active_alerts_count', 0)}
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
+
+
+# ========================================
+# PATIENT INTAKE ENDPOINTS (LiveKit-based)
+# ========================================
+
+@app.post("/api/intake/start")
+async def start_intake(request: dict):
+    """
+    Initialize a patient intake session and return LiveKit access token
+    """
+    try:
+        from livekit.api import AccessToken, VideoGrants
+        import uuid
+
+        patient_id = request.get("patient_id")
+        if not patient_id:
+            return {"error": "patient_id is required"}, 400
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())[:8]
+        room_name = f"intake-{patient_id}-{session_id}"
+
+        # Create LiveKit access token for patient
+        token = AccessToken(
+            os.getenv("LIVEKIT_API_KEY"),
+            os.getenv("LIVEKIT_API_SECRET")
+        )
+        token = token.with_identity(f"patient-{patient_id}").with_name(patient_id).with_grants(VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+        ))
+
+        print(f"🎫 Created intake token for patient {patient_id}, room: {room_name}")
+
+        return {
+            "token": token.to_jwt(),
+            "url": os.getenv("LIVEKIT_URL"),
+            "room_name": room_name,
+            "patient_id": patient_id,
+            "session_id": session_id
+        }
+
+    except Exception as e:
+        print(f"❌ Error starting intake: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/pending")
+async def get_pending_intakes():
+    """
+    Get all intake reports awaiting review, sorted by urgency and time
+    """
+    try:
+        if not supabase:
+            return []
+
+        result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("status", "pending_review") \
+            .order("created_at", desc=True) \
+            .execute()
+
+        # Sort by urgency (high first) then by time
+        intakes = result.data if result.data else []
+        urgency_order = {"high": 0, "medium": 1, "low": 2}
+        intakes.sort(key=lambda x: (
+            urgency_order.get(x.get("urgency_level", "low"), 2),
+            x.get("created_at", "")
+        ))
+
+        logger.info(f"📋 Retrieved {len(intakes)} pending intakes")
+        return intakes
+
+    except Exception as e:
+        logger.error(f"Error fetching pending intakes: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/{intake_id}")
+async def get_intake_report(intake_id: str):
+    """
+    Get full intake report by ID
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("id", intake_id) \
+            .single() \
+            .execute()
+
+        if not result.data:
+            return {"error": "Intake report not found"}, 404
+
+        logger.info(f"📄 Retrieved intake report: {intake_id}")
+        return result.data
+
+    except Exception as e:
+        logger.error(f"Error fetching intake report: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/intake/{intake_id}/review")
+async def mark_intake_reviewed(intake_id: str, request: dict):
+    """
+    Mark intake as reviewed by provider
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        reviewer_id = request.get("reviewer_id", "unknown")
+
+        supabase.table("intake_reports") \
+            .update({
+                "status": "reviewed",
+                "reviewed_by": reviewer_id,
+                "reviewed_at": datetime.now().isoformat()
+            }) \
+            .eq("id", intake_id) \
+            .execute()
+
+        logger.info(f"✅ Intake {intake_id} marked as reviewed by {reviewer_id}")
+        return {"success": True}
+
+    except Exception as e:
+        logger.error(f"Error marking intake as reviewed: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/intake/{intake_id}/assign-room")
+async def assign_intake_to_room(intake_id: str, request: dict):
+    """
+    Assign patient from intake to an examination room
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        room_id = request.get("room_id")
+        if not room_id:
+            return {"error": "room_id is required"}, 400
+
+        # Get intake report
+        intake_result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("id", intake_id) \
+            .single() \
+            .execute()
+
+        if not intake_result.data:
+            return {"error": "Intake report not found"}, 404
+
+        patient_id = intake_result.data.get("patient_id")
+
+        # Update intake report
+        supabase.table("intake_reports") \
+            .update({
+                "status": "assigned",
+                "assigned_room": room_id
+            }) \
+            .eq("id", intake_id) \
+            .execute()
+
+        # Assign patient to room (use existing room assignment logic)
+        try:
+            supabase.table("room_assignments") \
+                .insert({
+                    "room_id": room_id,
+                    "patient_id": patient_id,
+                    "assigned_at": datetime.now().isoformat()
+                }) \
+                .execute()
+        except Exception as room_error:
+            logger.warning(f"Room assignment may already exist: {room_error}")
+
+        logger.info(f"🏥 Patient {patient_id} assigned to room {room_id} from intake {intake_id}")
+
+        # Broadcast to dashboard
+        await manager.broadcast_frame({
+            "type": "patient_assigned_from_intake",
+            "patient_id": patient_id,
+            "room_id": room_id,
+            "intake_id": intake_id
+        })
+
+        return {"success": True, "patient_id": patient_id, "room_id": room_id}
+
+    except Exception as e:
+        logger.error(f"Error assigning intake to room: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/stats")
+async def get_intake_stats():
+    """
+    Get intake system statistics
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        # Count by status
+        all_intakes = supabase.table("intake_reports").select("status, urgency_level").execute()
+
+        stats = {
+            "total": len(all_intakes.data) if all_intakes.data else 0,
+            "pending": 0,
+            "reviewed": 0,
+            "assigned": 0,
+            "high_urgency": 0,
+            "medium_urgency": 0,
+            "low_urgency": 0
+        }
+
+        if all_intakes.data:
+            for intake in all_intakes.data:
+                status = intake.get("status", "")
+                urgency = intake.get("urgency_level", "low")
+
+                if status == "pending_review":
+                    stats["pending"] += 1
+                elif status == "reviewed":
+                    stats["reviewed"] += 1
+                elif status == "assigned":
+                    stats["assigned"] += 1
+
+                if urgency == "high":
+                    stats["high_urgency"] += 1
+                elif urgency == "medium":
+                    stats["medium_urgency"] += 1
+                else:
+                    stats["low_urgency"] += 1
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error getting intake stats: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+# ========================================
+# HAVEN VOICE AGENT ENDPOINTS (LiveKit Voice Agent)
+# ========================================
+
+@app.post("/api/haven/start")
+async def start_haven_session(request: dict):
+    """
+    Initialize a Haven voice agent session when "Hey Haven" is detected
+    Returns LiveKit access token for voice conversation
+    """
+    try:
+        from livekit.api import AccessToken, VideoGrants
+        import uuid
+
+        patient_id = request.get("patient_id")
+        if not patient_id:
+            return {"error": "patient_id is required"}, 400
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())[:8]
+        room_name = f"haven-{patient_id}-{session_id}"
+
+        # Create LiveKit access token for patient
+        token = AccessToken(
+            get_secret("LIVEKIT_API_KEY"),
+            get_secret("LIVEKIT_API_SECRET")
+        )
+        token = token.with_identity(f"patient-{patient_id}").with_name(patient_id).with_grants(VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+        ))
+
+        print(f"🛡️ Created Haven agent token for patient {patient_id}, room: {room_name}")
+
+        return {
+            "token": token.to_jwt(),
+            "url": get_secret("LIVEKIT_URL"),
+            "room_name": room_name,
+            "patient_id": patient_id,
+            "session_id": session_id
+        }
+
+    except Exception as e:
+        print(f"❌ Error starting Haven session: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/haven/conversation")
+async def save_haven_conversation(request: dict):
+    """
+    Save Haven conversation summary and create alert
+    Called when Haven agent completes conversation
+    """
+    try:
+        patient_id = request.get("patient_id")
+        session_id = request.get("session_id")
+        conversation_summary = request.get("conversation_summary")
+
+        if not all([patient_id, conversation_summary]):
+            return {"error": "patient_id and conversation_summary are required"}, 400
+
+        # Get patient's room assignment
+        room_id = None
+        if supabase:
+            try:
+                room_result = supabase.table("patients_room") \
+                    .select("room_id") \
+                    .eq("patient_id", patient_id) \
+                    .single() \
+                    .execute()
+
+                if room_result.data:
+                    room_id = room_result.data.get("room_id")
+            except Exception as e:
+                print(f"⚠️ Could not get room for patient {patient_id}: {e}")
+
+        # Use Claude to analyze conversation and determine severity
+        alert_data = await _analyze_haven_conversation(
+            patient_id=patient_id,
+            conversation_summary=conversation_summary,
+            room_id=room_id
+        )
+
+        # Create alert in database
+        if supabase:
+            alert_result = supabase.table("alerts").insert({
+                "alert_type": "patient_concern",
+                "severity": alert_data["severity"],
+                "title": alert_data["title"],
+                "description": alert_data["description"],
+                "patient_id": patient_id,
+                "room_id": room_id,
+                "triggered_by": "haven_agent",
+                "status": "active",
+                "metadata": json.dumps({
+                    "session_id": session_id,
+                    "transcript": conversation_summary.get("full_transcript_text", ""),
+                    "extracted_info": conversation_summary.get("extracted_info", {}),
+                    "ai_analysis": alert_data.get("reasoning", "")
+                })
+            }).execute()
+
+            alert_id = alert_result.data[0]["id"] if alert_result.data else None
+            print(f"✅ Created alert {alert_id} from Haven conversation for patient {patient_id}")
+
+            # Broadcast alert to dashboard via WebSocket
+            await manager.broadcast_frame({
+                "type": "haven_alert",
+                "patient_id": patient_id,
+                "room_id": room_id,
+                "alert_id": alert_id,
+                "severity": alert_data["severity"],
+                "title": alert_data["title"],
+                "description": alert_data["description"],
+                "timestamp": datetime.now().isoformat()
+            })
+
+            return {
+                "success": True,
+                "alert_id": alert_id,
+                "severity": alert_data["severity"]
+            }
+        else:
+            print("⚠️ Supabase not available, alert not saved")
+            return {"error": "Database not available"}, 503
+
+    except Exception as e:
+        print(f"❌ Error saving Haven conversation: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}, 500
+
+
+async def _analyze_haven_conversation(patient_id: str, conversation_summary: dict, room_id: str = None) -> dict:
+    """
+    Use Claude to analyze Haven conversation and determine alert severity
+    """
+    if not anthropic_client:
+        # Fallback to rule-based analysis
+        extracted_info = conversation_summary.get("extracted_info", {})
+        pain_level = extracted_info.get("pain_level")
+
+        if pain_level and pain_level >= 8:
+            severity = "high"
+        elif pain_level and pain_level >= 5:
+            severity = "medium"
+        else:
+            severity = "low"
+
+        return {
+            "severity": severity,
+            "title": f"Patient {patient_id} reported concern",
+            "description": conversation_summary.get("full_transcript_text", "No details available"),
+            "reasoning": "Rule-based analysis (Claude not available)"
+        }
+
+    try:
+        # Build Claude prompt
+        extracted_info = conversation_summary.get("extracted_info", {})
+        transcript = conversation_summary.get("full_transcript_text", "")
+
+        prompt = f"""You are a clinical triage AI. Analyze this patient conversation and determine the urgency level.
+
+**Patient ID:** {patient_id}
+**Room:** {room_id or "Unknown"}
+
+**Conversation Transcript:**
+{transcript}
+
+**Extracted Information:**
+- Symptom: {extracted_info.get('symptom_description', 'Not specified')}
+- Location: {extracted_info.get('body_location', 'Not specified')}
+- Pain Level: {extracted_info.get('pain_level', 'Not rated')} / 10
+- Duration: {extracted_info.get('duration', 'Unknown')}
+
+**Your Task:**
+Determine the urgency level and create an alert summary.
+
+**Response Format (JSON):**
+{{
+  "severity": "critical" | "high" | "medium" | "low",
+  "title": "Brief alert title (max 80 chars)",
+  "description": "Detailed description of concern (2-3 sentences)",
+  "reasoning": "Clinical reasoning for severity level"
+}}
+
+**Severity Guidelines:**
+- **critical**: Life-threatening (chest pain, severe bleeding, difficulty breathing, altered consciousness)
+- **high**: Urgent but not immediately life-threatening (severe pain 8-10, significant symptoms)
+- **medium**: Moderate concern (moderate pain 5-7, uncomfortable symptoms)
+- **low**: Minor concern (mild pain 1-4, general questions)
+
+Provide your analysis:"""
+
+        message = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{
+                "role": "user",
+                "content": prompt
+            }]
+        )
+
+        # Parse Claude's response
+        response_text = message.content[0].text
+
+        # Extract JSON
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            result = json.loads(json_match.group())
+            return result
+        else:
+            raise ValueError("Could not parse Claude response")
+
+    except Exception as e:
+        print(f"⚠️ Claude analysis failed: {e}, using fallback")
+        # Fallback
+        extracted_info = conversation_summary.get("extracted_info", {})
+        pain_level = extracted_info.get("pain_level")
+
+        if pain_level and pain_level >= 8:
+            severity = "high"
+        elif pain_level and pain_level >= 5:
+            severity = "medium"
+        else:
+            severity = "low"
+
+        return {
+            "severity": severity,
+            "title": f"Patient {patient_id} reported concern",
+            "description": conversation_summary.get("full_transcript_text", "No details available")[:200],
+            "reasoning": "Fallback analysis"
+        }
+
+
+@app.get("/api/haven/active")
+async def get_active_haven_sessions():
+    """
+    Get list of active Haven voice sessions
+    """
+    # This would integrate with LiveKit to get active rooms
+    # For now, return placeholder
+    return {
+        "active_sessions": [],
+        "count": 0
+    }
 
 
 if __name__ == "__main__":

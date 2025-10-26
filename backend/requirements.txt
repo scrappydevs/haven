@@ -12,6 +12,14 @@ pillow>=11.0.0
 # AI/ML
 anthropic>=0.44.0
 
+# LiveKit for voice AI intake
+livekit>=0.17.0
+livekit-api>=0.6.0
+livekit-agents[openai,silero]>=1.2.0
+livekit-plugins-openai>=0.1.0
+livekit-plugins-noise-cancellation>=0.2.0
+python-dotenv>=1.0.0
+
 # Data processing
 pandas>=2.2.0
 
