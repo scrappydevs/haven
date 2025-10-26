@@ -250,34 +250,29 @@ class ConnectionManager:
                 frame_num = frame_task["frame_num"]
                 frame_count += 1
 
-                # Check analysis mode
-                if analysis_mode == "normal":
-                    # NORMAL MODE: No AI/CV processing
-                    # Skip overlay broadcasting - keep it simple
-                    continue
-
-                # ENHANCED MODE: Full AI/CV analysis
                 # Get monitoring config for this patient
                 monitoring_config = monitoring_manager.get_config(patient_id)
 
-                # FAST: Process overlay every frame (pose only, ~50ms)
+                # ALWAYS run pose estimation for overlays (fast, ~15ms)
+                # This ensures pose skeleton ALWAYS shows on dashboard
                 start_time = time.time()
                 fast_result = process_frame_fast(frame_data, patient_id)
                 fast_time = time.time() - start_time
 
-                # SLOW: Process metrics at configured frequency (respects monitoring level)
+                # METRICS: Only in enhanced mode, at configured frequency
                 slow_result = None
-                frames_per_interval = monitoring_config.frequency_seconds * 30  # Assume 30 FPS
-                if frame_num - last_slow_frame >= frames_per_interval:
-                    slow_start = time.time()
-                    slow_result = process_frame_metrics(
-                        frame_data, patient_id, monitoring_config)
-                    slow_time = time.time() - slow_start
-                    last_slow_frame = frame_num
-                    print(
-                        f"📊 Patient {patient_id} - Frame #{frame_num} [{monitoring_config.level}] CRS: {slow_result['metrics'].get('crs_score', 0)}, HR: {slow_result['metrics'].get('heart_rate', 0)} (took {slow_time*1000:.0f}ms)")
+                if analysis_mode == "enhanced":
+                    frames_per_interval = monitoring_config.frequency_seconds * 30  # Assume 30 FPS
+                    if frame_num - last_slow_frame >= frames_per_interval:
+                        slow_start = time.time()
+                        slow_result = process_frame_metrics(
+                            frame_data, patient_id, monitoring_config)
+                        slow_time = time.time() - slow_start
+                        last_slow_frame = frame_num
+                        print(
+                            f"📊 Patient {patient_id} - Frame #{frame_num} [{monitoring_config.level}] CRS: {slow_result['metrics'].get('crs_score', 0)}, HR: {slow_result['metrics'].get('heart_rate', 0)} (took {slow_time*1000:.0f}ms)")
 
-                # Merge fast overlays with slow metrics
+                # Build overlay data (ALWAYS has pose landmarks)
                 overlay_data = {
                     "landmarks": fast_result["landmarks"],
                     "connections": fast_result["connections"],
@@ -285,22 +280,21 @@ class ConnectionManager:
                     "metrics": slow_result["metrics"] if slow_result else None
                 }
 
-                # Store overlay data for viewers to pick up
-                # Don't broadcast from worker thread - keep it simple
-                if hasattr(self, 'latest_overlay'):
-                    self.latest_overlay[patient_id] = {
+                # SIMPLIFIED: Broadcast overlay immediately (no storage, no polling)
+                # This ensures pose overlays appear instantly and reliably
+                try:
+                    # Create new event loop for this thread
+                    thread_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(thread_loop)
+                    thread_loop.run_until_complete(self.broadcast_frame({
                         "type": "overlay_data",
                         "patient_id": patient_id,
                         "frame_num": frame_num,
                         "data": overlay_data
-                    }
-                else:
-                    self.latest_overlay = {patient_id: {
-                        "type": "overlay_data",
-                        "patient_id": patient_id,
-                        "frame_num": frame_num,
-                        "data": overlay_data
-                    }}
+                    }))
+                    thread_loop.close()
+                except Exception as e:
+                    print(f"⚠️ Overlay broadcast error: {e}")
 
                 # Agent analysis: if we just calculated metrics, analyze them
                 if slow_result and slow_result.get("metrics"):
@@ -504,7 +498,7 @@ class ConnectionManager:
         print(f"🔧 CV Worker stopped for patient {patient_id}")
 
     async def broadcast_frame(self, frame_data: Dict):
-        """Send processed frame to all viewers in parallel"""
+        """Send processed frame to all viewers in parallel - robust and fast"""
         if not self.viewers:
             return
 
@@ -512,26 +506,25 @@ class ConnectionManager:
 
         async def send_to_viewer(viewer):
             try:
-                # Check if viewer is still connected before sending
+                # Check connection state before sending
                 if viewer.client_state.value == 1:  # WebSocketState.CONNECTED
                     await viewer.send_json(frame_data)
-                    return None
+                    return None  # Success
                 else:
-                    # Connection not in connected state, mark for removal
-                    return viewer
-            except Exception as e:
-                # Connection died, mark for removal
-                print(f"❌ Failed to send to viewer: {e}")
-                return viewer
+                    return viewer  # Mark for removal
+            except Exception:
+                return viewer  # Mark for removal on any error
 
-        # Send to all viewers in parallel
+        # Send to all viewers concurrently
         results = await asyncio.gather(*[send_to_viewer(v) for v in self.viewers], return_exceptions=True)
 
-        # Clean up dead connections
-        dead = [
-            r for r in results if r is not None and not isinstance(r, Exception)]
-        for viewer in dead:
-              self.disconnect(viewer)
+        # Remove dead connections (filter out None and exceptions)
+        dead_viewers = [r for r in results if r is not None and not isinstance(r, Exception)]
+        for viewer in dead_viewers:
+            try:
+                self.viewers.remove(viewer)
+            except ValueError:
+                pass  # Already removed
   
 
 manager = ConnectionManager()
