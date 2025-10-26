@@ -381,6 +381,32 @@ export default function DashboardPage() {
         setAgentAlerts(prev => prev.filter(a => a.id !== message.id));
       }, 10000);
     }
+
+    if (message.type === 'terminal_log') {
+      // Add to patient log (for DetailPanel TerminalLog component)
+      addPatientEvent(boxIndex, {
+        timestamp: message.timestamp || new Date().toISOString(),
+        type: 'agent',
+        severity: message.message.includes('✅') ? 'normal' : message.message.includes('⚠️') ? 'warning' : message.message.includes('🚨') ? 'critical' : 'info',
+        message: message.message,
+        details: message.details,
+        action: message.action
+      });
+
+      // Add to global feed
+      const patient = boxAssignments[boxIndex];
+      if (patient) {
+        addGlobalEvent({
+          timestamp: message.timestamp || new Date().toISOString(),
+          patientId: boxIndex,
+          patientName: patient.name,
+          type: 'agent',
+          severity: message.message.includes('✅') ? 'info' : message.message.includes('⚠️') ? 'moderate' : message.message.includes('🚨') ? 'high' : 'info',
+          message: message.message,
+          details: message.details
+        });
+      }
+    }
   }, [addPatientEvent, addGlobalEvent, boxAssignments]);
 
   // Navigation between modes
@@ -437,141 +463,144 @@ export default function DashboardPage() {
       }
       lastLogTime.current = now;
 
+      // DISABLED: Old CV metric logging (replaced by Fetch.ai Health Agent)
+      // The agent now sends structured terminal_log messages via WebSocket
+      
       // Log every 200ms (5 FPS) instead of every frame (30 FPS)
-      const logEntries: any[] = [];
+      // const logEntries: any[] = [];
 
-      // Critical alerts first
-      if (metrics.alert && !prevMetrics.alert) {
-        const triggers = metrics.alert_triggers || [];
-        const triggerText = triggers.length > 0 ? triggers.join(', ') : 'Critical threshold exceeded';
-        logEntries.push({
-          timestamp: new Date().toISOString(),
-          type: 'alert',
-          severity: 'high',
-          message: '🚨 Alert Triggered',
-          details: triggerText
-        });
-      }
+      // // Critical alerts first
+      // if (metrics.alert && !prevMetrics.alert) {
+      //   const triggers = metrics.alert_triggers || [];
+      //   const triggerText = triggers.length > 0 ? triggers.join(', ') : 'Critical threshold exceeded';
+      //   logEntries.push({
+      //     timestamp: new Date().toISOString(),
+      //     type: 'alert',
+      //     severity: 'high',
+      //     message: '🚨 Alert Triggered',
+      //     details: triggerText
+      //   });
+      // }
 
-      // CRS monitoring logs
-      if (metrics.crs_score !== undefined) {
-        if (metrics.crs_score > 0.7 && (!prevMetrics.crs_score || prevMetrics.crs_score <= 0.7)) {
-          logEntries.push({
-            timestamp: new Date().toISOString(),
-            type: 'threshold',
-            severity: 'high',
-            message: 'CRS Risk Elevated',
-            details: `Score: ${(metrics.crs_score * 100).toFixed(1)}% [HIGH]`
-          });
-        }
+      // // CRS monitoring logs
+      // if (metrics.crs_score !== undefined) {
+      //   if (metrics.crs_score > 0.7 && (!prevMetrics.crs_score || prevMetrics.crs_score <= 0.7)) {
+      //     logEntries.push({
+      //       timestamp: new Date().toISOString(),
+      //       type: 'threshold',
+      //       severity: 'high',
+      //       message: 'CRS Risk Elevated',
+      //       details: `Score: ${(metrics.crs_score * 100).toFixed(1)}% [HIGH]`
+      //     });
+      //   }
 
-        // Log periodic CRS readings (reduced frequency due to throttling)
-        if (Math.random() < 0.3 && metrics.crs_score > 0.3) {
-          logEntries.push({
-            timestamp: new Date().toISOString(),
-            type: 'monitoring',
-            severity: 'info',
-            message: 'CRS Analysis',
-            details: `Facial flushing detected: ${(metrics.crs_score * 100).toFixed(1)}%`
-          });
-        }
-      }
+      //   // Log periodic CRS readings (reduced frequency due to throttling)
+      //   if (Math.random() < 0.3 && metrics.crs_score > 0.3) {
+      //     logEntries.push({
+      //       timestamp: new Date().toISOString(),
+      //       type: 'monitoring',
+      //       severity: 'info',
+      //       message: 'CRS Analysis',
+      //       details: `Facial flushing detected: ${(metrics.crs_score * 100).toFixed(1)}%`
+      //     });
+      //   }
+      // }
 
-      // Heart rate monitoring (only log significant changes)
-      if (metrics.heart_rate && prevMetrics.heart_rate) {
-        const hrDiff = metrics.heart_rate - prevMetrics.heart_rate;
-        if (Math.abs(hrDiff) > 5) {  // Increased threshold from 3 to 5
-          const trend = hrDiff > 0 ? '↑' : hrDiff < 0 ? '↓' : '→';
-          logEntries.push({
-            timestamp: new Date().toISOString(),
-            type: 'vital',
-            severity: 'info',
-            message: 'Heart Rate Update',
-            details: `${metrics.heart_rate} bpm ${trend} (${hrDiff > 0 ? '+' : ''}${hrDiff})`
-          });
-        }
-      }
+      // // Heart rate monitoring (only log significant changes)
+      // if (metrics.heart_rate && prevMetrics.heart_rate) {
+      //   const hrDiff = metrics.heart_rate - prevMetrics.heart_rate;
+      //   if (Math.abs(hrDiff) > 5) {  // Increased threshold from 3 to 5
+      //     const trend = hrDiff > 0 ? '↑' : hrDiff < 0 ? '↓' : '→';
+      //     logEntries.push({
+      //       timestamp: new Date().toISOString(),
+      //       type: 'vital',
+      //       severity: 'info',
+      //       message: 'Heart Rate Update',
+      //       details: `${metrics.heart_rate} bpm ${trend} (${hrDiff > 0 ? '+' : ''}${hrDiff})`
+      //     });
+      //   }
+      // }
 
-      // Respiratory rate (reduced frequency due to throttling)
-      if (metrics.respiratory_rate && Math.random() < 0.15) {
-        logEntries.push({
-          timestamp: new Date().toISOString(),
-          type: 'vital',
-          severity: 'info',
-          message: 'Respiratory Analysis',
-          details: `Rate: ${metrics.respiratory_rate} breaths/min`
-        });
-      }
+      // // Respiratory rate (reduced frequency due to throttling)
+      // if (metrics.respiratory_rate && Math.random() < 0.15) {
+      //   logEntries.push({
+      //     timestamp: new Date().toISOString(),
+      //     type: 'vital',
+      //     severity: 'info',
+      //     message: 'Respiratory Analysis',
+      //     details: `Rate: ${metrics.respiratory_rate} breaths/min`
+      //   });
+      // }
 
-      // Face touching behavior
-      if (metrics.face_touching_frequency > 0) {
-        if (metrics.face_touching_frequency > 5 && (!prevMetrics.face_touching_frequency || prevMetrics.face_touching_frequency <= 5)) {
-          logEntries.push({
-            timestamp: new Date().toISOString(),
-            type: 'behavior',
-            severity: 'moderate',
-            message: 'Behavior Alert',
-            details: `Frequent face touching: ${metrics.face_touching_frequency}/min`
-          });
-        } else if (Math.random() < 0.25 && metrics.face_touching_frequency > 2) {
-          logEntries.push({
-            timestamp: new Date().toISOString(),
-            type: 'behavior',
-            severity: 'info',
-            message: 'Face Touching Detected',
-            details: `Count: ${metrics.face_touching_frequency} touches/min`
-          });
-        }
-      }
+      // // Face touching behavior
+      // if (metrics.face_touching_frequency > 0) {
+      //   if (metrics.face_touching_frequency > 5 && (!prevMetrics.face_touching_frequency || prevMetrics.face_touching_frequency <= 5)) {
+      //     logEntries.push({
+      //       timestamp: new Date().toISOString(),
+      //       type: 'behavior',
+      //       severity: 'moderate',
+      //       message: 'Behavior Alert',
+      //       details: `Frequent face touching: ${metrics.face_touching_frequency}/min`
+      //     });
+      //   } else if (Math.random() < 0.25 && metrics.face_touching_frequency > 2) {
+      //     logEntries.push({
+      //       timestamp: new Date().toISOString(),
+      //       type: 'behavior',
+      //       severity: 'info',
+      //       message: 'Face Touching Detected',
+      //       details: `Count: ${metrics.face_touching_frequency} touches/min`
+      //     });
+      //   }
+      // }
 
-      // Restlessness monitoring (reduced frequency due to throttling)
-      if (metrics.restlessness_index > 0.5 && Math.random() < 0.2) {
-        logEntries.push({
-          timestamp: new Date().toISOString(),
-          type: 'behavior',
-          severity: metrics.restlessness_index > 0.7 ? 'moderate' : 'info',
-          message: 'Movement Analysis',
-          details: `Restlessness: ${(metrics.restlessness_index * 100).toFixed(0)}%`
-        });
-      }
+      // // Restlessness monitoring (reduced frequency due to throttling)
+      // if (metrics.restlessness_index > 0.5 && Math.random() < 0.2) {
+      //   logEntries.push({
+      //     timestamp: new Date().toISOString(),
+      //     type: 'behavior',
+      //     severity: metrics.restlessness_index > 0.7 ? 'moderate' : 'info',
+      //     message: 'Movement Analysis',
+      //     details: `Restlessness: ${(metrics.restlessness_index * 100).toFixed(0)}%`
+      //   });
+      // }
 
-      // Tremor detection
-      if (metrics.tremor_detected && !prevMetrics.tremor_detected) {
-        logEntries.push({
-          timestamp: new Date().toISOString(),
-          type: 'seizure',
-          severity: 'high',
-          message: 'Tremor Detected',
-          details: `Magnitude: ${metrics.tremor_magnitude?.toFixed(2)} [SEIZURE RISK]`
-        });
-      }
+      // // Tremor detection
+      // if (metrics.tremor_detected && !prevMetrics.tremor_detected) {
+      //   logEntries.push({
+      //     timestamp: new Date().toISOString(),
+      //     type: 'seizure',
+      //     severity: 'high',
+      //     message: 'Tremor Detected',
+      //     details: `Magnitude: ${metrics.tremor_magnitude?.toFixed(2)} [SEIZURE RISK]`
+      //   });
+      // }
 
-      // Movement patterns (reduced frequency due to throttling)
-      if (metrics.movement_vigor > 1.0 && Math.random() < 0.15) {
-        logEntries.push({
-          timestamp: new Date().toISOString(),
-          type: 'monitoring',
-          severity: 'info',
-          message: 'Movement Tracking',
-          details: `Vigor index: ${metrics.movement_vigor?.toFixed(2)}`
-        });
-      }
+      // // Movement patterns (reduced frequency due to throttling)
+      // if (metrics.movement_vigor > 1.0 && Math.random() < 0.15) {
+      //   logEntries.push({
+      //     timestamp: new Date().toISOString(),
+      //     type: 'monitoring',
+      //     severity: 'info',
+      //     message: 'Movement Tracking',
+      //     details: `Vigor index: ${metrics.movement_vigor?.toFixed(2)}`
+      //   });
+      // }
 
-      // Add all logs to patient-specific and global feeds
-      logEntries.forEach(entry => {
-        // Add to patient log
-        addPatientEvent(patientId, entry);
+      // // Add all logs to patient-specific and global feeds
+      // logEntries.forEach(entry => {
+      //   // Add to patient log
+      //   addPatientEvent(patientId, entry);
 
-        // Add to global feed with patient info
-        const patient = boxAssignments[patientId];
-        if (patient) {
-          addGlobalEvent({
-            ...entry,
-            patientId,
-            patientName: patient.name
-          });
-        }
-      });
+      //   // Add to global feed with patient info
+      //   const patient = boxAssignments[patientId];
+      //   if (patient) {
+      //     addGlobalEvent({
+      //       ...entry,
+      //       patientId,
+      //       patientName: patient.name
+      //     });
+      //   }
+      // });
     }
   }, [selectedPatientId, selectedCvData, addPatientEvent, addGlobalEvent, boxAssignments]);
 
@@ -635,11 +664,11 @@ export default function DashboardPage() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Left: Logo */}
-            <a href="/" className="cursor-pointer">
+            <Link href="/" className="cursor-pointer">
               <h1 className="text-lg font-light text-neutral-950 uppercase tracking-wider hover:text-primary-700 transition-colors">
                 Haven
               </h1>
-            </a>
+            </Link>
 
             {/* Center: Navigation */}
             <nav className="flex items-center gap-1">
