@@ -26,6 +26,7 @@ class HeartRateMonitor:
         self.last_heart_rate = 75
         self.freq_band = (0.75, 3.0)  # 45-180 bpm
         self._rng = np.random.default_rng(seed=2024)
+        self._stability_window = 30.0  # bpm range that we consider plausible drift
         self._last_process_ts = 0.0
 
     def process_frame(self, frame: np.ndarray, forehead_roi: Optional[np.ndarray]) -> int:
@@ -78,7 +79,7 @@ class HeartRateMonitor:
             if sources is None:
                 return self.last_heart_rate
 
-            heart_rate = self._estimate_bpm(sources, sample_rate)
+            heart_rate = self._estimate_bpm(sources, sample_rate, self.last_heart_rate)
             if heart_rate is None:
                 return self.last_heart_rate
 
@@ -171,13 +172,18 @@ class HeartRateMonitor:
 
         return whitened @ weights.T
 
-    def _estimate_bpm(self, components: np.ndarray, sample_rate: float) -> Optional[int]:
+    def _estimate_bpm(
+        self,
+        components: np.ndarray,
+        sample_rate: float,
+        previous_bpm: Optional[float],
+    ) -> Optional[int]:
         """Pick component with strongest frequency in the physiological band."""
         if components.shape[0] < 10:
             return None
 
         best_freq = None
-        best_power = 0.0
+        best_score = 0.0
         low, high = self.freq_band
         window = np.hamming(components.shape[0])
 
@@ -191,22 +197,34 @@ class HeartRateMonitor:
             freqs = np.fft.rfftfreq(windowed.size, d=1.0 / sample_rate)
 
             mask = (freqs >= low) & (freqs <= high)
-            band_power = np.abs(spectrum[mask])
+            magnitudes = np.abs(spectrum[mask])
             band_freqs = freqs[mask]
 
-            if band_power.size == 0:
+            if magnitudes.size == 0:
                 continue
 
+            band_power = magnitudes ** 2
             peak_idx = int(np.argmax(band_power))
-            peak_power = band_power[peak_idx]
+            peak_power = float(band_power[peak_idx])
             peak_freq = band_freqs[peak_idx]
 
-            median_noise = np.median(band_power)
+            if peak_power <= 0:
+                continue
+
+            median_noise = float(np.median(band_power))
             if median_noise > 0 and peak_power / median_noise < 3.0:
                 continue
 
-            if peak_power > best_power:
-                best_power = peak_power
+            candidate_bpm = peak_freq * 60.0
+            score = peak_power
+
+            if previous_bpm is not None and previous_bpm > 0:
+                stability_scale = max(10.0, self._stability_window)
+                drift = abs(candidate_bpm - previous_bpm) / stability_scale
+                score /= 1.0 + drift ** 2
+
+            if score > best_score:
+                best_score = score
                 best_freq = peak_freq
 
         if best_freq is None:
