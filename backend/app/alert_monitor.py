@@ -31,7 +31,7 @@ except ImportError:
     print("⚠️  Vonage library not installed - calls will be mocked")
 
 # Nurse phone number
-NURSE_PHONE_NUMBER = get_secret("NURSE_PHONE_NUMBER") or os.getenv("NURSE_PHONE_NUMBER") or "+13854019951"
+NURSE_PHONE_NUMBER = get_secret("NURSE_PHONE_NUMBER") or os.getenv("NURSE_PHONE_NUMBER") or "+14155170250"
 HAVEN_PHONE_NUMBER = os.getenv("VONAGE_FROM_NUMBER") or "12178020876"  # Your Vonage number
 
 supabase = get_supabase_client()
