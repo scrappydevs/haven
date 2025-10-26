@@ -209,40 +209,9 @@ class ConnectionManager:
         if patient_id not in self.processing_queues:
             return
 
-        # IMMEDIATELY broadcast raw frame to viewers (30 FPS smooth video)
-        # This happens BEFORE CV processing to ensure no lag
-        if self.viewers:
-            import asyncio
-            try:
-                # Try to get existing event loop
-                loop = asyncio.get_running_loop()
-                # If we're already in an async context, schedule the broadcast
-                asyncio.create_task(self.broadcast_frame({
-                    "type": "live_frame",
-                    "patient_id": patient_id,
-                    "data": {
-                        "frame": frame_data
-                    }
-                }))
-            except RuntimeError:
-                # No running loop - create one for this thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    loop.run_until_complete(self.broadcast_frame({
-                        "type": "live_frame",
-                        "patient_id": patient_id,
-                        "data": {
-                            "frame": frame_data
-                        }
-                    }))
-                except Exception as e:
-                    print(f"⚠️ Queue error for {patient_id}: {e}")
-                finally:
-                    loop.close()
-
+        # Just queue the frame - broadcasting happens from async context in main.py
+        # Keep it simple: no event loop creation here
         try:
-            # Non-blocking put - if queue is full, discard frame (keep video real-time)
             self.processing_queues[patient_id].put_nowait({
                 "frame_data": frame_data,
                 "frame_num": frame_num
@@ -283,35 +252,8 @@ class ConnectionManager:
 
                 # Check analysis mode
                 if analysis_mode == "normal":
-                    # NORMAL MODE: No AI/CV processing, just send empty overlay
-                    try:
-                        loop = asyncio.get_running_loop()
-                        asyncio.create_task(self.broadcast_frame({
-                            "type": "overlay_data",
-                            "patient_id": patient_id,
-                            "frame_num": frame_num,
-                            "data": {
-                                "landmarks": [],
-                                "connections": [],
-                                "head_pose_axes": None,
-                                "metrics": None
-                            }
-                        }))
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        loop.run_until_complete(self.broadcast_frame({
-                            "type": "overlay_data",
-                            "patient_id": patient_id,
-                            "frame_num": frame_num,
-                            "data": {
-                                "landmarks": [],
-                                "connections": [],
-                                "head_pose_axes": None,
-                                "metrics": None
-                            }
-                        }))
-                        loop.close()
+                    # NORMAL MODE: No AI/CV processing
+                    # Skip overlay broadcasting - keep it simple
                     continue
 
                 # ENHANCED MODE: Full AI/CV analysis
@@ -343,27 +285,22 @@ class ConnectionManager:
                     "metrics": slow_result["metrics"] if slow_result else None
                 }
 
-                # Broadcast overlay data (async operation, run in existing event loop)
-                try:
-                    loop = asyncio.get_running_loop()
-                    # Already in async context, create task
-                    asyncio.create_task(self.broadcast_frame({
+                # Store overlay data for viewers to pick up
+                # Don't broadcast from worker thread - keep it simple
+                if hasattr(self, 'latest_overlay'):
+                    self.latest_overlay[patient_id] = {
                         "type": "overlay_data",
                         "patient_id": patient_id,
                         "frame_num": frame_num,
                         "data": overlay_data
-                    }))
-                except RuntimeError:
-                    # No running loop, create one
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(self.broadcast_frame({
+                    }
+                else:
+                    self.latest_overlay = {patient_id: {
                         "type": "overlay_data",
                         "patient_id": patient_id,
                         "frame_num": frame_num,
                         "data": overlay_data
-                    }))
-                    loop.close()
+                    }}
 
                 # Agent analysis: if we just calculated metrics, analyze them
                 if slow_result and slow_result.get("metrics"):

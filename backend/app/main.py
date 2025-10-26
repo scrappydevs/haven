@@ -1926,22 +1926,32 @@ async def websocket_view(websocket: WebSocket):
     try:
         import asyncio
         last_ping = time.time()
+        last_overlay_broadcast = time.time()
+        
         while True:
-            # Send ping every 45 seconds to keep connection alive (reduced frequency)
+            # Send ping every 45 seconds to keep connection alive
             if time.time() - last_ping > 45:
                 try:
-                    # Check if socket is still connected before sending
                     if websocket.client_state.value == 1:  # WebSocketState.CONNECTED
                         await websocket.send_json({"type": "ping", "timestamp": time.time()})
                         last_ping = time.time()
                     else:
-                        print(f"⚠️ Viewer socket not connected (state={websocket.client_state.value})")
                         break
                 except Exception as e:
                     print(f"❌ Ping failed: {e}")
-                    break  # Connection died
+                    break
             
-            await asyncio.sleep(5)  # Check less frequently (5s instead of 1s)
+            # Broadcast latest overlays every 0.1 seconds (10 Hz)
+            if time.time() - last_overlay_broadcast > 0.1:
+                if hasattr(manager, 'latest_overlay'):
+                    for patient_id, overlay in manager.latest_overlay.items():
+                        try:
+                            await manager.broadcast_frame(overlay)
+                        except:
+                            pass
+                last_overlay_broadcast = time.time()
+            
+            await asyncio.sleep(0.05)  # 20 Hz check rate
     except WebSocketDisconnect:
         print("Viewer disconnected")
     except Exception as e:
