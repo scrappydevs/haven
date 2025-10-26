@@ -224,6 +224,11 @@ class ConnectionManager:
 
         while not self.worker_stop_flags[patient_id].is_set():
             try:
+                # Double-check stream is still active
+                if patient_id not in self.streamers:
+                    print(f"⏹️  Worker exiting - {patient_id} stream no longer active")
+                    break
+                
                 # Get trackers to check analysis mode
                 trackers = self.get_trackers(patient_id)
                 analysis_mode = trackers.analysis_mode if trackers else "normal"
@@ -336,6 +341,11 @@ class ConnectionManager:
                         def agent_worker():
                             """Background thread for agent analysis - never blocks CV"""
                             try:
+                                # Check if stream is still active before running agent
+                                if patient_id not in self.streamers:
+                                    print(f"⏹️  Skipping agent analysis - {patient_id} stream closed")
+                                    return
+                                
                                 # Create new event loop for this thread
                                 import asyncio
                                 thread_loop = asyncio.new_event_loop()
@@ -433,7 +443,11 @@ class ConnectionManager:
                                 print(f"⚠️ Agent thread error: {e}")
                         
                         # Start agent in background thread - CV processing continues immediately
-                        threading.Thread(target=agent_worker, daemon=True).start()
+                        # Only start if stream is still active
+                        if patient_id in self.streamers:
+                            threading.Thread(target=agent_worker, daemon=True).start()
+                        else:
+                            print(f"⏹️  Skipping agent thread - {patient_id} stream closed")
                         
                         # LEGACY AGENTS (DISABLED - using Fetch.ai Health Agent instead)
                         # if agent_system.enabled:
