@@ -10,11 +10,13 @@ import json
 # Import Fetch.ai uAgents framework
 try:
     from uagents import Agent, Context, Model
-    from pydantic import BaseModel
     UAGENTS_AVAILABLE = True
 except ImportError:
     UAGENTS_AVAILABLE = False
     print("⚠️  uAgents not available - install with: pip install uagents")
+
+# Always import BaseModel from pydantic
+from pydantic import BaseModel
 
 # Import Claude for LLM reasoning
 try:
