@@ -5,21 +5,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getApiUrl } from '@/lib/api';
 import HandoffFormModal from './HandoffFormModal';
 
-interface HandoffForm {
+interface Alert {
   id: string;
-  form_number: string;
+  alert_type: string;
+  severity: string;
   patient_id: string;
-  alert_ids: string[];
-  content: {
-    patient_info: {
-      name?: string;
-      patient_id: string;
-    };
-    primary_concern: string;
-    severity_level: string;
-    generated_at: string;
-  };
+  room_id?: string;
+  title: string;
+  description?: string;
   status: string;
+  triggered_at: string;
+  metadata?: any;
   created_at: string;
 }
 
@@ -28,41 +24,41 @@ interface HandoffFormsListProps {
   refreshInterval?: number; // in milliseconds
 }
 
-export default function HandoffFormsList({ limit = 10, refreshInterval = 30000 }: HandoffFormsListProps) {
-  const [forms, setForms] = useState<HandoffForm[]>([]);
+export default function HandoffFormsList({ limit = 10, refreshInterval = 5000 }: HandoffFormsListProps) {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    fetchForms();
+    fetchAlerts();
 
     // Set up auto-refresh
-    const interval = setInterval(fetchForms, refreshInterval);
+    const interval = setInterval(fetchAlerts, refreshInterval);
     return () => clearInterval(interval);
   }, [limit, refreshInterval]);
 
-  const fetchForms = async () => {
+  const fetchAlerts = async () => {
     try {
       const apiUrl = getApiUrl();
-      const response = await fetch(`${apiUrl}/handoff-agent/forms?limit=${limit}`);
+      const response = await fetch(`${apiUrl}/alerts?status=active&limit=${limit}`);
       const data = await response.json();
-      setForms(data.forms || []);
+      setAlerts(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error fetching handoff forms:', error);
+      console.error('Error fetching alerts:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFormClick = (formId: string) => {
-    setSelectedFormId(formId);
+  const handleAlertClick = (alertId: string) => {
+    setSelectedAlertId(alertId);
     setIsModalOpen(true);
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    setSelectedFormId(null);
+    setSelectedAlertId(null);
   };
 
   const getSeverityColor = (severity: string) => {
@@ -107,10 +103,10 @@ export default function HandoffFormsList({ limit = 10, refreshInterval = 30000 }
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
           <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-950">
-            Handoff Forms
+            Active Alerts
           </h2>
           <div className="px-2 py-0.5 bg-accent-terra/10 border border-accent-terra">
-            <span className="text-accent-terra text-[10px] font-medium">{forms.length}</span>
+            <span className="text-accent-terra text-[10px] font-medium">{alerts.length}</span>
           </div>
         </div>
 
@@ -120,52 +116,52 @@ export default function HandoffFormsList({ limit = 10, refreshInterval = 30000 }
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin h-4 w-4 border-2 border-neutral-300 border-t-neutral-950 rounded-full"></div>
             </div>
-          ) : forms.length === 0 ? (
+          ) : alerts.length === 0 ? (
             <div className="text-center py-8 border border-neutral-200 bg-neutral-50">
-              <p className="text-neutral-500 text-xs font-light">No handoff forms yet</p>
+              <p className="text-neutral-500 text-xs font-light">No active alerts</p>
             </div>
           ) : (
             <div className="space-y-2">
               <AnimatePresence>
-                {forms.map((form, idx) => (
+                {alerts.map((alert, idx) => (
                   <motion.button
-                    key={form.id}
+                    key={alert.id}
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -5 }}
                     transition={{ delay: idx * 0.02 }}
-                    onClick={() => handleFormClick(form.id)}
+                    onClick={() => handleAlertClick(alert.id)}
                     className={`w-full text-left border-l-4 ${getSeverityColor(
-                      form.content.severity_level
+                      alert.severity
                     )} border border-neutral-200 p-3 hover:border-neutral-950 transition-all`}
                   >
-                    {/* Single Row: Form Number + Time */}
+                    {/* Single Row: Alert Type + Time */}
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-mono text-neutral-500 tracking-tight">
-                        {form.form_number}
+                      <span className="text-[10px] font-mono text-neutral-500 tracking-tight uppercase">
+                        {alert.alert_type}
                       </span>
                       <span className="text-[10px] text-neutral-400">
-                        {getTimeAgo(form.content.generated_at)}
+                        {getTimeAgo(alert.triggered_at)}
                       </span>
                     </div>
 
-                    {/* Patient Name + Severity Badge */}
+                    {/* Patient ID + Severity Badge */}
                     <div className="flex items-center justify-between mb-1.5">
                       <p className="text-xs font-medium text-neutral-950 truncate flex-1">
-                        {form.content.patient_info.name || form.content.patient_info.patient_id}
+                        {alert.patient_id}
                       </p>
                       <span
                         className={`px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ml-2 ${getSeverityBadge(
-                          form.content.severity_level
+                          alert.severity
                         )}`}
                       >
-                        {form.content.severity_level}
+                        {alert.severity}
                       </span>
                     </div>
 
-                    {/* Primary Concern - Single Line */}
+                    {/* Alert Title - Single Line */}
                     <p className="text-[11px] text-neutral-600 font-light truncate">
-                      {form.content.primary_concern}
+                      {alert.title}
                     </p>
                   </motion.button>
                 ))}
@@ -176,7 +172,12 @@ export default function HandoffFormsList({ limit = 10, refreshInterval = 30000 }
       </div>
 
       {/* Modal */}
-      <HandoffFormModal formId={selectedFormId} isOpen={isModalOpen} onClose={handleCloseModal} />
+      <HandoffFormModal
+        formId={selectedAlertId}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onAcknowledge={fetchAlerts} // Refresh list when acknowledged
+      />
     </>
   );
 }

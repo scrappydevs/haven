@@ -2645,6 +2645,13 @@ async def generate_handoff_form_manual(request: GenerateHandoffRequest):
         result = supabase.table("handoff_forms").insert(data).execute()
         form_id = result.data[0]["id"] if result.data else None
 
+        # Update alerts table to reference this form
+        if form_id:
+            supabase.table("alerts").update({
+                "form_id": form_id,
+                "pdf_path": pdf_path
+            }).in_("id", [alert.id for alert in alerts]).execute()
+
         # Send email
         email_result = None
         if recipient_emails and recipient_emails[0]:
@@ -2690,26 +2697,45 @@ async def generate_handoff_form_manual(request: GenerateHandoffRequest):
 @app.get("/handoff-agent/forms")
 async def get_handoff_forms(patient_id: Optional[str] = None, limit: int = 50):
     """
-    Get generated handoff forms
+    Get generated handoff forms (only for active alerts)
 
     Args:
         patient_id: Filter by patient ID
         limit: Maximum number of forms to return
 
     Returns:
-        List of handoff forms
+        List of handoff forms with active alerts only
     """
     try:
+        # First get all forms
         query = supabase.table("handoff_forms").select("*")
 
         if patient_id:
             query = query.eq("patient_id", patient_id)
 
-        response = query.order("created_at", desc=True).limit(limit).execute()
+        response = query.order("created_at", desc=True).limit(limit * 2).execute()  # Get more to filter
+
+        if not response.data:
+            return {"forms": [], "count": 0}
+
+        # Filter forms to only include those with at least one active alert
+        filtered_forms = []
+        for form in response.data:
+            alert_ids = form.get("alert_ids", [])
+            if alert_ids:
+                # Check if any of the alerts are still active
+                alerts_response = supabase.table("alerts").select("status").in_("id", alert_ids).execute()
+                if alerts_response.data:
+                    # Include form if any alert is 'active'
+                    has_active = any(alert.get("status") == "active" for alert in alerts_response.data)
+                    if has_active:
+                        filtered_forms.append(form)
+                        if len(filtered_forms) >= limit:
+                            break
 
         return {
-            "forms": response.data or [],
-            "count": len(response.data) if response.data else 0
+            "forms": filtered_forms,
+            "count": len(filtered_forms)
         }
     except Exception as e:
         print(f"❌ Error fetching handoff forms: {e}")
@@ -2768,6 +2794,92 @@ async def download_handoff_form_pdf(form_id: str):
     except Exception as e:
         print(f"❌ Error downloading PDF: {e}")
         return {"error": str(e)}
+
+
+@app.post("/handoff-agent/forms/{form_id}/acknowledge")
+async def acknowledge_handoff_form(form_id: str):
+    """
+    Acknowledge a handoff form by updating all related alerts to 'acknowledged' status
+
+    Args:
+        form_id: ID of the handoff form to acknowledge
+
+    Returns:
+        Success status and number of alerts updated
+    """
+    try:
+        # Get the form to find alert IDs
+        form_response = supabase.table("handoff_forms").select("alert_ids").eq("id", form_id).single().execute()
+
+        if not form_response.data:
+            return {"success": False, "message": "Form not found"}
+
+        alert_ids = form_response.data.get("alert_ids", [])
+
+        if not alert_ids:
+            return {"success": False, "message": "No alerts associated with this form"}
+
+        # Update all alerts to acknowledged status
+        update_response = supabase.table("alerts").update({
+            "status": "acknowledged",
+            "acknowledged_at": datetime.utcnow().isoformat(),
+            "acknowledged_by": "nurse"  # You can make this dynamic later
+        }).in_("id", alert_ids).execute()
+
+        # Update form status to acknowledged
+        supabase.table("handoff_forms").update({
+            "status": "acknowledged"
+        }).eq("id", form_id).execute()
+
+        return {
+            "success": True,
+            "message": f"Acknowledged {len(alert_ids)} alert(s)",
+            "alerts_updated": len(alert_ids)
+        }
+
+    except Exception as e:
+        print(f"❌ Error acknowledging form: {e}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+
+@app.post("/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(alert_id: str):
+    """
+    Acknowledge a single alert by updating its status to 'acknowledged'.
+    This endpoint is called from the HandoffFormModal when the user clicks Acknowledge.
+    """
+    try:
+        from app.supabase_client import supabase
+        from datetime import datetime
+
+        # Update the alert status
+        update_response = supabase.table("alerts").update({
+            "status": "acknowledged",
+            "acknowledged_at": datetime.utcnow().isoformat(),
+            "acknowledged_by": "nurse"  # TODO: Get actual user from auth context
+        }).eq("id", alert_id).execute()
+
+        if not update_response.data:
+            return {
+                "success": False,
+                "message": "Alert not found"
+            }
+
+        return {
+            "success": True,
+            "message": f"Alert {alert_id} acknowledged successfully",
+            "alert_id": alert_id
+        }
+
+    except Exception as e:
+        print(f"❌ Error acknowledging alert: {e}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
 
 
 if __name__ == "__main__":

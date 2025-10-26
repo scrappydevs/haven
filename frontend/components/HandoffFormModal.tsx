@@ -34,12 +34,14 @@ interface HandoffFormModalProps {
   formId: string | null;
   isOpen: boolean;
   onClose: () => void;
+  onAcknowledge?: () => void; // Callback to refresh list
 }
 
-export default function HandoffFormModal({ formId, isOpen, onClose }: HandoffFormModalProps) {
+export default function HandoffFormModal({ formId, isOpen, onClose, onAcknowledge }: HandoffFormModalProps) {
   const [form, setForm] = useState<HandoffForm | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isAcknowledging, setIsAcknowledging] = useState(false);
 
   useEffect(() => {
     if (formId && isOpen) {
@@ -64,11 +66,40 @@ export default function HandoffFormModal({ formId, isOpen, onClose }: HandoffFor
     setIsLoading(true);
     try {
       const apiUrl = getApiUrl();
-      const response = await fetch(`${apiUrl}/handoff-agent/forms/${formId}`);
-      const data = await response.json();
-      setForm(data);
+      // Fetch alert details directly
+      const response = await fetch(`${apiUrl}/alerts/${formId}`);
+      if (!response.ok) throw new Error('Alert not found');
+
+      const alertData = await response.json();
+
+      // Transform alert into form-like structure for display
+      const transformedForm = {
+        id: alertData.id,
+        form_number: `ALERT-${alertData.id.substring(0, 8)}`,
+        patient_id: alertData.patient_id || 'Unknown',
+        alert_ids: [alertData.id],
+        content: {
+          patient_info: {
+            patient_id: alertData.patient_id || 'Unknown',
+            name: alertData.patient_id || 'Unknown',
+            age: null,
+            room_number: alertData.room_id || null,
+          },
+          primary_concern: alertData.title,
+          alert_summary: alertData.description || alertData.title,
+          severity_level: alertData.severity,
+          recommended_actions: ['Review alert details', 'Assess patient condition', 'Take appropriate action'],
+          urgency_notes: alertData.severity === 'critical' ? 'Immediate attention required' : null,
+          related_alerts: [alertData],
+          generated_at: alertData.triggered_at || alertData.created_at,
+        },
+        status: alertData.status,
+        created_at: alertData.created_at,
+      };
+
+      setForm(transformedForm as any);
     } catch (error) {
-      console.error('Error fetching form details:', error);
+      console.error('Error fetching alert details:', error);
     } finally {
       setIsLoading(false);
     }
@@ -80,24 +111,67 @@ export default function HandoffFormModal({ formId, isOpen, onClose }: HandoffFor
     setIsDownloading(true);
     try {
       const apiUrl = getApiUrl();
-      const response = await fetch(`${apiUrl}/handoff-agent/forms/${formId}/pdf`);
+      // Generate PDF on-the-fly for this alert
+      const response = await fetch(`${apiUrl}/handoff-agent/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alert_ids: [formId] }),
+      });
 
-      if (!response.ok) throw new Error('Download failed');
+      const data = await response.json();
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${form?.form_number || 'handoff-form'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      if (data.success && data.pdf_path) {
+        // Now download the generated PDF
+        const pdfResponse = await fetch(`${apiUrl}/handoff-agent/forms/${data.form_id}/pdf`);
+        if (!pdfResponse.ok) throw new Error('Download failed');
+
+        const blob = await pdfResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${data.form_number || 'alert'}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        throw new Error('Failed to generate PDF');
+      }
     } catch (error) {
       console.error('Error downloading PDF:', error);
       alert('Failed to download PDF. Please try again.');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleAcknowledge = async () => {
+    if (!formId) return;
+
+    setIsAcknowledging(true);
+    try {
+      const apiUrl = getApiUrl();
+      // Update alert status directly
+      const response = await fetch(`${apiUrl}/alerts/${formId}/acknowledge`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (data.success || response.ok) {
+        alert(`✅ Alert acknowledged`);
+        onClose();
+        if (onAcknowledge) {
+          onAcknowledge(); // Trigger refresh
+        }
+      } else {
+        alert(`Failed to acknowledge: ${data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error acknowledging alert:', error);
+      alert('Failed to acknowledge. Please try again.');
+    } finally {
+      setIsAcknowledging(false);
     }
   };
 
@@ -263,6 +337,27 @@ export default function HandoffFormModal({ formId, isOpen, onClose }: HandoffFor
 
               {/* Footer */}
               <div className="px-6 py-4 border-t-2 border-neutral-950 bg-neutral-50 flex gap-3">
+                <button
+                  onClick={handleAcknowledge}
+                  disabled={isAcknowledging || !form}
+                  className={`flex-1 px-6 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
+                    isAcknowledging || !form
+                      ? 'bg-green-300 text-green-700 cursor-not-allowed'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  {isAcknowledging ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Acknowledging...
+                    </span>
+                  ) : (
+                    <>✓ Acknowledge</>
+                  )}
+                </button>
                 <button
                   onClick={handleDownloadPDF}
                   disabled={isDownloading || !form}
