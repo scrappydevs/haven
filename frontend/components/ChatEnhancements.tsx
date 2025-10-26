@@ -72,14 +72,15 @@ export function FollowUpQuestions({ questions, onSelect }: FollowUpQuestionsProp
       transition={{ delay: 0.3 }}
       className="mt-3 space-y-1.5"
     >
-      <p className="text-[10px] font-light text-neutral-400 uppercase tracking-wider mb-2">
+      <p className="text-xs font-light text-neutral-950 uppercase tracking-wider mb-2">
         Follow-up
       </p>
       {questions.map((q, i) => (
         <button
           key={i}
           onClick={() => onSelect(q)}
-          className="w-full text-left px-2.5 py-1.5 text-xs font-light text-neutral-600 bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 transition-colors rounded"
+          className="w-full text-left px-3 py-2 text-sm font-light text-neutral-600 bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 transition-colors"
+          style={{ borderRadius: '6px' }}
         >
           {q}
         </button>

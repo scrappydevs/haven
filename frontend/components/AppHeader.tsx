@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -65,9 +63,9 @@ export default function AppHeader({ alerts = [], onAlertResolve, onPatientClick,
               Hospital Map
             </a>
             <a
-              href="/stream"
+              href="/patient-view"
               className={`px-6 py-2 label-uppercase text-xs transition-colors ${
-                pathname === '/stream'
+                pathname === '/patient-view'
                   ? 'text-neutral-950 border-b-2 border-primary-700'
                   : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
               }`}

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import Fuse from 'fuse.js';
 import { useTaggedContextStore } from '@/stores/taggedContextStore';
 import { ToolUseIndicator, FollowUpQuestions, ExportButton, CopyButton } from './ChatEnhancements';
 
@@ -39,6 +40,7 @@ export default function AIChat() {
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteItems, setAutocompleteItems] = useState<any[]>([]);
   const [autocompleteType, setAutocompleteType] = useState<'patient' | 'room' | null>(null);
+  const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showToolIndicator, setShowToolIndicator] = useState(false);
   const [toolCallCount, setToolCallCount] = useState(0);
@@ -96,6 +98,15 @@ export default function AIChat() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
+  // Auto-scroll selected autocomplete item into view
+  useEffect(() => {
+    if (showAutocomplete && selectedAutocompleteIndex >= 0) {
+      const dropdown = document.querySelector('.autocomplete-dropdown');
+      const selectedItem = dropdown?.children[selectedAutocompleteIndex] as HTMLElement;
+      selectedItem?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selectedAutocompleteIndex, showAutocomplete]);
+
   // Initialize voice recognition
   useEffect(() => {
     if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
@@ -122,6 +133,15 @@ export default function AIChat() {
       recognitionRef.current = recognition;
     }
   }, []);
+
+  // Auto-scroll selected autocomplete item into view
+  useEffect(() => {
+    if (showAutocomplete && selectedAutocompleteIndex >= 0) {
+      const dropdown = document.querySelector('.autocomplete-dropdown');
+      const selectedItem = dropdown?.children[selectedAutocompleteIndex] as HTMLElement;
+      selectedItem?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selectedAutocompleteIndex, showAutocomplete]);
 
   // Generate follow-up questions based on actual conversation context
   const generateFollowUpQuestions = (userQuery: string, response: string) => {
@@ -587,28 +607,84 @@ export default function AIChat() {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Handle autocomplete navigation
+    if (showAutocomplete && autocompleteItems.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedAutocompleteIndex((prev) => 
+          (prev + 1) % autocompleteItems.length
+        );
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedAutocompleteIndex((prev) => 
+          prev === 0 ? autocompleteItems.length - 1 : prev - 1
+        );
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        selectAutocompleteItem(autocompleteItems[selectedAutocompleteIndex]);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        selectAutocompleteItem(autocompleteItems[selectedAutocompleteIndex]);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowAutocomplete(false);
+      }
+    } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
   };
 
-  // Fetch autocomplete suggestions based on @ mention
+  // Fetch autocomplete suggestions based on @ mention with fuzzy search
   const fetchAutocompleteData = async (query: string, type: 'patient' | 'room') => {
     try {
       if (type === 'patient') {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients?search=${query}`);
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/search?q=`);
         const data = await response.json();
-        setAutocompleteItems(data.patients || []);
+        const patients = Array.isArray(data) ? data : [];
+        
+        if (query) {
+          // Apply fuzzy search
+          const fuse = new Fuse(patients, {
+            keys: [
+              { name: 'name', weight: 1.0 },
+              { name: 'patient_id', weight: 0.8 },
+              { name: 'condition', weight: 0.5 }
+            ],
+            threshold: 0.4,
+            includeScore: true
+          });
+          
+          const results = fuse.search(query);
+          setAutocompleteItems(results.map(r => r.item).slice(0, 8));
+        } else {
+          setAutocompleteItems(patients.slice(0, 8));
+        }
       } else if (type === 'room') {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/rooms`);
         const data = await response.json();
-        const filtered = (data.rooms || []).filter((r: any) => 
-          r.room_name.toLowerCase().includes(query.toLowerCase())
-        );
-        setAutocompleteItems(filtered);
+        const rooms = Array.isArray(data) ? data : (data.rooms || []);
+        
+        if (query) {
+          // Apply fuzzy search
+          const fuse = new Fuse(rooms, {
+            keys: [
+              { name: 'room_name', weight: 1.0 },
+              { name: 'room_type', weight: 0.6 }
+            ],
+            threshold: 0.4,
+            includeScore: true
+          });
+          
+          const results = fuse.search(query);
+          setAutocompleteItems(results.map(r => r.item).slice(0, 8));
+        } else {
+          setAutocompleteItems(rooms.slice(0, 8));
+        }
       }
+      
+      setSelectedAutocompleteIndex(0); // Reset selection when results update
     } catch (error) {
       console.error('Error fetching autocomplete data:', error);
       setAutocompleteItems([]);
@@ -635,6 +711,7 @@ export default function AIChat() {
         fetchAutocompleteData(query, 'patient');
         setShowAutocomplete(true);
       }
+      setSelectedAutocompleteIndex(0); // Reset selection on new query
     } else {
       setShowAutocomplete(false);
     }
@@ -642,7 +719,17 @@ export default function AIChat() {
 
   // Select item from autocomplete
   const selectAutocompleteItem = (item: any) => {
-    // Add to tagged context
+    // Build the full mention text
+    const mentionText = autocompleteType === 'patient' 
+      ? `@${item.name}` 
+      : `@${item.room_name}`;
+    
+    // Replace the partial @mention in input with full mention
+    const words = input.split(' ');
+    words[words.length - 1] = mentionText; // Replace last word (partial @mention)
+    setInput(words.join(' ') + ' '); // Add space after mention
+    
+    // Still add to context for backend tracking
     if (autocompleteType === 'patient') {
       addItem({
         id: item.id,
@@ -658,11 +745,7 @@ export default function AIChat() {
         metadata: { room_type: item.room_type }
       });
     }
-
-    // Remove @ mention from input
-    const words = input.split(' ');
-    words.pop(); // Remove last word (the @ mention)
-    setInput(words.join(' ') + ' ');
+    
     setShowAutocomplete(false);
   };
 
@@ -684,7 +767,7 @@ export default function AIChat() {
             style={{ 
               width: `${panelSize.width}px`,
               height: `${panelSize.height}px`,
-              borderRadius: '12px',
+              borderRadius: '12px 12px 8px 8px',
               transformOrigin: 'bottom right',
               cursor: isResizing ? 'grabbing' : 'default',
               userSelect: isResizing ? 'none' : 'auto'
@@ -951,36 +1034,20 @@ export default function AIChat() {
             {/* Input Area */}
             <div>
                 <div className="border-t border-neutral-200 p-4">
-                  {/* Tagged Context Chips */}
-                  {contextItems.length > 0 && (
-                    <div className="mb-2 flex flex-wrap gap-1">
-                      {contextItems.map((item) => (
-                        <div
-                          key={item.id}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-primary-100 text-primary-700 text-xs rounded"
-                        >
-                          <span>{item.name}</span>
-                          <button
-                            onClick={() => removeItem(item.id)}
-                            className="hover:text-primary-900"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* Tagged Context Chips - Hidden, mentions are now inline in text */}
 
                   {/* Autocomplete Dropdown */}
                   {showAutocomplete && autocompleteItems.length > 0 && (
-                    <div className="mb-2 bg-white border border-neutral-200 rounded shadow-lg max-h-40 overflow-y-auto">
+                    <div className="autocomplete-dropdown mb-2 bg-white border border-neutral-200 rounded shadow-lg max-h-40 overflow-y-auto">
                       {autocompleteItems.map((item, idx) => (
                         <button
                           key={idx}
                           onClick={() => selectAutocompleteItem(item)}
-                          className="w-full text-left px-3 py-2 hover:bg-neutral-50 text-xs font-light text-neutral-950"
+                          className={`w-full text-left px-3 py-2 text-xs font-light transition-colors ${
+                            idx === selectedAutocompleteIndex
+                              ? 'bg-primary-100 text-primary-900 border-l-2 border-primary-700'
+                              : 'text-neutral-950 hover:bg-neutral-50'
+                          }`}
                         >
                           {autocompleteType === 'patient' ? item.name : item.room_name}
                           {autocompleteType === 'patient' && item.patient_id && (
@@ -996,10 +1063,10 @@ export default function AIChat() {
                       type="text"
                       value={input}
                       onChange={handleInputChange}
-                      onKeyPress={handleKeyPress}
+                      onKeyDown={handleKeyDown}
                       placeholder={isLoading ? "Thinking..." : isStreaming ? "Responding..." : isListening ? "Listening..." : "Ask me anything... (@ to tag)"}
                       disabled={isLoading || isStreaming}
-                      className="flex-1 px-3 py-2 text-sm font-light text-neutral-950 placeholder:text-neutral-400 border border-neutral-200 focus:outline-none focus:border-primary-700 transition-colors disabled:opacity-50 disabled:bg-neutral-50"
+                      className="flex-1 px-3 py-2 text-sm font-light text-neutral-950 placeholder:text-neutral-600 border border-neutral-200 focus:outline-none focus:border-primary-700 transition-colors disabled:opacity-50 disabled:bg-neutral-50"
                       style={{ borderRadius: '6px' }}
                     />
                     {/* Voice Input Button */}
@@ -1034,21 +1101,21 @@ export default function AIChat() {
                 </div>
                 
               {/* Location Footer */}
-              <div className="px-4 py-3 border-t border-neutral-200 bg-neutral-50">
-                <div className="flex items-center justify-between text-xs font-light text-neutral-500">
+              <div className="px-4 py-3 border-t border-neutral-200 bg-neutral-50" style={{ borderRadius: '0 0 8px 8px' }}>
+                <div className="flex items-center justify-between text-xs font-light text-neutral-700">
                   <span className="uppercase tracking-wider flex items-center gap-2">
                     {pathname?.includes('floorplan') ? (
                       <><span className="text-sm">🗺️</span><span>Floor Plan</span></>
                     ) : pathname?.includes('dashboard') ? (
-                      <><span className="text-sm">📊</span><span>Dashboard</span></>
+                      <span>Dashboard</span>
                     ) : pathname?.includes('stream') ? (
                       <><span className="text-sm">📹</span><span>Patient Stream</span></>
                     ) : (
                       <><span className="text-sm">🏥</span><span>Haven</span></>
                     )}
                   </span>
-                  <span className="text-neutral-400 font-mono text-[10px]" title="Keyboard shortcut: ⌘⇧H">
-                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ⌘⇧H
+                  <span className="text-neutral-700 font-mono text-[10px]">
+                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               </div>

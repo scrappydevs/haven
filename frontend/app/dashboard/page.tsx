@@ -835,12 +835,12 @@ export default function DashboardPage() {
             {/* Right Column - Handoff Forms & Activity Feed (4 columns) */}
             <div className="col-span-4">
               {/* Handoff Forms - Compact List */}
-              <div className="mb-6 h-[350px]">
+              <div className="mb-6 h-[307px]">
                 <HandoffFormsList limit={10} refreshInterval={5000} />
               </div>
 
               {/* Live Activity Feed - Below Handoff Forms */}
-              <div className="h-[400px]">
+              <div className="h-[330px]">
                 <GlobalActivityFeed
                   events={globalEventFeed}
                   onPatientClick={onPatientClicked}

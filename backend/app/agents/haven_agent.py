@@ -5,16 +5,24 @@ Activated by "Hey Haven" wake word
 """
 
 import os
-import json
+import sys
 import logging
 import asyncio
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+
 from dotenv import load_dotenv
 
 from livekit import agents, rtc
 from livekit.agents import Agent, AgentSession, llm, tokenize
 from livekit.plugins import openai, silero, groq
+
+# Ensure shared backend modules are importable when running standalone agent
+BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+if BACKEND_ROOT not in sys.path:
+    sys.path.append(BACKEND_ROOT)
+
+from app.main import process_haven_conversation  # noqa: E402
 
 # Load environment variables
 load_dotenv()
@@ -58,14 +66,17 @@ YOUR ROLE:
 
 CONVERSATION FLOW:
 1. Initial greeting: Reference their condition naturally (e.g., "Hi [Name], I see you're being monitored for [condition]. How are you feeling?")
-2. After patient describes concern, ask 3-4 targeted follow-up questions that include:
+2. After patient describes concern, ask follow-up questions ONE AT A TIME:
    - Clinical specifics (location, severity, timing, duration)
    - Comfort/impact questions (affecting sleep/mobility/daily activities?)
    - Pattern recognition (first time? getting worse? related to treatment?)
-3. After gathering info (max 4 questions), close with: "Thank you for sharing that. I've noted everything and a nurse will be with you shortly."
+3. After gathering info (max 4 total questions), close with: "Thank you for sharing that. I've noted everything and a nurse will be with you shortly."
 
-RULES:
-- Maximum 4 follow-up questions total
+CRITICAL RULES:
+- Ask MAXIMUM 1-2 questions per response, preferably just 1
+- NEVER ask 3+ questions in a single response
+- Wait for patient's answer before asking the next question
+- Maximum 4 follow-up questions total across the entire conversation
 - Keep responses to 1-2 sentences
 - Be warm, empathetic, and professional
 - Adapt questions based on patient's specific condition and concern
@@ -94,6 +105,7 @@ RULES:
         self.question_count = 0
         self.max_questions = 4  # Maximum 4 questions
         self.conversation_complete = False
+        self.alert_saved = False
 
     async def on_chat_message(self, msg: llm.ChatMessage):
         """
@@ -108,6 +120,32 @@ RULES:
 
         logger.info(f"[{msg.role}]: {msg.content[:100]}...")
 
+        # Detect closing phrases in assistant responses
+        if msg.role == "assistant":
+            content_lower = msg.content.lower()
+            closing_phrases = [
+                'nurse will',
+                'nurse will be',
+                'will be with you',
+                'shortly',
+                'be right with you',
+                'on their way',
+                'coming to see you',
+                'be there soon'
+            ]
+
+            has_closing = any(
+                phrase in content_lower for phrase in closing_phrases)
+            if has_closing:
+                logger.info(
+                    f"🎯 Detected closing phrase in assistant message: {msg.content[:100]}")
+                # Mark conversation as ready to end
+                self.conversation_complete = True
+                await self._save_alert()
+
+                # Send signal to frontend via WebSocket
+                asyncio.create_task(self._notify_closing_phrase())
+
         # Extract info from patient responses
         if msg.role == "user":
             self._extract_info_from_response(msg.content)
@@ -119,7 +157,7 @@ RULES:
                     f"Haven conversation complete for patient {self.patient_id}")
                 self.conversation_complete = True
                 # Save alert to database asynchronously
-                asyncio.create_task(self._save_alert())
+                await self._save_alert()
 
     def _extract_info_from_response(self, patient_response: str):
         """
@@ -204,79 +242,68 @@ RULES:
             "assistant_turns": assistant_turns,
         }
 
+    async def _notify_closing_phrase(self):
+        """
+        Send WebSocket signal to frontend that agent is ending conversation.
+        """
+        try:
+            # Wait a moment to allow the agent to finish speaking
+            await asyncio.sleep(2)
+
+            from websocket import manager as websocket_manager
+            await websocket_manager.broadcast_frame({
+                "type": "haven_closing",
+                "patient_id": self.patient_id,
+                "session_id": self.session_id,
+                "timestamp": datetime.now().isoformat()
+            })
+            logger.info(
+                f"📢 Notified frontend that Haven is closing for patient {self.patient_id}")
+        except Exception as e:
+            logger.error(f"Error notifying closing phrase: {e}")
+
     async def _save_alert(self):
         """
         Save alert to database and notify dashboard when conversation completes.
         Only saves once per conversation to prevent duplicates.
         """
-        # Prevent duplicate alerts from being saved
-        if hasattr(self, '_alert_saved') and self._alert_saved:
-            logger.warning(f"⚠️ Alert already saved for patient {self.patient_id}, skipping duplicate")
+        if self.alert_saved:
+            logger.info(
+                f"⚠️ _save_alert() already executed for patient {self.patient_id}, skipping duplicate call")
             return
 
+        logger.info(f"🔔 _save_alert() called for patient {self.patient_id}")
         try:
-            # Mark as saving immediately to prevent race conditions
-            self._alert_saved = True
-
-            # Import here to avoid circular imports
-            import sys
-            import os
-            sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-            from supabase_client import supabase
-
+            # Import shared Haven conversation workflow from main API
             summary = self.get_conversation_summary()
 
-            # Determine urgency level
-            urgency = "medium"  # Default
-            if self.extracted_info.get("pain_level") and self.extracted_info["pain_level"] >= 7:
-                urgency = "high"
+            logger.info("📝 Submitting Haven conversation to shared processor")
+            result = await process_haven_conversation(
+                patient_id=self.patient_id,
+                session_id=self.session_id,
+                conversation_summary=summary
+            )
 
-            # Create alert record
-            alert_data = {
-                "patient_id": self.patient_id,
-                "type": "patient_concern",
-                "title": f"Patient reported: {self.extracted_info.get('symptom_description', 'concern')}",
-                "description": f"{self.patient_name or 'Patient'} reported {self.extracted_info.get('symptom_description', 'a concern')}",
-                "urgency": urgency,
-                "status": "active",
-                "metadata": {
-                    "source": "haven_ai",
-                    "session_id": self.session_id,
-                    "conversation_summary": summary,
-                    "extracted_info": self.extracted_info,
-                    "transcript": self.conversation_transcript
-                },
-                "created_at": datetime.now().isoformat()
-            }
+            if not result.get("success"):
+                logger.error(
+                    f"❌ Haven conversation processing failed: {result}")
+                return
 
-            if supabase:
-                result = supabase.table("alerts").insert(alert_data).execute()
-                alert_id = result.data[0]["id"] if result.data else None
-                # Count how many questions were actually asked
-                questions_asked = sum(1 for msg in self.conversation_transcript if msg['role'] == 'assistant' and '?' in msg['content'])
-                logger.info(f"✅ Alert saved: {alert_id} for patient {self.patient_id} (after {questions_asked} questions)")
+            if result.get("skipped"):
+                logger.warning(
+                    f"⚠️ Haven conversation skipped for patient {self.patient_id}: insufficient data"
+                )
+                self.alert_saved = True
+                return
 
-                # Notify dashboard via WebSocket
-                try:
-                    from websocket import manager as websocket_manager
-                    await websocket_manager.broadcast_frame({
-                        "type": "new_alert",
-                        "patient_id": self.patient_id,
-                        "alert_id": alert_id,
-                        "urgency": urgency,
-                        "title": alert_data["title"],
-                        "timestamp": datetime.now().isoformat()
-                    })
-                    logger.info(f"📢 Dashboard notified of new alert for patient {self.patient_id}")
-                except Exception as e:
-                    logger.error(f"Error notifying dashboard: {e}")
-            else:
-                logger.warning("Supabase not available, alert not saved")
+            self.alert_saved = True
+            alert_id = result.get("alert_id")
+            logger.info(
+                f"✅ Alert persisted via shared workflow: {alert_id}")
 
         except Exception as e:
-            # Reset flag on error so alert can be retried
-            self._alert_saved = False
-            logger.error(f"❌ Error saving alert for {self.patient_id}: {e}", exc_info=True)
+            logger.error(
+                f"❌ Error saving alert for {self.patient_id}: {e}", exc_info=True)
 
 
 # LiveKit Agent Entry Point
@@ -376,12 +403,14 @@ async def entrypoint(ctx: agents.JobContext):
             # Count questions (any message with '?')
             if '?' in text:
                 question_count[0] += 1
-                logger.info(f"📊 Question {question_count[0]}/3 asked to {patient_id}")
+                logger.info(
+                    f"📊 Question {question_count[0]}/3 asked to {patient_id}")
 
                 # Block 4th question, force closing statement
                 if question_count[0] > 3:
                     closing = "I've noted everything. A nurse will be notified immediately."
-                    logger.info(f"🛑 Max questions reached for {patient_id}, forcing close")
+                    logger.info(
+                        f"🛑 Max questions reached for {patient_id}, forcing close")
                     await original_say(closing, *args, **kwargs)
                     # Save alert and mark complete
                     agent_instance.conversation_complete = True
@@ -393,7 +422,8 @@ async def entrypoint(ctx: agents.JobContext):
 
             # Auto-complete after 3rd question
             if question_count[0] >= 3 and not agent_instance.conversation_complete:
-                logger.info(f"📋 3 questions complete for {patient_id}, will save alert after next response")
+                logger.info(
+                    f"📋 3 questions complete for {patient_id}, will save alert after next response")
                 agent_instance.conversation_complete = True
 
         # Replace session.say with our enforced wrapper
