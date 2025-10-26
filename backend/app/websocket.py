@@ -348,7 +348,7 @@ class ConnectionManager:
                                 # Also send as alert for AlertPanel
                                 alert_message = {
                                     "type": "agent_alert",
-                                    "patient_id": patient_id,
+                            "patient_id": patient_id,
                                     "severity": analysis["severity"],
                                     "agent": "FETCH_AI_HEALTH_AGENT",
                                     "message": f"Patient {patient_id}: {analysis['severity']}",

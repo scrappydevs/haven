@@ -26,7 +26,7 @@ pandas>=2.2.0
 # Database - will auto-install compatible websockets and httpx
 supabase>=2.11.0,<3.0.0
 realtime>=2.0.0
-postgrest>=2.0.0
+postgrest<0.20,>=0.19
 websockets>=14.0
 
 # PDF Generation
