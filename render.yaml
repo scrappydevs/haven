@@ -23,5 +23,14 @@ services:
         sync: false
       - key: SMPLR_SPACE_ID
         sync: false
+      # Vonage Voice API credentials for emergency calling
+      - key: VONAGE_API_KEY
+        sync: false
+      - key: VONAGE_API_SECRET
+        sync: false
+      - key: VONAGE_APPLICATION_ID
+        sync: false
+      - key: VONAGE_PRIVATE_KEY
+        sync: false
     healthCheckPath: /health
     rootDir: backend
