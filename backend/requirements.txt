@@ -16,11 +16,11 @@ anthropic==0.44.0
 # Protobuf - pinned to satisfy mediapipe
 protobuf==4.25.5
 
-# LiveKit for voice AI intake - using latest available versions
+# LiveKit for voice AI intake - using compatible modern versions
 livekit==1.0.17
 livekit-api==1.0.7
-livekit-agents==0.10.6
-livekit-plugins-openai==0.10.3
+livekit-agents==1.2.15
+livekit-plugins-openai==1.2.15
 openai==1.59.5
 python-dotenv==1.0.1
 
