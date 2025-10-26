@@ -16,7 +16,7 @@ anthropic==0.44.0
 # Protobuf - pinned to satisfy mediapipe
 protobuf==4.25.5
 
-# LiveKit for voice AI intake - using compatible modern versions
+# LiveKit for voice AI intake
 livekit==1.0.17
 livekit-api==1.0.7
 livekit-agents==1.2.15
@@ -44,6 +44,5 @@ gunicorn==23.0.0
 vonage==3.14.0
 
 # Multi-Agent System (Fetch.ai uAgents)
-# Using version that supports pydantic 2.x and modern Python
-uagents>=0.19.0
-# Let pip resolve pydantic automatically (FastAPI needs 2.x)
+# Version 0.22+ supports modern uvicorn and pydantic
+uagents>=0.22.0
