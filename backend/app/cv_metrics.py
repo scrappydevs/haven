@@ -11,78 +11,213 @@ import time
 class HeartRateMonitor:
     """
     Remote photoplethysmography (rPPG) for heart rate detection
-    Tracks subtle color changes in face caused by blood flow
+    Tracks subtle color changes in face caused by blood flow using:
+      1) RGB signal extraction from forehead ROI
+      2) Detrending & normalization
+      3) Blind source separation (FastICA) to isolate the BVP signal
+      4) Frequency analysis within physiological limits
     """
-    def __init__(self, window_size=150, fps=30):
-        self.window_size = window_size  # ~5 seconds at 30 fps
-        self.fps = fps
-        self.signal_buffer = deque(maxlen=window_size)
+
+    def __init__(self, window_size: int = 240, fps: int = 30):
+        # ~8 seconds of history @ 30 fps (enough buffer for R-R intervals)
+        self.window_size = window_size
+        self.expected_fps = fps
+        self.rgb_buffer = deque(maxlen=window_size)
         self.timestamps = deque(maxlen=window_size)
         self.last_heart_rate = 75
+        self.freq_band = (0.75, 3.0)  # 45-180 bpm
+        self._rng = np.random.default_rng(seed=2024)
+        self._last_process_ts = 0.0
 
     def process_frame(self, frame: np.ndarray, forehead_roi: Optional[np.ndarray]) -> int:
         """
         Extract heart rate from forehead region using rPPG
 
         Args:
-            frame: Full frame (not used currently, for future enhancement)
+            frame: Full frame (unused placeholder for future model fusion)
             forehead_roi: ROI of forehead region for color analysis
 
         Returns:
             Heart rate in bpm
         """
+        now = time.time()
+
         if forehead_roi is None or forehead_roi.size == 0:
             return self.last_heart_rate
 
         try:
-            # Extract green channel (most sensitive to blood volume changes)
-            green_mean = np.mean(forehead_roi[:, :, 1])
-
-            # Add to buffer
-            self.signal_buffer.append(green_mean)
-            self.timestamps.append(time.time())
-
-            # Need enough data points for FFT
-            if len(self.signal_buffer) < self.window_size:
+            mean_bgr = forehead_roi.mean(axis=(0, 1))
+            if np.any(np.isnan(mean_bgr)):
                 return self.last_heart_rate
 
-            # Convert to numpy array and detrend
-            signal = np.array(self.signal_buffer)
-            signal = signal - np.mean(signal)
+            # Convert BGR (OpenCV) → RGB ordering
+            mean_rgb = np.array([mean_bgr[2], mean_bgr[1], mean_bgr[0]], dtype=np.float64)
 
-            # Apply Hamming window
-            window = np.hamming(len(signal))
-            signal = signal * window
+            self.rgb_buffer.append(mean_rgb)
+            self.timestamps.append(now)
 
-            # FFT
-            fft_data = np.fft.rfft(signal)
-            fft_freq = np.fft.rfftfreq(len(signal), 1.0 / self.fps)
-
-            # Focus on physiological heart rate range (45-180 bpm = 0.75-3 Hz)
-            mask = (fft_freq >= 0.75) & (fft_freq <= 3.0)
-            fft_data_masked = np.abs(fft_data[mask])
-            fft_freq_masked = fft_freq[mask]
-
-            if len(fft_data_masked) == 0:
+            if len(self.rgb_buffer) < max(90, self.window_size // 2):
                 return self.last_heart_rate
 
-            # Find peak frequency
-            peak_idx = np.argmax(fft_data_masked)
-            peak_freq = fft_freq_masked[peak_idx]
+            duration = self.timestamps[-1] - self.timestamps[0]
+            if duration < 3.0:
+                return self.last_heart_rate
 
-            # Convert to BPM
-            heart_rate = int(peak_freq * 60)
+            # Skip heavy processing if we recently calculated (≈2 Hz cadence)
+            if now - self._last_process_ts < 0.5:
+                return self.last_heart_rate
 
-            # Sanity check
+            sample_rate = (len(self.timestamps) - 1) / duration if duration > 0 else self.expected_fps
+            if not np.isfinite(sample_rate) or sample_rate < 10.0:
+                sample_rate = float(self.expected_fps)
+
+            rgb_matrix = np.array(self.rgb_buffer, dtype=np.float64)
+
+            preprocessed = self._preprocess_rgb(rgb_matrix)
+            if preprocessed is None:
+                return self.last_heart_rate
+
+            sources = self._fast_ica(preprocessed)
+            if sources is None:
+                return self.last_heart_rate
+
+            heart_rate = self._estimate_bpm(sources, sample_rate)
+            if heart_rate is None:
+                return self.last_heart_rate
+
             if 45 <= heart_rate <= 180:
-                # Smooth with previous value
-                self.last_heart_rate = int(0.7 * self.last_heart_rate + 0.3 * heart_rate)
+                # EMA smoothing to reduce jitter
+                self.last_heart_rate = int(0.6 * self.last_heart_rate + 0.4 * heart_rate)
+                self._last_process_ts = now
 
             return self.last_heart_rate
 
         except Exception as e:
             print(f"rPPG error: {e}")
             return self.last_heart_rate
+
+    def _preprocess_rgb(self, rgb_matrix: np.ndarray) -> Optional[np.ndarray]:
+        """Detrend and normalize RGB channels."""
+        if rgb_matrix.shape[0] < 10:
+            return None
+
+        detrended = self._detrend(rgb_matrix)
+        if detrended is None:
+            return None
+
+        std = np.std(detrended, axis=0, ddof=1)
+        if np.any(std < 1e-6):
+            return None
+
+        standardized = (detrended - np.mean(detrended, axis=0)) / std
+        return standardized
+
+    def _detrend(self, data: np.ndarray) -> Optional[np.ndarray]:
+        """Remove slow drift via moving-average baseline subtraction."""
+        length = data.shape[0]
+        if length < 5:
+            return None
+
+        window = max(5, int(min(length // 3, self.expected_fps)))
+        if window % 2 == 0:
+            window += 1
+
+        kernel = np.ones(window, dtype=np.float64) / window
+        detrended = np.empty_like(data)
+
+        for idx in range(data.shape[1]):
+            channel = data[:, idx]
+            baseline = np.convolve(channel, kernel, mode="same")
+            detrended[:, idx] = channel - baseline
+
+        return detrended
+
+    def _fast_ica(self, data: np.ndarray, max_iter: int = 200, tol: float = 1e-5) -> Optional[np.ndarray]:
+        """Minimal FastICA implementation for three-channel signals."""
+        n_samples, n_features = data.shape
+        if n_samples < n_features:
+            return None
+
+        centered = data - np.mean(data, axis=0, keepdims=True)
+        cov = np.cov(centered, rowvar=False)
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        eigvals = np.clip(eigvals, 1e-6, None)
+        whitening = eigvecs @ np.diag(1.0 / np.sqrt(eigvals)) @ eigvecs.T
+        whitened = centered @ whitening
+
+        n_components = n_features
+        weights = np.zeros((n_components, n_components))
+
+        for i in range(n_components):
+            w = self._rng.normal(size=n_components)
+            w /= np.linalg.norm(w)
+
+            for _ in range(max_iter):
+                projection = whitened @ w
+                g = np.tanh(projection)
+                g_prime = 1.0 - g ** 2
+
+                w_new = (whitened * g[:, None]).mean(axis=0) - g_prime.mean() * w
+
+                if i > 0:
+                    w_new -= weights[:i].T @ (weights[:i] @ w_new)
+
+                norm = np.linalg.norm(w_new)
+                if norm < 1e-6:
+                    break
+                w_new /= norm
+
+                if np.linalg.norm(w_new - w) < tol:
+                    w = w_new
+                    break
+                w = w_new
+
+            weights[i, :] = w
+
+        return whitened @ weights.T
+
+    def _estimate_bpm(self, components: np.ndarray, sample_rate: float) -> Optional[int]:
+        """Pick component with strongest frequency in the physiological band."""
+        if components.shape[0] < 10:
+            return None
+
+        best_freq = None
+        best_power = 0.0
+        low, high = self.freq_band
+        window = np.hamming(components.shape[0])
+
+        for idx in range(components.shape[1]):
+            signal = components[:, idx] - np.mean(components[:, idx])
+            if np.std(signal) < 1e-6:
+                continue
+
+            windowed = signal * window
+            spectrum = np.fft.rfft(windowed)
+            freqs = np.fft.rfftfreq(windowed.size, d=1.0 / sample_rate)
+
+            mask = (freqs >= low) & (freqs <= high)
+            band_power = np.abs(spectrum[mask])
+            band_freqs = freqs[mask]
+
+            if band_power.size == 0:
+                continue
+
+            peak_idx = int(np.argmax(band_power))
+            peak_power = band_power[peak_idx]
+            peak_freq = band_freqs[peak_idx]
+
+            median_noise = np.median(band_power)
+            if median_noise > 0 and peak_power / median_noise < 3.0:
+                continue
+
+            if peak_power > best_power:
+                best_power = peak_power
+                best_freq = peak_freq
+
+        if best_freq is None:
+            return None
+
+        return int(best_freq * 60)
 
 
 class RespiratoryRateMonitor:
