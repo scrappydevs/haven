@@ -204,16 +204,33 @@ class ConnectionManager:
         # This happens BEFORE CV processing to ensure no lag
         if self.viewers:
             import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self.broadcast_frame({
-                "type": "live_frame",
-                "patient_id": patient_id,
-                "data": {
-                    "frame": frame_data
-                }
-            }))
-            loop.close()
+            try:
+                # Try to get existing event loop
+                loop = asyncio.get_running_loop()
+                # If we're already in an async context, schedule the broadcast
+                asyncio.create_task(self.broadcast_frame({
+                    "type": "live_frame",
+                    "patient_id": patient_id,
+                    "data": {
+                        "frame": frame_data
+                    }
+                }))
+            except RuntimeError:
+                # No running loop - create one for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self.broadcast_frame({
+                        "type": "live_frame",
+                        "patient_id": patient_id,
+                        "data": {
+                            "frame": frame_data
+                        }
+                    }))
+                except Exception as e:
+                    print(f"⚠️ Queue error for {patient_id}: {e}")
+                finally:
+                    loop.close()
 
         try:
             # Non-blocking put - if queue is full, discard frame (keep video real-time)
