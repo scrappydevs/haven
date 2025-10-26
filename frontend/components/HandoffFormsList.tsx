@@ -123,56 +123,58 @@ export default function HandoffFormsList({ limit = 10, refreshInterval = 5000 }:
                 </div>
               </div>
             ) : (
-              <div className="space-y-2 font-mono text-xs">
+              <div className="space-y-2">
                 <AnimatePresence>
                   {alerts.map((alert, idx) => (
                     <motion.button
                       key={alert.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.2 }}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.2, delay: idx * 0.05 }}
                       onClick={() => handleAlertClick(alert.id)}
-                      className="w-full text-left border-l-2 border-neutral-300 pl-3 py-2 hover:border-primary-700 hover:bg-neutral-50 transition-all cursor-pointer rounded-r"
+                      className={`w-full text-left p-3 border-2 transition-all cursor-pointer shadow-sm hover:shadow-md ${
+                        alert.severity.toLowerCase() === 'critical'
+                          ? 'border-red-500 bg-red-50 hover:bg-red-100'
+                          : alert.severity.toLowerCase() === 'high'
+                          ? 'border-orange-500 bg-orange-50 hover:bg-orange-100'
+                          : alert.severity.toLowerCase() === 'medium'
+                          ? 'border-yellow-500 bg-yellow-50 hover:bg-yellow-100'
+                          : 'border-blue-500 bg-blue-50 hover:bg-blue-100'
+                      }`}
                     >
-                      {/* First line: time + severity + patient ID */}
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-neutral-400 font-mono text-[10px]">
+                      {/* Header: Severity badge + Time */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          alert.severity.toLowerCase() === 'critical'
+                            ? 'bg-red-600 text-white'
+                            : alert.severity.toLowerCase() === 'high'
+                            ? 'bg-orange-600 text-white'
+                            : alert.severity.toLowerCase() === 'medium'
+                            ? 'bg-yellow-600 text-white'
+                            : 'bg-blue-600 text-white'
+                        }`}>
+                          {alert.severity}
+                        </span>
+                        <span className="text-[10px] text-neutral-500">
                           {getTimeAgo(alert.triggered_at)}
                         </span>
-                        <span className={`text-xs font-light font-mono ${
-                          alert.severity.toLowerCase() === 'critical' ? 'text-red-600' :
-                          alert.severity.toLowerCase() === 'high' ? 'text-orange-600' :
-                          alert.severity.toLowerCase() === 'medium' ? 'text-yellow-600' :
-                          'text-neutral-950'
-                        }`}>
-                          [{alert.severity.toUpperCase()}]
-                        </span>
-                        <span className="text-xs font-light text-neutral-950">{alert.patient_id}</span>
                       </div>
 
-                      {/* Second line: alert type */}
-                      <div className="flex items-start gap-2 ml-20">
-                        <span className="text-neutral-400 text-[10px]">└─</span>
-                        <span className="text-xs font-light text-neutral-950">
-                          {alert.alert_type}
-                        </span>
-                      </div>
-
-                      {/* Third line: title/description */}
-                      <div className="ml-24 text-neutral-500 text-[10px] mt-0.5 font-light">
+                      {/* Alert Title */}
+                      <div className="text-sm font-medium text-neutral-950 mb-1">
                         {alert.title}
+                      </div>
+
+                      {/* Patient + Alert Type */}
+                      <div className="flex items-center gap-2 text-[10px] text-neutral-600">
+                        <span className="font-medium">{alert.patient_id}</span>
+                        <span>•</span>
+                        <span className="uppercase tracking-wide">{alert.alert_type.replace('_', ' ')}</span>
                       </div>
                     </motion.button>
                   ))}
                 </AnimatePresence>
-
-                {/* Monitoring indicator */}
-                {alerts.length > 0 && (
-                  <div className="flex items-center gap-2 mt-4 text-accent-terra border-l-2 border-accent-terra/30 pl-3 py-2">
-                    <span className="animate-pulse">▊</span>
-                    <span className="text-neutral-500 text-xs font-light">{alerts.length} active alert{alerts.length !== 1 ? 's' : ''}</span>
-                  </div>
-                )}
               </div>
             )}
           </div>
