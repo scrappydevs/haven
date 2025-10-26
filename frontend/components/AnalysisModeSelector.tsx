@@ -174,11 +174,6 @@ export default function AnalysisModeSelector({ patient, onConfirm, onBack, initi
                 <span>Real-time alerts</span>
               </div>
             </div>
-
-            {/* Recommended Badge */}
-            <div className="absolute top-4 left-4 bg-primary-700 text-white text-xs font-medium px-2 py-1 rounded">
-              RECOMMENDED
-            </div>
           </motion.button>
         </div>
       </div>

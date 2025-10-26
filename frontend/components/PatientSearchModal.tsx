@@ -119,7 +119,7 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
           initial={{ opacity: 0, scale: 0.98, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.98, y: 20 }}
-          className="relative bg-surface border border-neutral-200 max-w-4xl w-full max-h-[80vh] overflow-hidden rounded-lg"
+          className="relative bg-surface border border-neutral-200 max-w-2xl w-full max-h-[80vh] overflow-hidden rounded-lg"
         >
           {/* Header */}
           <div className="p-8 border-b border-neutral-200">

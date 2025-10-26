@@ -88,7 +88,8 @@ RULES:
 
             # Check if we should end the conversation
             if self._should_end_conversation():
-                logger.info(f"Haven conversation complete for patient {self.patient_id}")
+                logger.info(
+                    f"Haven conversation complete for patient {self.patient_id}")
                 self.conversation_complete = True
 
     def _extract_info_from_response(self, patient_response: str):
@@ -104,14 +105,15 @@ RULES:
                 break
 
         # Extract duration indicators
-        duration_keywords = ["minute", "hour", "day", "week", "since", "ago", "started"]
+        duration_keywords = ["minute", "hour",
+                             "day", "week", "since", "ago", "started"]
         if any(keyword in response_lower for keyword in duration_keywords):
             if not self.extracted_info["duration"]:
                 self.extracted_info["duration"] = patient_response
 
         # Extract body location indicators
         body_parts = ["chest", "head", "stomach", "abdomen", "back", "leg", "arm", "neck",
-                     "shoulder", "knee", "foot", "hand", "throat", "ear", "eye"]
+                      "shoulder", "knee", "foot", "hand", "throat", "ear", "eye"]
         for part in body_parts:
             if part in response_lower:
                 if not self.extracted_info["body_location"]:
@@ -128,7 +130,8 @@ RULES:
         # End if we have core information or hit max questions
         has_core_info = (
             self.extracted_info.get("symptom_description") and
-            (self.extracted_info.get("pain_level") or self.extracted_info.get("duration"))
+            (self.extracted_info.get("pain_level")
+             or self.extracted_info.get("duration"))
         )
 
         return has_core_info or self.question_count >= self.max_questions
@@ -172,7 +175,8 @@ async def entrypoint(ctx: agents.JobContext):
         patient_id = "unknown"
         session_id = "unknown"
 
-    logger.info(f"🛡️ Starting Haven agent for patient {patient_id}, session {session_id}")
+    logger.info(
+        f"🛡️ Starting Haven agent for patient {patient_id}, session {session_id}")
 
     # Try to get patient name from cache first, then database
     patient_name = None
@@ -188,11 +192,13 @@ async def entrypoint(ctx: agents.JobContext):
             from supabase_client import supabase
 
             if supabase:
-                result = supabase.table("patients").select("name").eq("patient_id", patient_id).single().execute()
+                result = supabase.table("patients").select("name").eq(
+                    "patient_id", patient_id).single().execute()
                 if result.data:
                     patient_name = result.data.get("name")
                     _patient_name_cache[patient_id] = patient_name  # Cache it
-                    logger.info(f"✅ Found patient name from DB: {patient_name}")
+                    logger.info(
+                        f"✅ Found patient name from DB: {patient_name}")
         except Exception as e:
             logger.warning(f"⚠️ Could not fetch patient name: {e}")
             _patient_name_cache[patient_id] = None  # Cache the None result
@@ -211,7 +217,8 @@ async def entrypoint(ctx: agents.JobContext):
 
             # Voice Activity Detection - aggressive settings for faster response
             vad=silero.VAD.load(
-                min_silence_duration=0.3,  # Stop after 0.3s of silence (optimized)
+                # Stop after 0.3s of silence (optimized)
+                min_silence_duration=0.3,
                 min_speech_duration=0.1,   # Require only 0.1s of speech to start
                 padding_duration=0.05,     # Minimal padding around speech
             ),
@@ -234,7 +241,8 @@ async def entrypoint(ctx: agents.JobContext):
 
         logger.info(f"🗣️ Speaking initial greeting: {greeting}")
         await session.say(greeting)
-        logger.info("✅ Initial greeting spoken, waiting for patient response...")
+        logger.info(
+            "✅ Initial greeting spoken, waiting for patient response...")
 
     except Exception as e:
         logger.error(f"❌ Error in Haven agent entrypoint: {e}", exc_info=True)

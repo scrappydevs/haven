@@ -19,6 +19,92 @@ interface Patient {
   condition: string;
 }
 
+// Extract HavenVoiceAssistant outside to prevent recreation on hot reload
+function HavenVoiceAssistant({ 
+  onTranscriptUpdate, 
+  onError, 
+  onDisconnect 
+}: { 
+  onTranscriptUpdate: (transcript: string) => void;
+  onError: (error: string) => void;
+  onDisconnect: () => void;
+}) {
+  const { state, audioTrack } = useVoiceAssistant();
+  const lastStateRef = useRef<string>('');
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasConnectedRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    // Set a timeout to detect if the agent never connects
+    // Only timeout if we never reach 'listening' or 'idle' state
+    connectionTimeoutRef.current = setTimeout(() => {
+      if (!hasConnectedRef.current && state !== 'listening' && state !== 'idle' && state !== 'thinking' && state !== 'speaking') {
+        console.error('❌ Haven voice agent connection timeout - backend agent worker not responding');
+        console.error('   Current state:', state);
+        console.error('   Start the backend agent: cd backend && ./start_haven_agent.sh');
+        onError('Haven voice agent backend is not running. Start it with: cd backend && ./start_haven_agent.sh');
+        onDisconnect();
+      }
+    }, 20000); // 20 second timeout (longer to account for cold starts)
+
+    return () => {
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+      }
+    };
+  }, []); // Empty deps - only run once on mount
+
+  useEffect(() => {
+    if (state !== lastStateRef.current) {
+      console.log(`🔊 Haven voice agent state changed: ${lastStateRef.current} → ${state}`);
+      lastStateRef.current = state;
+
+      // Mark as connected once we reach a successful state
+      if (state === 'listening' || state === 'idle' || state === 'thinking' || state === 'speaking') {
+        hasConnectedRef.current = true;
+        // Clear timeout once we successfully connect
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+          console.log('✅ Haven voice agent connected successfully');
+        }
+      }
+
+      const timer = setTimeout(() => {
+        if (state === 'connecting') {
+          onTranscriptUpdate('Waiting for Haven AI agent to join the room...');
+        } else if (state === 'listening') {
+          onTranscriptUpdate('🎤 Haven AI is listening. Speak naturally.');
+        } else if (state === 'thinking') {
+          onTranscriptUpdate('🤔 Haven AI is processing your response...');
+        } else if (state === 'speaking') {
+          onTranscriptUpdate('🗣️ Haven AI is speaking...');
+        } else if (state === 'idle') {
+          onTranscriptUpdate('Haven AI connected. You can start speaking.');
+        } else if (state === 'disconnected' && hasConnectedRef.current) {
+          // Only show disconnect error if we were previously connected
+          console.error('❌ Haven voice agent disconnected unexpectedly');
+          onError('Haven voice agent disconnected. Check backend logs.');
+          onDisconnect();
+        }
+      }, 120);
+
+      return () => clearTimeout(timer);
+    }
+  }, [state, onTranscriptUpdate, onError, onDisconnect]);
+
+  return (
+    <>
+      <RoomAudioRenderer />
+      {audioTrack && (
+        <div className="flex justify-center">
+          <BarVisualizer state={state} barCount={6} trackRef={audioTrack} className="w-full" />
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function PatientViewPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -62,6 +148,7 @@ export default function PatientViewPage() {
   const listenerStartingRef = useRef<boolean>(false);
   const listenerTriggeredRef = useRef<boolean>(false);
   const havenStartingRef = useRef<boolean>(false);
+  const listenerInitializedRef = useRef<boolean>(false);
 
   useEffect(() => {
     return () => {
@@ -307,6 +394,7 @@ export default function PatientViewPage() {
     recognitionRef.current = null;
     listenerStartingRef.current = false;
     listenerTriggeredRef.current = false;
+    listenerInitializedRef.current = false;
     setIsListeningForSpeech(false);
   }, []);
 
@@ -389,7 +477,10 @@ export default function PatientViewPage() {
         });
 
         console.log('✅ Haven session ready:', data.room_name);
-        setHavenTranscript('Initializing voice connection...');
+        console.log('🔊 Connecting to LiveKit room:', data.url);
+        console.log('🔊 Waiting for Haven voice agent to join room...');
+        console.log('💡 If stuck, ensure backend agent is running: cd backend && ./start_haven_agent.sh');
+        setHavenTranscript('Connecting to room. Waiting for Haven AI backend agent to join...');
       } catch (err: any) {
         console.error('❌ Failed to start Haven session:', err);
         const errorMessage = err?.message ?? 'unknown error';
@@ -413,7 +504,7 @@ export default function PatientViewPage() {
     [setError, stopListenerAgent, setVoiceAgentUnavailable]
   );
 
-  const startListenerAgent = useCallback(() => {
+  const startListenerAgent = useCallback(async () => {
     const patient = selectedPatientRef.current;
     if (!patient || !viewStartedRef.current || havenActiveRef.current) {
       return;
@@ -424,6 +515,12 @@ export default function PatientViewPage() {
     }
 
     if (listenerStartingRef.current || recognitionRef.current) {
+      console.log('⏭️ Listener already starting or running, skipping...');
+      return;
+    }
+
+    if (listenerInitializedRef.current) {
+      console.log('⏭️ Listener already initialized, skipping restart...');
       return;
     }
 
@@ -435,17 +532,33 @@ export default function PatientViewPage() {
       return;
     }
 
+    // Request microphone permissions first
+    if (typeof navigator.mediaDevices !== 'undefined' && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Stop the stream immediately - we just wanted to get permissions
+        stream.getTracks().forEach(track => track.stop());
+        console.log('✅ Microphone permission granted for listener');
+      } catch (err) {
+        console.error('❌ Microphone permission denied:', err);
+        setError('Microphone permission denied. Please allow microphone access.');
+        setVoiceAgentUnavailable('Microphone access required');
+        return;
+      }
+    }
+
     listenerStartingRef.current = true;
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
-    recognition.interimResults = true;
+    recognition.interimResults = false; // Changed to false to reduce noise
     recognition.lang = 'en-US';
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       console.log('🎧 Listener agent started');
       listenerStartingRef.current = false;
+      listenerInitializedRef.current = true;
       setIsListeningForSpeech(true);
     };
 
@@ -476,7 +589,22 @@ export default function PatientViewPage() {
 
       if (event.error === 'not-allowed') {
         setError('Microphone permission denied. Please allow microphone access for speech detection.');
+        setVoiceAgentUnavailable('Microphone access denied');
+        stopListenerAgent();
+      } else if (event.error === 'audio-capture') {
+        console.warn('⚠️ Microphone busy or unavailable. Will retry...');
+        // Don't restart immediately for audio-capture, wait longer
+        if (!havenActiveRef.current && viewStartedRef.current) {
+          setTimeout(() => {
+            setListenerHeartbeat((prev) => prev + 1);
+          }, 2000); // Wait 2 seconds before retry
+        }
+      } else if (event.error === 'no-speech') {
+        // This is normal - just means no speech detected, restart listener
+        console.log('🔇 No speech detected, restarting listener...');
+        setListenerHeartbeat((prev) => prev + 1);
       } else if (event.error !== 'aborted') {
+        console.warn('⚠️ Speech recognition error, will retry:', event.error);
         setListenerHeartbeat((prev) => prev + 1);
       }
     };
@@ -499,7 +627,7 @@ export default function PatientViewPage() {
       listenerStartingRef.current = false;
       setError('Failed to start microphone for speech detection');
     }
-  }, [setError, startHavenSession, voiceAgentUnavailable]);
+  }, [setError, startHavenSession, voiceAgentUnavailable, setVoiceAgentUnavailable, stopListenerAgent]);
 
   const endHavenSession = useCallback(async () => {
     if (!havenActiveRef.current) {
@@ -557,10 +685,17 @@ export default function PatientViewPage() {
       listenerRestartRef.current = null;
     }
 
-    if (viewStarted && selectedPatient && !havenActive) {
+    // Skip if already initialized and no heartbeat change (prevents hot reload restarts)
+    if (listenerInitializedRef.current && recognitionRef.current && listenerHeartbeat === 0) {
+      console.log('⏭️ Listener already running, skipping restart (hot reload protection)');
+      return;
+    }
+
+    if (viewStarted && selectedPatient && !havenActive && !voiceAgentUnavailable) {
+      // Longer delay to prevent restart loops
       listenerRestartRef.current = setTimeout(() => {
         startListenerAgent();
-      }, 300);
+      }, 1000); // Increased from 300ms to 1 second
     } else if (!viewStarted || !selectedPatient) {
       stopListenerAgent();
     }
@@ -570,7 +705,10 @@ export default function PatientViewPage() {
         clearTimeout(listenerRestartRef.current);
         listenerRestartRef.current = null;
       }
-      stopListenerAgent();
+      // Don't stop on cleanup if we're just hot reloading and listener is active
+      if (!listenerInitializedRef.current || !recognitionRef.current) {
+        stopListenerAgent();
+      }
     };
   }, [viewStarted, selectedPatient, havenActive, listenerHeartbeat, voiceAgentUnavailable, startListenerAgent, stopListenerAgent]);
 
@@ -756,43 +894,21 @@ export default function PatientViewPage() {
     }
   };
 
-  function HavenVoiceAssistant() {
-    const { state, audioTrack } = useVoiceAssistant();
-    const lastStateRef = useRef<string>('');
+  // Callbacks for HavenVoiceAssistant
+  const handleTranscriptUpdate = useCallback((transcript: string) => {
+    setHavenTranscript(transcript);
+  }, []);
 
-    useEffect(() => {
-      if (state !== lastStateRef.current) {
-        lastStateRef.current = state;
+  const handleVoiceError = useCallback((error: string) => {
+    setError(error);
+  }, []);
 
-        const timer = setTimeout(() => {
-          if (state === 'connecting') {
-            setHavenTranscript('Connecting to Haven AI...');
-          } else if (state === 'listening') {
-            setHavenTranscript('🎤 Haven AI is listening. Speak naturally.');
-          } else if (state === 'thinking') {
-            setHavenTranscript('🤔 Haven AI is processing your response...');
-          } else if (state === 'speaking') {
-            setHavenTranscript('🗣️ Haven AI is speaking...');
-          } else if (state === 'idle') {
-            setHavenTranscript('Haven AI connected. You can start speaking.');
-          }
-        }, 120);
-
-        return () => clearTimeout(timer);
-      }
-    }, [state]);
-
-    return (
-      <>
-        <RoomAudioRenderer />
-        {audioTrack && (
-          <div className="flex justify-center">
-            <BarVisualizer state={state} barCount={6} trackRef={audioTrack} className="w-full" />
-          </div>
-        )}
-      </>
-    );
-  };
+  const handleVoiceDisconnect = useCallback(() => {
+    setHavenActive(false);
+    setShowAIAnimation(false);
+    setHavenRoomData(null);
+    havenActiveRef.current = false;
+  }, []);
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -818,7 +934,7 @@ export default function PatientViewPage() {
       {showModeSelector && tempPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-neutral-950/80"
+            className="absolute inset-0 bg-neutral-950/40"
             onClick={() => {
               setShowModeSelector(false);
               setTempPatient(null);
@@ -1044,12 +1160,17 @@ export default function PatientViewPage() {
                     {/* LiveKit Room Layer - Left Side Panel */}
                     <div className="absolute inset-0 z-10 flex items-center justify-start p-8">
                       <LiveKitRoom
+                        key={havenRoomData.session_id}
                         token={havenRoomData.token}
                         serverUrl={havenRoomData.url}
                         connect={true}
                         audio={true}
                         video={false}
                         className="h-full flex items-center"
+                        options={{
+                          // Prevent reconnection loops during hot reload
+                          disconnectOnPageLeave: false,
+                        }}
                       >
                         <div className="max-w-md w-full bg-white/70 backdrop-blur-md border border-neutral-300 p-8 rounded-lg shadow-xl">
                           {/* Header */}
@@ -1059,7 +1180,11 @@ export default function PatientViewPage() {
                           </div>
 
                           {/* Voice Assistant Audio and Visualizer */}
-                          <HavenVoiceAssistant />
+                          <HavenVoiceAssistant 
+                            onTranscriptUpdate={handleTranscriptUpdate}
+                            onError={handleVoiceError}
+                            onDisconnect={handleVoiceDisconnect}
+                          />
 
                           {/* Transcript Display */}
                           <div className="mb-6">
@@ -1067,6 +1192,17 @@ export default function PatientViewPage() {
                               <p className="body-default text-neutral-800">
                                 {havenTranscript || 'Listening...'}
                               </p>
+                              {(havenTranscript.includes('Waiting') || havenTranscript.includes('Connecting to room')) && (
+                                <div className="mt-3 pt-3 border-t border-neutral-200">
+                                  <p className="text-xs font-medium text-neutral-600 mb-1">Backend Required:</p>
+                                  <code className="block bg-neutral-200 text-neutral-900 px-2 py-1.5 rounded text-xs font-mono">
+                                    cd backend && ./start_haven_agent.sh
+                                  </code>
+                                  <p className="text-xs text-neutral-500 mt-2">
+                                    The Haven voice agent worker must be running to handle the conversation.
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </div>
 
