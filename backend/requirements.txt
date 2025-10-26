@@ -18,6 +18,7 @@ protobuf==4.25.5
 
 # OpenTelemetry - constrain to version that works with protobuf 4.x
 opentelemetry-proto<1.26.0
+opentelemetry-exporter-otlp<1.26.0
 opentelemetry-exporter-otlp-proto-grpc<1.26.0
 
 # LiveKit for voice AI intake
