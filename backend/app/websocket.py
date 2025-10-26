@@ -489,8 +489,6 @@ class ConnectionManager:
                     except Exception as e:
                         print(f"⚠️ Agent analysis error: {e}")
 
-                loop.close()
-
                 # Only log if extremely slow (>200ms)
                 if fast_time > 0.2:
                     print(f"⚠️ Slow frame {frame_num}: {fast_time*1000:.0f}ms")

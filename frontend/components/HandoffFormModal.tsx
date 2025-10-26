@@ -111,6 +111,8 @@ export default function HandoffFormModal({ formId, isOpen, onClose, onAcknowledg
     setIsDownloading(true);
     try {
       const apiUrl = getApiUrl();
+      console.log('[PDF Download] Starting PDF generation for alert:', formId);
+
       // Generate PDF on-the-fly for this alert
       const response = await fetch(`${apiUrl}/handoff-agent/generate`, {
         method: 'POST',
@@ -118,14 +120,26 @@ export default function HandoffFormModal({ formId, isOpen, onClose, onAcknowledg
         body: JSON.stringify({ alert_ids: [formId] }),
       });
 
+      console.log('[PDF Download] Generate response status:', response.status);
       const data = await response.json();
+      console.log('[PDF Download] Generate response data:', data);
 
       if (data.success && data.pdf_path) {
+        console.log('[PDF Download] PDF generated successfully, downloading from form_id:', data.form_id);
+
         // Now download the generated PDF
         const pdfResponse = await fetch(`${apiUrl}/handoff-agent/forms/${data.form_id}/pdf`);
-        if (!pdfResponse.ok) throw new Error('Download failed');
+        console.log('[PDF Download] Download response status:', pdfResponse.status);
+
+        if (!pdfResponse.ok) {
+          const errorText = await pdfResponse.text();
+          console.error('[PDF Download] Download failed:', errorText);
+          throw new Error(`Download failed: ${errorText}`);
+        }
 
         const blob = await pdfResponse.blob();
+        console.log('[PDF Download] PDF blob received, size:', blob.size);
+
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -134,12 +148,15 @@ export default function HandoffFormModal({ formId, isOpen, onClose, onAcknowledg
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+
+        console.log('[PDF Download] Download complete!');
       } else {
-        throw new Error('Failed to generate PDF');
+        console.error('[PDF Download] Generation failed:', data.message || 'Unknown error');
+        throw new Error(data.message || 'Failed to generate PDF');
       }
     } catch (error) {
-      console.error('Error downloading PDF:', error);
-      alert('Failed to download PDF. Please try again.');
+      console.error('[PDF Download] Error:', error);
+      alert(`Failed to download PDF. Please try again.\n\nError: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsDownloading(false);
     }

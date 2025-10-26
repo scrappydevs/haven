@@ -6,8 +6,21 @@ from datetime import datetime, timedelta
 from app.supabase_client import supabase
 from app.models.handoff_forms import AlertInfo, AlertSeverity, AlertStatus, AlertType
 import logging
+import json
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_alert_metadata(alert: Dict[str, Any]) -> Dict[str, Any]:
+    """Parse metadata field from JSON string to dict if needed"""
+    if isinstance(alert.get('metadata'), str):
+        try:
+            alert['metadata'] = json.loads(alert['metadata'])
+        except:
+            alert['metadata'] = {}
+    elif alert.get('metadata') is None:
+        alert['metadata'] = {}
+    return alert
 
 
 class AlertsService:
@@ -20,7 +33,8 @@ class AlertsService:
             response = supabase.table("alerts").select("*").eq("id", alert_id).execute()
 
             if response.data and len(response.data) > 0:
-                return AlertInfo(**response.data[0])
+                alert = _parse_alert_metadata(response.data[0])
+                return AlertInfo(**alert)
             return None
         except Exception as e:
             logger.error(f"Error fetching alert {alert_id}: {e}")
@@ -61,7 +75,7 @@ class AlertsService:
             response = query.execute()
 
             if response.data:
-                return [AlertInfo(**alert) for alert in response.data]
+                return [AlertInfo(**_parse_alert_metadata(alert)) for alert in response.data]
             return []
         except Exception as e:
             logger.error(f"Error fetching alerts for patient {patient_id}: {e}")
@@ -74,10 +88,12 @@ class AlertsService:
             response = supabase.table("alerts").select("*").in_("id", alert_ids).execute()
 
             if response.data:
-                return [AlertInfo(**alert) for alert in response.data]
+                return [AlertInfo(**_parse_alert_metadata(alert)) for alert in response.data]
             return []
         except Exception as e:
             logger.error(f"Error fetching alerts by IDs: {e}")
+            import traceback
+            traceback.print_exc()
             return []
 
     @staticmethod
@@ -111,7 +127,7 @@ class AlertsService:
             response = query.execute()
 
             if response.data:
-                return [AlertInfo(**alert) for alert in response.data]
+                return [AlertInfo(**_parse_alert_metadata(alert)) for alert in response.data]
             return []
         except Exception as e:
             logger.error(f"Error fetching recent alerts: {e}")
@@ -131,7 +147,7 @@ class AlertsService:
             )
 
             if response.data:
-                return [AlertInfo(**alert) for alert in response.data]
+                return [AlertInfo(**_parse_alert_metadata(alert)) for alert in response.data]
             return []
         except Exception as e:
             logger.error(f"Error fetching unhandled alerts: {e}")
@@ -157,7 +173,7 @@ class AlertsService:
             response = query.execute()
 
             if response.data:
-                return [AlertInfo(**alert) for alert in response.data]
+                return [AlertInfo(**_parse_alert_metadata(alert)) for alert in response.data]
             return []
         except Exception as e:
             logger.error(f"Error fetching critical alerts: {e}")
@@ -234,11 +250,13 @@ class AlertsService:
             # Combine and deduplicate
             if critical_response.data:
                 for alert in critical_response.data:
-                    alerts_dict[alert["id"]] = AlertInfo(**alert)
+                    parsed_alert = _parse_alert_metadata(alert)
+                    alerts_dict[alert["id"]] = AlertInfo(**parsed_alert)
 
             if recent_response.data:
                 for alert in recent_response.data:
-                    alerts_dict[alert["id"]] = AlertInfo(**alert)
+                    parsed_alert = _parse_alert_metadata(alert)
+                    alerts_dict[alert["id"]] = AlertInfo(**parsed_alert)
 
             return list(alerts_dict.values())
         except Exception as e:
