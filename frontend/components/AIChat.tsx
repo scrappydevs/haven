@@ -694,7 +694,7 @@ export default function AIChat() {
             style={{ 
               width: `${panelSize.width}px`,
               height: `${panelSize.height}px`,
-              borderRadius: '12px',
+              borderRadius: '12px 12px 8px 8px',
               transformOrigin: 'bottom right',
               cursor: isResizing ? 'grabbing' : 'default',
               userSelect: isResizing ? 'none' : 'auto'
@@ -1009,7 +1009,7 @@ export default function AIChat() {
                       onKeyPress={handleKeyPress}
                       placeholder={isLoading ? "Thinking..." : isStreaming ? "Responding..." : isListening ? "Listening..." : "Ask me anything... (@ to tag)"}
                       disabled={isLoading || isStreaming}
-                      className="flex-1 px-3 py-2 text-sm font-light text-neutral-950 placeholder:text-neutral-400 border border-neutral-200 focus:outline-none focus:border-primary-700 transition-colors disabled:opacity-50 disabled:bg-neutral-50"
+                      className="flex-1 px-3 py-2 text-sm font-light text-neutral-950 placeholder:text-neutral-600 border border-neutral-200 focus:outline-none focus:border-primary-700 transition-colors disabled:opacity-50 disabled:bg-neutral-50"
                       style={{ borderRadius: '6px' }}
                     />
                     {/* Voice Input Button */}
@@ -1044,21 +1044,21 @@ export default function AIChat() {
                 </div>
                 
               {/* Location Footer */}
-              <div className="px-4 py-3 border-t border-neutral-200 bg-neutral-50">
-                <div className="flex items-center justify-between text-xs font-light text-neutral-500">
+              <div className="px-4 py-3 border-t border-neutral-200 bg-neutral-50" style={{ borderRadius: '0 0 8px 8px' }}>
+                <div className="flex items-center justify-between text-xs font-light text-neutral-700">
                   <span className="uppercase tracking-wider flex items-center gap-2">
                     {pathname?.includes('floorplan') ? (
                       <><span className="text-sm">🗺️</span><span>Floor Plan</span></>
                     ) : pathname?.includes('dashboard') ? (
-                      <><span className="text-sm">📊</span><span>Dashboard</span></>
+                      <span>Dashboard</span>
                     ) : pathname?.includes('stream') ? (
                       <><span className="text-sm">📹</span><span>Patient Stream</span></>
                     ) : (
                       <><span className="text-sm">🏥</span><span>Haven</span></>
                     )}
                   </span>
-                  <span className="text-neutral-400 font-mono text-[10px]" title="Keyboard shortcut: ⌘⇧H">
-                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ⌘⇧H
+                  <span className="text-neutral-700 font-mono text-[10px]">
+                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               </div>

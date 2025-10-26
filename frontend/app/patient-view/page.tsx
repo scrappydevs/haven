@@ -9,6 +9,7 @@ import AnalysisModeSelector, { AnalysisMode } from '@/components/AnalysisModeSel
 import AIVoiceAnimation from '@/components/AIVoiceAnimation';
 import { getApiUrl, getWsUrl } from '@/lib/api';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface Patient {
   id: string;
@@ -105,6 +106,7 @@ function HavenVoiceAssistant({
 }
 
 export default function PatientViewPage() {
+  const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -114,6 +116,7 @@ export default function PatientViewPage() {
   const selectedPatientRef = useRef<Patient | null>(null);
   const viewStartedRef = useRef<boolean>(false);
   const havenActiveRef = useRef<boolean>(false);
+  const suppressDashboardRedirectRef = useRef<boolean>(false);
 
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [tempPatient, setTempPatient] = useState<Patient | null>(null);
@@ -909,13 +912,23 @@ export default function PatientViewPage() {
     havenActiveRef.current = false;
   }, []);
 
+  const handlePatientModalClose = useCallback(() => {
+    setShowPatientModal(false);
+    if (suppressDashboardRedirectRef.current) {
+      suppressDashboardRedirectRef.current = false;
+      return;
+    }
+    router.push('/dashboard');
+  }, [router]);
+
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Patient selection flow */}
       <PatientSearchModal
         isOpen={showPatientModal && !selectedPatient}
-        onClose={() => setShowPatientModal(false)}
+        onClose={handlePatientModalClose}
         onSelect={(patient) => {
+          suppressDashboardRedirectRef.current = true;
           const savedMode = typeof window !== 'undefined'
             ? localStorage.getItem(`analysis-mode-${patient.patient_id}`)
             : null;
