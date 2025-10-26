@@ -13,8 +13,12 @@ scipy==1.14.1
 # AI/ML
 anthropic==0.44.0
 
-# Protobuf - pinned to satisfy mediapipe
+# Protobuf - pinned to satisfy mediapipe and cosmpy
 protobuf==4.25.5
+
+# OpenTelemetry - constrain to version that works with protobuf 4.x
+opentelemetry-proto<1.26.0
+opentelemetry-exporter-otlp-proto-grpc<1.26.0
 
 # LiveKit for voice AI intake
 livekit==1.0.17
