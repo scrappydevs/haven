@@ -26,12 +26,12 @@ function AnimatedBlob({ isActive }: { isActive: boolean }) {
     <Sphere ref={meshRef} args={[1, 128, 128]} scale={2.5}>
       <MeshDistortMaterial
         ref={materialRef}
-        color="#ffffff"
+        color="#1a1a1a"
         attach="material"
         distort={isActive ? 0.4 : 0.3}
         speed={isActive ? 3 : 1.5}
-        roughness={0.1}
-        metalness={0.8}
+        roughness={0.2}
+        metalness={0.6}
       />
     </Sphere>
   );
@@ -107,24 +107,6 @@ export default function AIVoiceAnimation({ isActive }: { isActive: boolean }) {
           maxPolarAngle={Math.PI / 1.5}
         />
       </Canvas>
-
-      {/* Status Text Overlay */}
-      {isActive && (
-        <div className="absolute bottom-8 left-0 right-0 text-center">
-          <div className="inline-flex items-center gap-3 px-6 py-3 bg-white/90 backdrop-blur-sm rounded-full shadow-lg">
-            <div className="flex gap-1">
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="w-1.5 h-1.5 bg-neutral-700 rounded-full animate-pulse"
-                  style={{ animationDelay: `${i * 150}ms` }}
-                />
-              ))}
-            </div>
-            <span className="text-sm font-medium text-neutral-700">Listening</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

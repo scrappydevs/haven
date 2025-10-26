@@ -56,6 +56,7 @@ export default function PatientViewPage() {
   } | null>(null);
   const [isListeningForSpeech, setIsListeningForSpeech] = useState(false);
   const [listenerHeartbeat, setListenerHeartbeat] = useState(0);
+  const [voiceAgentUnavailable, setVoiceAgentUnavailable] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const listenerRestartRef = useRef<NodeJS.Timeout | null>(null);
   const listenerStartingRef = useRef<boolean>(false);
@@ -324,6 +325,7 @@ export default function PatientViewPage() {
       listenerTriggeredRef.current = source === 'listener';
 
       setError(null);
+      setVoiceAgentUnavailable(null);
       setShowAIAnimation(true);
       setHavenActive(true);
       setHavenTranscript(
@@ -377,25 +379,34 @@ export default function PatientViewPage() {
         setHavenTranscript('Initializing voice connection...');
       } catch (err: any) {
         console.error('❌ Failed to start Haven session:', err);
-        setError('Failed to start voice assistant: ' + (err?.message ?? 'unknown error'));
+        const errorMessage = err?.message ?? 'unknown error';
+        setError('Failed to start voice assistant: ' + errorMessage);
         setHavenActive(false);
         setShowAIAnimation(false);
         setHavenRoomData(null);
         listenerTriggeredRef.current = false;
         havenActiveRef.current = false;
-        if (source === 'listener' && viewStartedRef.current && selectedPatientRef.current) {
+        if (errorMessage.toLowerCase().includes('livekit configuration incomplete') ||
+            errorMessage.toLowerCase().includes('livekit sdk not installed')) {
+          setVoiceAgentUnavailable('Backend missing LiveKit dependencies. Install livekit packages and restart server.');
+          stopListenerAgent();
+        } else if (source === 'listener' && viewStartedRef.current && selectedPatientRef.current) {
           setListenerHeartbeat((prev) => prev + 1);
         }
       } finally {
         havenStartingRef.current = false;
       }
     },
-    [setError, stopListenerAgent]
+    [setError, stopListenerAgent, setVoiceAgentUnavailable]
   );
 
   const startListenerAgent = useCallback(() => {
     const patient = selectedPatientRef.current;
     if (!patient || !viewStartedRef.current || havenActiveRef.current) {
+      return;
+    }
+
+    if (voiceAgentUnavailable) {
       return;
     }
 
@@ -475,7 +486,7 @@ export default function PatientViewPage() {
       listenerStartingRef.current = false;
       setError('Failed to start microphone for speech detection');
     }
-  }, [setError, startHavenSession]);
+  }, [setError, startHavenSession, voiceAgentUnavailable]);
 
   const endHavenSession = useCallback(async () => {
     if (!havenActiveRef.current) {
@@ -548,7 +559,7 @@ export default function PatientViewPage() {
       }
       stopListenerAgent();
     };
-  }, [viewStarted, selectedPatient, havenActive, listenerHeartbeat, startListenerAgent, stopListenerAgent]);
+  }, [viewStarted, selectedPatient, havenActive, listenerHeartbeat, voiceAgentUnavailable, startListenerAgent, stopListenerAgent]);
 
   const startCapture = () => {
     const video = videoRef.current;
@@ -684,6 +695,11 @@ export default function PatientViewPage() {
       return;
     }
 
+    if (voiceAgentUnavailable) {
+      setError(voiceAgentUnavailable);
+      return;
+    }
+
     // Simple toggle between webcam view and 3D animation view
     setShowAIAnimation(!showAIAnimation);
   };
@@ -698,6 +714,11 @@ export default function PatientViewPage() {
 
     if (!viewStartedRef.current) {
       setError('Start the patient view before activating the voice agent.');
+      return;
+    }
+
+    if (voiceAgentUnavailable) {
+      setError(voiceAgentUnavailable);
       return;
     }
 
@@ -1052,9 +1073,11 @@ export default function PatientViewPage() {
                       <p className="text-xs text-neutral-500">
                         {havenActive
                           ? 'Voice conversation in progress'
-                          : isListeningForSpeech
-                            ? 'Listening for patient speech...'
-                            : 'Click to start Haven voice agent'}
+                          : voiceAgentUnavailable
+                            ? 'Voice agent unavailable. Check backend configuration.'
+                            : isListeningForSpeech
+                              ? 'Listening for patient speech...'
+                              : 'Click to start Haven voice agent'}
                       </p>
                     </div>
                   </div>
@@ -1064,12 +1087,20 @@ export default function PatientViewPage() {
                     <div className={`w-2 h-2 rounded-full ${
                       havenActive
                         ? 'bg-accent-terra animate-pulse'
-                        : isListeningForSpeech
-                          ? 'bg-primary-500 animate-pulse'
-                          : 'bg-neutral-400'
+                        : voiceAgentUnavailable
+                          ? 'bg-accent-terra/70'
+                          : isListeningForSpeech
+                            ? 'bg-primary-500 animate-pulse'
+                            : 'bg-neutral-400'
                     }`} />
                     <span className="text-xs text-neutral-600">
-                      {havenActive ? 'Active' : isListeningForSpeech ? 'Listening' : 'Ready'}
+                      {havenActive
+                        ? 'Active'
+                        : voiceAgentUnavailable
+                          ? 'Unavailable'
+                          : isListeningForSpeech
+                            ? 'Listening'
+                            : 'Ready'}
                     </span>
                   </div>
 
@@ -1079,9 +1110,11 @@ export default function PatientViewPage() {
                     className={`w-12 h-12 rounded-full transition-all duration-200 flex items-center justify-center ${
                       havenActive
                         ? 'bg-accent-terra hover:bg-accent-terra/90 shadow-lg'
-                        : isListeningForSpeech
-                          ? 'bg-primary-200 hover:bg-primary-300'
-                          : 'bg-neutral-200 hover:bg-neutral-300'
+                        : voiceAgentUnavailable
+                          ? 'bg-neutral-300 cursor-not-allowed'
+                          : isListeningForSpeech
+                            ? 'bg-primary-200 hover:bg-primary-300'
+                            : 'bg-neutral-200 hover:bg-neutral-300'
                     }`}
                   >
                     {havenActive ? (

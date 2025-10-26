@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import AnalysisModeSelector, { AnalysisMode } from '@/components/AnalysisModeSelector';
+import AIVoiceAnimation from '@/components/AIVoiceAnimation';
 import { getApiUrl, getWsUrl } from '@/lib/api';
 import { LiveKitRoom, useVoiceAssistant, BarVisualizer, RoomAudioRenderer } from '@livekit/components-react';
 import '@livekit/components-styles';
@@ -42,6 +43,7 @@ export default function StreamPage() {
   const [havenActive, setHavenActive] = useState(false);
   const [havenTranscript, setHavenTranscript] = useState<string>('');
   const [havenRoomData, setHavenRoomData] = useState<{token: string, url: string, room_name: string, session_id: string} | null>(null);
+  const [voiceAssistantActive, setVoiceAssistantActive] = useState(false);
   const recognitionRef = useRef<any>(null);
   const isStartingRecognitionRef = useRef<boolean>(false);
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -767,21 +769,24 @@ export default function StreamPage() {
 
         console.log('🎤 Haven voice assistant state:', state);
 
+        // Update voice assistant active state for animation
+        setVoiceAssistantActive(state === 'listening' || state === 'speaking' || state === 'thinking');
+
         // Update transcript based on voice assistant state with slight delay to avoid flicker
         const timer = setTimeout(() => {
           if (state === 'connecting') {
             setHavenTranscript('Connecting to Haven AI...');
           } else if (state === 'listening') {
-            setHavenTranscript('🎤 Haven AI is listening. Speak naturally.');
+            setHavenTranscript('Haven AI is listening');
           } else if (state === 'thinking') {
-            setHavenTranscript('🤔 Haven AI is processing your response...');
+            setHavenTranscript('Haven AI is processing');
           } else if (state === 'speaking') {
-            setHavenTranscript('🗣️ Haven AI is speaking...');
+            setHavenTranscript('Haven AI is speaking');
           } else if (state === 'initializing') {
             setHavenTranscript('Haven AI is initializing...');
           } else {
             // Handle any other states (disconnected, etc)
-            setHavenTranscript('Haven AI connected.');
+            setHavenTranscript('Haven AI connected');
           }
         }, 100);
 
@@ -970,49 +975,42 @@ export default function StreamPage() {
 
             {/* Haven Voice Agent Conversation Overlay */}
             {havenActive && havenRoomData && (
-              <div className="absolute inset-0 bg-primary-900/95 flex flex-col items-center justify-center p-8">
-                <LiveKitRoom
-                  token={havenRoomData.token}
-                  serverUrl={havenRoomData.url}
-                  connect={true}
-                  audio={true}
-                  video={false}
-                  className="max-w-md w-full"
-                >
-                  <div className="max-w-md w-full bg-white/10 backdrop-blur-sm border-2 border-primary-400 p-8 rounded-lg">
-                    <div className="flex items-center justify-center gap-3 mb-6">
-                      <div className="w-4 h-4 bg-primary-400 rounded-full animate-pulse" />
-                      <h3 className="heading-section text-white">Haven AI Active</h3>
-                    </div>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                {/* AI Voice Animation Background */}
+                <div className="absolute inset-0">
+                  <AIVoiceAnimation isActive={voiceAssistantActive} />
+                </div>
 
-                    {/* Voice Assistant Audio and Visualizer */}
+                {/* LiveKit Room (hidden, for state management) */}
+                <div className="hidden">
+                  <LiveKitRoom
+                    token={havenRoomData.token}
+                    serverUrl={havenRoomData.url}
+                    connect={true}
+                    audio={true}
+                    video={false}
+                  >
                     <HavenVoiceAssistant />
+                  </LiveKitRoom>
+                </div>
 
-                    <div className="mb-6">
-                      <div className="bg-white/5 border border-white/20 p-4 rounded-lg min-h-[100px]">
-                        <p className="body-default text-white/90">
-                          {havenTranscript || 'Listening...'}
-                        </p>
-                      </div>
-                    </div>
+                {/* Status Text Overlay */}
+                <div className="relative z-10 text-center mb-8">
+                  <h3 className="text-2xl font-light text-neutral-800 mb-2">Haven Voice Agent</h3>
+                  <p className="text-sm text-neutral-600 font-medium">
+                    {havenTranscript || 'Initializing...'}
+                  </p>
+                </div>
 
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-2 text-white/60 text-xs">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                        </svg>
-                        <span className="label-uppercase">Speak naturally about your concern</span>
-                      </div>
-
-                      <button
-                        onClick={endHavenSession}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white label-uppercase text-xs transition-colors"
-                      >
-                        End Conversation
-                      </button>
-                    </div>
-                  </div>
-                </LiveKitRoom>
+                {/* End Conversation Button */}
+                <div className="relative z-10 absolute bottom-8">
+                  <button
+                    onClick={endHavenSession}
+                    className="px-6 py-3 bg-neutral-900 hover:bg-neutral-700 text-white label-uppercase text-sm transition-colors rounded-lg shadow-lg"
+                  >
+                    End Conversation
+                  </button>
+                </div>
               </div>
             )}
           </div>
