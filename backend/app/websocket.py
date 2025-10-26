@@ -204,16 +204,33 @@ class ConnectionManager:
         # This happens BEFORE CV processing to ensure no lag
         if self.viewers:
             import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self.broadcast_frame({
-                "type": "live_frame",
-                "patient_id": patient_id,
-                "data": {
-                    "frame": frame_data
-                }
-            }))
-            loop.close()
+            try:
+                # Try to get existing event loop
+                loop = asyncio.get_running_loop()
+                # If we're already in an async context, schedule the broadcast
+                asyncio.create_task(self.broadcast_frame({
+                    "type": "live_frame",
+                    "patient_id": patient_id,
+                    "data": {
+                        "frame": frame_data
+                    }
+                }))
+            except RuntimeError:
+                # No running loop - create one for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self.broadcast_frame({
+                        "type": "live_frame",
+                        "patient_id": patient_id,
+                        "data": {
+                            "frame": frame_data
+                        }
+                    }))
+                except Exception as e:
+                    print(f"⚠️ Queue error for {patient_id}: {e}")
+                finally:
+                    loop.close()
 
         try:
             # Non-blocking put - if queue is full, discard frame (keep video real-time)
@@ -258,20 +275,34 @@ class ConnectionManager:
                 # Check analysis mode
                 if analysis_mode == "normal":
                     # NORMAL MODE: No AI/CV processing, just send empty overlay
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(self.broadcast_frame({
-                        "type": "overlay_data",
-                        "patient_id": patient_id,
-                        "frame_num": frame_num,
-                        "data": {
-                            "landmarks": [],
-                            "connections": [],
-                            "head_pose_axes": None,
-                            "metrics": None
-                        }
-                    }))
-                    loop.close()
+                    try:
+                        loop = asyncio.get_running_loop()
+                        asyncio.create_task(self.broadcast_frame({
+                            "type": "overlay_data",
+                            "patient_id": patient_id,
+                            "frame_num": frame_num,
+                            "data": {
+                                "landmarks": [],
+                                "connections": [],
+                                "head_pose_axes": None,
+                                "metrics": None
+                            }
+                        }))
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(self.broadcast_frame({
+                            "type": "overlay_data",
+                            "patient_id": patient_id,
+                            "frame_num": frame_num,
+                            "data": {
+                                "landmarks": [],
+                                "connections": [],
+                                "head_pose_axes": None,
+                                "metrics": None
+                            }
+                        }))
+                        loop.close()
                     continue
 
                 # ENHANCED MODE: Full AI/CV analysis
@@ -303,15 +334,27 @@ class ConnectionManager:
                     "metrics": slow_result["metrics"] if slow_result else None
                 }
 
-                # Broadcast overlay data (async operation, need event loop)
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self.broadcast_frame({
-                    "type": "overlay_data",
-                    "patient_id": patient_id,
-                    "frame_num": frame_num,
-                    "data": overlay_data
-                }))
+                # Broadcast overlay data (async operation, run in existing event loop)
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Already in async context, create task
+                    asyncio.create_task(self.broadcast_frame({
+                        "type": "overlay_data",
+                        "patient_id": patient_id,
+                        "frame_num": frame_num,
+                        "data": overlay_data
+                    }))
+                except RuntimeError:
+                    # No running loop, create one
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.broadcast_frame({
+                        "type": "overlay_data",
+                        "patient_id": patient_id,
+                        "frame_num": frame_num,
+                        "data": overlay_data
+                    }))
+                    loop.close()
 
                 # Agent analysis: if we just calculated metrics, analyze them
                 if slow_result and slow_result.get("metrics"):
@@ -366,20 +409,9 @@ class ConnectionManager:
                                 thread_loop = asyncio.new_event_loop()
                                 asyncio.set_event_loop(thread_loop)
                                 
-                                # Get room_id from Supabase (if available)
-                                room_id = None
-                                try:
-                                    from app.supabase_client import supabase
-                                    if supabase:
-                                        patient_response = supabase.table("patients").select("room_id").eq("patient_id", patient_id).single().execute()
-                                        if patient_response.data:
-                                            room_id = patient_response.data.get("room_id")
-                                except Exception as e:
-                                    pass  # Continue without room_id if query fails
-
                                 # Run analysis
                                 analysis = thread_loop.run_until_complete(
-                                    fetch_health_agent.analyze_patient(patient_id, vitals, cv_metrics, room_id=room_id)
+                                    fetch_health_agent.analyze_patient(patient_id, vitals, cv_metrics)
                                 )
                                 
                                 # Truncate reasoning for UI (keep first 150 chars)
@@ -533,12 +565,8 @@ class ConnectionManager:
         dead = [
             r for r in results if r is not None and not isinstance(r, Exception)]
         for viewer in dead:
-            self.disconnect(viewer)
-
-    async def broadcast_message(self, message: Dict):
-        """Send any message to all viewers (used for wearable vitals, alerts, etc.)"""
-        await self.broadcast_frame(message)
-
+              self.disconnect(viewer)
+  
 
 manager = ConnectionManager()
 

@@ -72,16 +72,15 @@ class FetchHealthAgent:
         print(f"   Emergency Call: 1 per {self.emergency_call_cooldown:.0f}s per patient")
         print(f"   Status: {'✅ Ready' if self.enabled else '❌ Disabled'}")
     
-    async def analyze_patient(self, patient_id: str, vitals: Dict, cv_metrics: Dict, room_id: Optional[str] = None) -> Dict:
+    async def analyze_patient(self, patient_id: str, vitals: Dict, cv_metrics: Dict) -> Dict:
         """
         Send patient data to Agentverse agent for analysis
-
+        
         Args:
             patient_id: Patient identifier
             vitals: {heart_rate, temperature, blood_pressure, spo2}
             cv_metrics: {movement_event, movement_confidence, movement_details, respiratory_rate, ...}
-            room_id: Optional room identifier for alert creation
-
+        
         Returns:
             {severity, concerns, recommended_action, reasoning, confidence}
         """
@@ -138,18 +137,6 @@ class FetchHealthAgent:
                 "agent_type": "FETCH_AI_HEALTH_AGENT"
             }
             self.alerts.append(alert)
-
-            # Insert alert into Supabase database
-            await self._insert_alert_to_supabase(
-                patient_id=patient_id,
-                room_id=room_id,
-                severity=analysis["severity"],
-                concerns=analysis["concerns"],
-                reasoning=analysis["reasoning"],
-                recommended_action=analysis["recommended_action"],
-                cv_metrics=cv_metrics,
-                vitals=vitals
-            )
         
         # Concise result logging
         severity_emoji = {"CRITICAL": "🚨", "WARNING": "⚠️", "NORMAL": "✅"}.get(analysis["severity"], "ℹ️")
@@ -170,21 +157,35 @@ class FetchHealthAgent:
         
         print(f"📤 Sending to Agentverse agent: {self.agentverse_address[:20]}...")
         
-        # Query the agent with longer timeout for Claude processing
+        # Query the agent with reduced timeout to prevent long hangs
         try:
             response = await query(
                 destination=self.agentverse_address,
                 message=patient_update,
-                timeout=30.0  # 30 second timeout for Claude
+                timeout=10.0  # 10 second timeout (reduced from 30s)
             )
             print(f"📥 ✅ Response from Agentverse agent")
         except Exception as e:
-            print(f"📥 ❌ Agentverse timeout: {str(e)[:50]}")
-            raise
+            error_msg = str(e)[:100]
+            print(f"📥 ❌ Agentverse error: {error_msg}")
+            raise Exception(f"Agentverse timeout or error: {error_msg}")
         
         # Parse response (MovementAnalysis from Agentverse)
-        if response and hasattr(response, 'decode_payload'):
+        if not response:
+            raise Exception("No response from Agentverse agent (empty response)")
+        
+        if not hasattr(response, 'decode_payload'):
+            raise Exception(f"Invalid response type from Agentverse agent: {type(response)}")
+        
+        try:
             result = response.decode_payload()
+            
+            # Validate result has required fields
+            if not isinstance(result, dict):
+                raise Exception(f"Agentverse returned non-dict payload: {type(result)}")
+            
+            if "severity" not in result:
+                raise Exception(f"Agentverse response missing 'severity' field: {list(result.keys())}")
             
             # Convert action list to string
             actions = result.get("recommended_action", [])
@@ -200,8 +201,8 @@ class FetchHealthAgent:
                 "reasoning": result.get("reasoning", "Analysis from Agentverse agent"),
                 "confidence": result.get("confidence", 0.8)
             }
-        else:
-            raise Exception("Invalid response from Agentverse agent")
+        except Exception as e:
+            raise Exception(f"Failed to parse Agentverse response: {str(e)[:100]}")
     
     def _fallback_analysis(self, vitals: Dict, cv_metrics: Dict) -> Dict:
         """
@@ -292,92 +293,6 @@ class FetchHealthAgent:
             "confidence": confidence
         }
     
-    async def _insert_alert_to_supabase(
-        self,
-        patient_id: str,
-        severity: str,
-        concerns: List[str],
-        reasoning: str,
-        recommended_action: str,
-        cv_metrics: Dict,
-        vitals: Dict,
-        room_id: Optional[str] = None
-    ):
-        """Insert alert into Supabase alerts table"""
-        try:
-            from app.supabase_client import supabase
-
-            if not supabase:
-                print("⚠️  Supabase not configured - skipping alert insertion")
-                return
-
-            # Determine alert_type from movement event
-            movement_event = cv_metrics.get('movement_event', 'normal').lower()
-            alert_type_map = {
-                'fall': 'fall_risk',
-                'seizure': 'vital_sign',
-                'extreme_agitation': 'other',
-                'normal': 'vital_sign'
-            }
-            alert_type = alert_type_map.get(movement_event, 'vital_sign')
-
-            # Map severity (CRITICAL/WARNING -> critical/high)
-            severity_map = {
-                'CRITICAL': 'critical',
-                'WARNING': 'high'
-            }
-            db_severity = severity_map.get(severity, 'medium')
-
-            # Create alert title based on movement event
-            if movement_event == 'fall':
-                title = "Fall Detected"
-            elif movement_event == 'seizure':
-                title = "Seizure Activity Detected"
-            elif movement_event == 'extreme_agitation':
-                title = "Extreme Agitation Detected"
-            elif vitals.get('heart_rate', 0) > 120:
-                title = "Elevated Heart Rate"
-            elif vitals.get('heart_rate', 0) < 50:
-                title = "Low Heart Rate"
-            else:
-                title = f"{severity} - Health Alert"
-
-            # Create description from concerns and reasoning
-            concerns_text = "; ".join(concerns) if concerns else ""
-            description = f"{concerns_text}. {reasoning}" if concerns_text else reasoning
-
-            # Prepare metadata
-            metadata = {
-                "cv_metrics": cv_metrics,
-                "vitals": vitals,
-                "concerns": concerns,
-                "recommended_action": recommended_action,
-                "agent_type": "FETCH_AI_HEALTH_AGENT",
-                "confidence": cv_metrics.get('movement_confidence', 0.0)
-            }
-
-            # Insert into database
-            result = supabase.table("alerts").insert({
-                "alert_type": alert_type,
-                "severity": db_severity,
-                "patient_id": patient_id,
-                "room_id": room_id,
-                "title": title,
-                "description": description[:500],  # Truncate to fit schema
-                "status": "active",
-                "triggered_by": "FETCH_AI_AGENT",
-                "metadata": metadata
-            }).execute()
-
-            if result.data:
-                alert_id = result.data[0].get('id', 'unknown')
-                print(f"✅ Alert inserted to Supabase: {alert_id} ({title})")
-            else:
-                print(f"⚠️  Alert insertion failed - no data returned")
-
-        except Exception as e:
-            print(f"❌ Error inserting alert to Supabase: {e}")
-
     # ==================== EMERGENCY CALL MANAGEMENT ====================
 
     def should_make_emergency_call(self, patient_id: str, severity: str) -> bool:
