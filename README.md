@@ -7,24 +7,13 @@
 ---
 
 <div align="center">
-  <table>
-    <tr>
-      <td width="50%">
-        <img src="Haven AI.gif" alt="Haven AI Dashboard" width="100%" />
-      </td>
-      <td width="50%">
-        <img src="Haven AI Chat.gif" alt="Haven AI Chat" width="100%" />
-      </td>
-    </tr>
-    <tr>
-      <td width="50%">
-        <img src="Haven Seizure Example.gif" alt="Haven Seizure Detection" width="100%" />
-      </td>
-      <td width="50%">
-        <img src="Haven Shoulder Pain Relief.gif" alt="Haven Shoulder Pain Relief" width="100%" />
-      </td>
-    </tr>
-  </table>
+  <img src="Haven AI.gif" alt="Haven AI Dashboard" width="49%" />
+  <img src="Haven AI Chat.gif" alt="Haven AI Chat" width="49%" />
+</div>
+
+<div align="center">
+  <img src="Haven Seizure Example.gif" alt="Haven Seizure Detection" width="49%" />
+  <img src="Haven Shoulder Pain Relief.gif" alt="Haven Shoulder Pain Relief" width="49%" />
 </div>
 
 ---
