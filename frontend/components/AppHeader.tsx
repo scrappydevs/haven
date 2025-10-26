@@ -62,7 +62,7 @@ export default function AppHeader({ alerts = [], onAlertResolve, onPatientClick,
                   : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
               }`}
             >
-              Floor Plan
+              Hospital Map
             </a>
             <a
               href="/patient-view"
