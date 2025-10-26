@@ -3,7 +3,8 @@ Haven AI - Backend API
 FastAPI application serving pre-computed CV results and trial data
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import logging
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -46,6 +47,36 @@ except ImportError:
     anthropic_client = None
     print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
 
+logger = logging.getLogger("haven.main")
+
+# LiveKit configuration checks
+REQUIRED_LIVEKIT_SECRETS = ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "LIVEKIT_URL"]
+try:
+    import livekit  # noqa: F401
+    _LIVEKIT_IMPORT_ERROR = None
+    _LIVEKIT_AVAILABLE = True
+except ImportError as livekit_exc:
+    _LIVEKIT_IMPORT_ERROR = livekit_exc
+    _LIVEKIT_AVAILABLE = False
+
+
+def _check_livekit_config() -> tuple[bool, list[str]]:
+    """
+    Verify LiveKit dependencies and configuration. Returns a tuple of:
+    (is_ready, list_of_issue_strings)
+    """
+    issues: list[str] = []
+
+    if not _LIVEKIT_AVAILABLE:
+        issues.append(f"LiveKit SDK not installed ({_LIVEKIT_IMPORT_ERROR})")
+
+    missing = [key for key in REQUIRED_LIVEKIT_SECRETS if not get_secret(key)]
+    if missing:
+        issues.append(f"Missing LiveKit secrets: {', '.join(missing)}")
+
+    return len(issues) == 0, issues
+
+
 app = FastAPI(
     title="Haven",
     description="Real-time patient monitoring and floor plan management for clinical trials",
@@ -77,6 +108,17 @@ if cv_file.exists():
         cv_results = json.load(f)
 else:
     print("⚠️  Warning: precomputed_cv.json not found. Run scripts/precompute_cv.py first!")
+
+
+@app.on_event("startup")
+async def _log_livekit_status():
+    """Log LiveKit readiness once the app starts."""
+    ready, issues = _check_livekit_config()
+    if ready:
+        logger.info("✅ LiveKit configuration detected (API key, secret, URL present).")
+    else:
+        for issue in issues:
+            logger.warning("⚠️ LiveKit startup issue: %s", issue)
 
 # Load patient data
 patients = []
@@ -2226,6 +2268,13 @@ async def start_haven_session(request: dict):
     Initialize a Haven voice agent session when "Hey Haven" is detected
     Returns LiveKit access token for voice conversation
     """
+    ready, issues = _check_livekit_config()
+    if not ready:
+        raise HTTPException(
+            status_code=503,
+            detail="LiveKit configuration incomplete: " + "; ".join(issues)
+        )
+
     try:
         from livekit.api import AccessToken, VideoGrants
         import uuid
@@ -2264,7 +2313,7 @@ async def start_haven_session(request: dict):
         print(f"❌ Error starting Haven session: {e}")
         import traceback
         traceback.print_exc()
-        return {"error": str(e)}, 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/haven/conversation")

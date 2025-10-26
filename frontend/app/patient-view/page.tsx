@@ -342,10 +342,28 @@ export default function PatientViewPage() {
           body: JSON.stringify({ patient_id: patient.patient_id })
         });
 
-        const data = await response.json();
+        let data: any = null;
+        let parseError: Error | null = null;
+        try {
+          data = await response.json();
+        } catch (err) {
+          parseError = err as Error;
+        }
 
-        if (data.error) {
-          throw new Error(data.error);
+        if (!response.ok) {
+          const detail =
+            data?.error ||
+            data?.detail ||
+            parseError?.message ||
+            `Voice agent start failed (${response.status})`;
+          throw new Error(detail);
+        }
+
+        if (!data?.token || !data?.room_name || !data?.url) {
+          console.error('Voice agent start response missing required fields:', data);
+          throw new Error(
+            `Voice agent response missing session data${data ? ` (${JSON.stringify(data)})` : ''}.`
+          );
         }
 
         setHavenRoomData({
@@ -356,6 +374,7 @@ export default function PatientViewPage() {
         });
 
         console.log('✅ Haven session ready:', data.room_name);
+        setHavenTranscript('Initializing voice connection...');
       } catch (err: any) {
         console.error('❌ Failed to start Haven session:', err);
         setError('Failed to start voice assistant: ' + (err?.message ?? 'unknown error'));
@@ -364,6 +383,9 @@ export default function PatientViewPage() {
         setHavenRoomData(null);
         listenerTriggeredRef.current = false;
         havenActiveRef.current = false;
+        if (source === 'listener' && viewStartedRef.current && selectedPatientRef.current) {
+          setListenerHeartbeat((prev) => prev + 1);
+        }
       } finally {
         havenStartingRef.current = false;
       }
@@ -930,10 +952,10 @@ export default function PatientViewPage() {
               <div className="flex-1 relative rounded-lg overflow-hidden bg-neutral-950">
                 {/* Video Display */}
                 {!showAIAnimation && (
-                  <div className="w-full h-full relative">
+                  <>
                 <video
                   ref={videoRef}
-                  className="w-full h-full object-cover"
+                  className="absolute inset-0 w-full h-full object-cover"
                   style={{ transform: 'scaleX(-1)' }}
                   autoPlay
                   muted
@@ -960,51 +982,51 @@ export default function PatientViewPage() {
                     </span>
                   </div>
                 )}
-              </div>
+                </>
                 )}
 
                 {/* AI Animation View */}
-                {showAIAnimation && (
-                  <div className="w-full h-full relative rounded-lg overflow-hidden">
+                {showAIAnimation && !havenActive && (
+                  <div className="absolute inset-0">
                     <AIVoiceAnimation isActive={isMicActive} />
                   </div>
                 )}
 
-                {/* Haven LiveKit Overlay - Disabled for now (backend endpoint not available) */}
-                {false && havenActive && havenRoomData && (
+                {/* Haven LiveKit Overlay */}
+                {havenActive && havenRoomData && (
                   <div className="absolute inset-0 rounded-lg overflow-hidden bg-neutral-950/95 backdrop-blur flex items-center justify-center p-8">
-                <LiveKitRoom
-                  token={havenRoomData.token}
-                  serverUrl={havenRoomData.url}
-                  connect={true}
-                  audio={true}
-                  video={false}
-                  className="w-full max-w-xl"
-                >
-                  <div className="w-full bg-white/10 border border-white/20 rounded-xl p-6 flex flex-col gap-6">
-                    <div className="flex items-center justify-center gap-3">
-                      <div className="w-3 h-3 bg-primary-300 rounded-full animate-pulse" />
-                      <span className="label-uppercase text-white/80 text-xs tracking-[0.2em]">
-                        Haven Voice Agent
-                      </span>
-                    </div>
-
-                    <HavenVoiceAssistant />
-
-                    <div className="bg-white/5 border border-white/15 rounded-lg p-4 min-h-[96px]">
-                      <p className="text-sm text-white/85">
-                        {havenTranscript || 'Connecting to Haven AI...'}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={endHavenSession}
-                      className="self-center px-5 py-2 bg-white/15 hover:bg-white/25 border border-white/25 text-white label-uppercase text-xs transition-colors rounded-md"
+                    <LiveKitRoom
+                      token={havenRoomData.token}
+                      serverUrl={havenRoomData.url}
+                      connect={true}
+                      audio={true}
+                      video={false}
+                      className="w-full max-w-xl"
                     >
-                      End Conversation
-                    </button>
-                  </div>
-                </LiveKitRoom>
+                      <div className="w-full bg-white/10 border border-white/20 rounded-xl p-6 flex flex-col gap-6">
+                        <div className="flex items-center justify-center gap-3">
+                          <div className="w-3 h-3 bg-primary-300 rounded-full animate-pulse" />
+                          <span className="label-uppercase text-white/80 text-xs tracking-[0.2em]">
+                            Haven Voice Agent
+                          </span>
+                        </div>
+
+                        <HavenVoiceAssistant />
+
+                        <div className="bg-white/5 border border-white/15 rounded-lg p-4 min-h-[96px]">
+                          <p className="text-sm text-white/85">
+                            {havenTranscript || 'Connecting to Haven AI...'}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={endHavenSession}
+                          className="self-center px-5 py-2 bg-white/15 hover:bg-white/25 border border-white/25 text-white label-uppercase text-xs transition-colors rounded-md"
+                        >
+                          End Conversation
+                        </button>
+                      </div>
+                    </LiveKitRoom>
                   </div>
                 )}
               </div>
