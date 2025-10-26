@@ -210,9 +210,13 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   useEffect(() => {
     if (!isLive) return;
 
-    // Prevent reconnection if already connected
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      return;
+    // Prevent reconnection if already connected or connecting
+    if (wsRef.current) {
+      const state = wsRef.current.readyState;
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
+        console.log('⏸️  Skipping reconnect - WebSocket already active');
+        return;
+      }
     }
 
     const wsUrl = getWsUrl('/ws/view');
