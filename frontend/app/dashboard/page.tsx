@@ -676,6 +676,20 @@ export default function DashboardPage() {
     return () => clearInterval(alertInterval);
   }, []);
 
+  // Cleanup WebSocket connections when dashboard tab is closed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log('🧹 Dashboard tab closing - WebSocket cleanup will be handled by VideoPlayer components');
+      // Note: VideoPlayer components already handle their own WebSocket cleanup
+      // This is just for logging and any future global cleanup needs
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
+
   // Update stats when alerts change
   useEffect(() => {
     const activeCount = alerts.filter(a => a.status === 'active').length;

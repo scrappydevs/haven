@@ -48,6 +48,7 @@ export default function StreamPage() {
   const isStartingRecognitionRef = useRef<boolean>(false);
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Cleanup on unmount (page navigation away)
   useEffect(() => {
     return () => {
       // Cleanup on TRUE unmount (page navigation away)
@@ -67,6 +68,30 @@ export default function StreamPage() {
       }
     };
   }, []); // Empty deps - only run on mount/unmount
+
+  // Cleanup on browser tab close (beforeunload)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Cleanup resources immediately when tab is closing
+      if (wsRef.current || streamRef.current) {
+        console.log('🧹 Tab closing - cleaning up stream');
+        if (captureCleanupRef.current) {
+          captureCleanupRef.current();
+        }
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   // Fetch active streams and open patient selection modal
   const openPatientSelection = async () => {

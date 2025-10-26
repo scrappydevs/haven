@@ -103,27 +103,35 @@ class FetchHealthAgent:
         last_call = self.last_agentverse_call.get(patient_id, 0)
         time_since_last = current_time - last_call
         
-        # Only call Agentverse if enough time has passed (even for emergencies to prevent overwhelming)
+        # Check if this is a critical movement emergency
         movement_event = cv_metrics.get('movement_event', 'normal').lower()
-        is_emergency = movement_event in ['seizure', 'fall', 'extreme_agitation']
+        is_critical_emergency = movement_event in ['seizure', 'fall']
+        is_warning_event = movement_event == 'extreme_agitation'
         
-        # For emergencies, reduce cooldown to 15 seconds instead of bypassing entirely
-        cooldown = 15.0 if is_emergency else self.agentverse_cooldown
-        should_call_agentverse = time_since_last >= cooldown
-        
-        if self.enabled and should_call_agentverse:
-            try:
-                self.last_agentverse_call[patient_id] = current_time
-                analysis = await self._query_agentverse_agent(patient_id, vitals, cv_metrics)
-            except Exception as e:
-                print(f"⚠️  Agentverse query failed: {str(e)[:50]}... Using fallback")
-                analysis = self._fallback_analysis(vitals, cv_metrics)
-        else:
-            # Use fast local fallback for routine checks
-            if not should_call_agentverse and self.enabled:
-                cooldown_used = 15.0 if is_emergency else self.agentverse_cooldown
-                print(f"⏱️  Throttled (last call {time_since_last:.1f}s ago, need {cooldown_used:.0f}s) - using fallback")
+        # For CRITICAL emergencies (fall, seizure), use immediate fallback - no time to wait for Agentverse
+        # For warnings, reduce cooldown to 15 seconds
+        # For normal monitoring, use standard 30-second cooldown
+        if is_critical_emergency:
+            # CRITICAL: Use immediate fallback for fastest response (emergency call happens ASAP)
+            print(f"🚨 CRITICAL EMERGENCY ({movement_event}) - skipping Agentverse for immediate response")
             analysis = self._fallback_analysis(vitals, cv_metrics)
+        else:
+            # Non-critical: Use Agentverse if available and not throttled
+            cooldown = 15.0 if is_warning_event else self.agentverse_cooldown
+            should_call_agentverse = time_since_last >= cooldown
+            
+            if self.enabled and should_call_agentverse:
+                try:
+                    self.last_agentverse_call[patient_id] = current_time
+                    analysis = await self._query_agentverse_agent(patient_id, vitals, cv_metrics)
+                except Exception as e:
+                    print(f"⚠️  Agentverse query failed: {str(e)[:50]}... Using fallback")
+                    analysis = self._fallback_analysis(vitals, cv_metrics)
+            else:
+                # Use fast local fallback for routine checks
+                if not should_call_agentverse and self.enabled:
+                    print(f"⏱️  Throttled (last call {time_since_last:.1f}s ago, need {cooldown:.0f}s) - using fallback")
+                analysis = self._fallback_analysis(vitals, cv_metrics)
         
         # Store alert if concerning
         if analysis["severity"] in ["CRITICAL", "WARNING"]:

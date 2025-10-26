@@ -167,11 +167,20 @@ class ConnectionManager:
         if patient_id in self.patient_trackers:
             del self.patient_trackers[patient_id]
         
-        # Clean up fetch health agent state
+        # Clean up movement detectors
+        if patient_id in self.movement_detectors:
+            del self.movement_detectors[patient_id]
+            print(f"🧹 Cleaned up movement detector for {patient_id}")
+        
+        # Clean up fetch health agent state (including throttle timestamps)
         from app.fetch_health_agent import fetch_health_agent
         if patient_id in fetch_health_agent.patients:
             del fetch_health_agent.patients[patient_id]
-            print(f"🧹 Cleaned up health agent data for {patient_id}")
+        if patient_id in fetch_health_agent.last_agentverse_call:
+            del fetch_health_agent.last_agentverse_call[patient_id]
+        if patient_id in fetch_health_agent.last_emergency_call:
+            del fetch_health_agent.last_emergency_call[patient_id]
+        print(f"🧹 Cleaned up health agent data and call history for {patient_id}")
 
         print(
             f"❌ Unregistered streamer for patient {patient_id}. Worker stopped. Total streamers: {len(self.streamers)}")
