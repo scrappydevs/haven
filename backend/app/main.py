@@ -1880,34 +1880,31 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                     raw_frame = data.get("frame")
 
                     # Step 1: IMMEDIATE PASSTHROUGH - Send raw frame to viewers instantly (30 FPS, no lag)
-                    try:
-                        await manager.broadcast_frame({
-                            "type": "live_frame",
-                            "patient_id": patient_id,
-                            "data": {
-                                "frame": raw_frame
-                            }
-                        })
-                    except Exception as broadcast_err:
-                        print(f"⚠️ Broadcast error for {patient_id}: {broadcast_err}")
-                        # Don't break on broadcast errors, continue receiving
+                    await manager.broadcast_frame({
+                        "type": "live_frame",
+                        "patient_id": patient_id,
+                        "data": {
+                            "frame": raw_frame
+                        }
+                    })
 
                     # Step 2: QUEUE FOR PROCESSING - Worker thread will handle CV processing
                     # Queue every 3rd frame (10 FPS) for better performance on limited CPU
                     if frame_count % 3 == 0:
-                        try:
-                            manager.queue_frame_for_processing(
-                                patient_id, raw_frame, frame_count)
-                        except Exception as queue_err:
-                            print(f"⚠️ Queue error for {patient_id}: {queue_err}")
-                            # Don't break on queue errors, continue receiving
+                        manager.queue_frame_for_processing(
+                            patient_id, raw_frame, frame_count)
+            
             except WebSocketDisconnect:
                 print(f"❌ Patient {patient_id} stream disconnected")
                 break
             except Exception as frame_err:
-                print(f"⚠️ Frame processing error for {patient_id}: {frame_err}")
-                # Continue to next frame instead of breaking entire stream
-                continue
+                # If websocket is closed, stop immediately
+                if "disconnect" in str(frame_err).lower() or "closed" in str(frame_err).lower():
+                    print(f"❌ Patient {patient_id} connection closed")
+                    break
+                # For other errors, log once and break to avoid spam
+                print(f"❌ Stream error for {patient_id}: {frame_err}")
+                break
 
     except WebSocketDisconnect:
         print(f"❌ Patient {patient_id} stream disconnected (outer)")
