@@ -642,8 +642,14 @@ export default function PatientViewPage() {
 
   const handleStartView = () => {
     setViewStarted(true);
-    startStreaming();
   };
+
+  // Start streaming when view becomes active (after video element is rendered)
+  useEffect(() => {
+    if (viewStarted && selectedPatient && !isStreaming && !isConnecting) {
+      startStreaming();
+    }
+  }, [viewStarted, selectedPatient, isStreaming, isConnecting]);
 
   const handleVoiceAgentCardClick = () => {
     if (!selectedPatient) {
@@ -656,16 +662,8 @@ export default function PatientViewPage() {
       return;
     }
 
-    if (havenStartingRef.current) {
-      console.log('⚠️ Haven voice agent is connecting. Please wait...');
-      return;
-    }
-
-    setShowAIAnimation(true);
-
-    if (!havenActiveRef.current && !havenStartingRef.current) {
-      void startHavenSession('manual');
-    }
+    // Simple toggle between webcam view and 3D animation view
+    setShowAIAnimation(!showAIAnimation);
   };
 
   const handleMicButtonClick = (event: MouseEvent<HTMLButtonElement>) => {
@@ -927,12 +925,12 @@ export default function PatientViewPage() {
 
           {/* Main Content - Full Screen Video/Animation */}
           <div className="flex-1 py-6">
-            <div className="container mx-auto h-full flex flex-col gap-6 px-6">
+            <div className="container mx-auto flex flex-col gap-6 px-6" style={{ height: 'calc(100vh - 200px)' }}>
               {/* Video/Animation Container */}
-              <div className="flex-1 relative rounded-lg overflow-hidden">
+              <div className="flex-1 relative rounded-lg overflow-hidden bg-neutral-950">
                 {/* Video Display */}
                 {!showAIAnimation && (
-                  <div className="absolute inset-0 bg-neutral-950">
+                  <div className="w-full h-full relative">
                 <video
                   ref={videoRef}
                   className="w-full h-full object-cover"
@@ -965,16 +963,16 @@ export default function PatientViewPage() {
               </div>
                 )}
 
-            {/* AI Animation View \*/}
-            {showAIAnimation && !havenActive && (
-              <div className="absolute inset-0 rounded-lg overflow-hidden">
-                <AIVoiceAnimation isActive={isMicActive} />
-              </div>
-            )}
+                {/* AI Animation View */}
+                {showAIAnimation && (
+                  <div className="w-full h-full relative rounded-lg overflow-hidden">
+                    <AIVoiceAnimation isActive={isMicActive} />
+                  </div>
+                )}
 
-            {/* Haven LiveKit Overlay */}
-            {havenActive && havenRoomData && (
-              <div className="absolute inset-0 rounded-lg overflow-hidden bg-neutral-950/95 backdrop-blur flex items-center justify-center p-8">
+                {/* Haven LiveKit Overlay - Disabled for now (backend endpoint not available) */}
+                {false && havenActive && havenRoomData && (
+                  <div className="absolute inset-0 rounded-lg overflow-hidden bg-neutral-950/95 backdrop-blur flex items-center justify-center p-8">
                 <LiveKitRoom
                   token={havenRoomData.token}
                   serverUrl={havenRoomData.url}
@@ -1007,10 +1005,9 @@ export default function PatientViewPage() {
                     </button>
                   </div>
                 </LiveKitRoom>
+                  </div>
+                )}
               </div>
-            )}
-
-            </div>
 
               {/* Bottom AI Voice Agent Card */}
               <div>
