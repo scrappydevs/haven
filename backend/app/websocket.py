@@ -400,7 +400,47 @@ class ConnectionManager:
                             "attention_score": slow_result["metrics"].get("attention_score", 0.5)
                         }
                         
-                        # Analyze with Fetch.ai Health Agent (NON-BLOCKING)
+                        # === EMERGENCY DETECTION: Immediate Call BEFORE AI Analysis ===
+                        # For critical emergencies, call nurse IMMEDIATELY (don't wait for AI)
+                        movement_event = cv_metrics.get("movement_event", "normal")
+                        movement_confidence = cv_metrics.get("movement_confidence", 0.0)
+                        
+                        is_critical_emergency = movement_event in ["seizure", "fall"] and movement_confidence > 0.5
+                        
+                        if is_critical_emergency:
+                            # IMMEDIATE emergency call (before any AI processing)
+                            from app.voice_call import voice_service
+                            from datetime import datetime as dt
+                            
+                            if fetch_health_agent.should_make_emergency_call(patient_id, "CRITICAL"):
+                                emergency_msg = f"{movement_event.upper()} DETECTED ({movement_confidence:.0%})"
+                                print(f"🚨 IMMEDIATE EMERGENCY CALL: {patient_id} - {emergency_msg}")
+                                
+                                # Make call immediately (synchronous for reliability)
+                                try:
+                                    voice_service.make_emergency_call(
+                                        patient_id=patient_id,
+                                        event_type=movement_event,
+                                        details=f"{movement_event.capitalize()} detected with {movement_confidence:.0%} confidence"
+                                    )
+                                    
+                                    # Broadcast call notification IMMEDIATELY
+                                    import asyncio
+                                    call_loop = asyncio.new_event_loop()
+                                    asyncio.set_event_loop(call_loop)
+                                    call_loop.run_until_complete(self.broadcast_frame({
+                                        "type": "emergency_call",
+                                        "patient_id": patient_id,
+                                        "message": f"📞 EMERGENCY: {emergency_msg} - Nurse called!",
+                                        "severity": "CRITICAL",
+                                        "timestamp": dt.now().isoformat()
+                                    }))
+                                    call_loop.close()
+                                    print(f"✅ Emergency call placed for {patient_id}")
+                                except Exception as e:
+                                    print(f"❌ Emergency call failed: {e}")
+                        
+                        # Analyze with Fetch.ai Health Agent (NON-BLOCKING, happens AFTER call)
                         # Run agent in separate thread to never block CV processing
                         from datetime import datetime as dt
                         import threading
@@ -418,10 +458,18 @@ class ConnectionManager:
                                 thread_loop = asyncio.new_event_loop()
                                 asyncio.set_event_loop(thread_loop)
                                 
-                                # Run analysis
-                                analysis = thread_loop.run_until_complete(
-                                    fetch_health_agent.analyze_patient(patient_id, vitals, cv_metrics)
-                                )
+                                # Run analysis (with timeout and fallback)
+                                try:
+                                    analysis = thread_loop.run_until_complete(
+                                        asyncio.wait_for(
+                                            fetch_health_agent.analyze_patient(patient_id, vitals, cv_metrics),
+                                            timeout=15.0  # 15 second timeout for entire analysis
+                                        )
+                                    )
+                                except asyncio.TimeoutError:
+                                    print(f"⚠️ Agent analysis timeout for {patient_id} - using immediate fallback")
+                                    # Use fallback analysis instead
+                                    analysis = fetch_health_agent._fallback_analysis(vitals, cv_metrics)
                                 
                                 # Truncate reasoning for UI (keep first 150 chars)
                                 reasoning_full = analysis["reasoning"]
@@ -466,38 +514,12 @@ class ConnectionManager:
                                     "timestamp": dt.now().isoformat()
                                 }
                                 
-                                # === EMERGENCY CALL SYSTEM ===
-                                # Check if we should make emergency call (throttled to prevent spam)
-                                if fetch_health_agent.should_make_emergency_call(patient_id, analysis["severity"]):
-                                    movement_event = cv_metrics.get("movement_event", "unknown")
-                                    if movement_event in ["seizure", "fall"]:
-                                        emergency_msg = f"{movement_event.upper()} DETECTED! Medical help needed!"
-                                    elif movement_event == "extreme_agitation":
-                                        emergency_msg = "EXTREME AGITATION! Patient needs attention!"
-                                    else:
-                                        emergency_msg = "ALERT! Patient needs assessment!"
-                                    
-                                    print(f"📞 CALLING AVAILABLE NURSE: {emergency_msg}")
-                                    
-                                    # === VONAGE VOICE CALL ===
-                                    # Make actual phone call for CRITICAL alerts (only once per cooldown period)
-                                    voice_service.make_emergency_call(
-                                        patient_id=patient_id,
-                                        event_type=movement_event,
-                                        details=reasoning_short
-                                    )
-                                    
-                                    # Send call notification FIRST (before other logs)
-                                    call_message = {
-                                        "type": "emergency_call",
-                                        "patient_id": patient_id,
-                                        "message": f"📞 Calling nurse: {emergency_msg}",
-                                        "severity": analysis["severity"],
-                                        "timestamp": dt.now().isoformat()
-                                    }
-                                    thread_loop.run_until_complete(self.broadcast_frame(call_message))
-                                    # Small delay to prevent WebSocket overflow
-                                    thread_loop.run_until_complete(asyncio.sleep(0.05))
+                                # === EMERGENCY CALL: Already placed immediately when detected ===
+                                # For critical emergencies (seizure, fall), call was already made BEFORE this analysis
+                                # This section only handles non-emergency alerts
+                                
+                                # Note: Emergency calls for seizures/falls happen in the main CV worker thread
+                                # BEFORE agent analysis starts, ensuring sub-second response time
                                 
                                 # Send log and alert messages
                                 thread_loop.run_until_complete(self.broadcast_frame(log_message))

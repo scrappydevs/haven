@@ -112,8 +112,9 @@ class FetchHealthAgent:
         # For warnings, reduce cooldown to 15 seconds
         # For normal monitoring, use standard 30-second cooldown
         if is_critical_emergency:
-            # CRITICAL: Use immediate fallback for fastest response (emergency call happens ASAP)
-            print(f"🚨 CRITICAL EMERGENCY ({movement_event}) - skipping Agentverse for immediate response")
+            # CRITICAL: Use immediate fallback for fastest response
+            # Emergency call already placed in CV worker BEFORE this function was called
+            print(f"🚨 CRITICAL EMERGENCY ({movement_event}) - using instant fallback (call already placed)")
             analysis = self._fallback_analysis(vitals, cv_metrics)
         else:
             # Non-critical: Use Agentverse if available and not throttled
