@@ -43,6 +43,8 @@ export default function StreamPage() {
   const [havenTranscript, setHavenTranscript] = useState<string>('');
   const [havenRoomData, setHavenRoomData] = useState<{token: string, url: string, room_name: string, session_id: string} | null>(null);
   const recognitionRef = useRef<any>(null);
+  const isStartingRecognitionRef = useRef<boolean>(false);
+  const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     return () => {
@@ -115,17 +117,108 @@ export default function StreamPage() {
         wsRef.current = null;
       }
 
-      // Request webcam access
-      console.log('📹 Requesting webcam access...');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 }
+      // Check current permissions status
+      console.log('🔍 Checking current media permissions...');
+      try {
+        const videoPermission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        const audioPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        console.log('📊 Permission status:', {
+          camera: videoPermission.state,
+          microphone: audioPermission.state
+        });
+
+        // If microphone is denied, show clear error
+        if (audioPermission.state === 'denied') {
+          throw new Error('Microphone permission is DENIED in browser settings. Please enable microphone access in your browser settings and refresh the page.');
         }
+      } catch (e: any) {
+        if (e.message?.includes('DENIED')) {
+          throw e; // Re-throw if it's our custom error
+        }
+        console.log('⚠️ Could not query permissions (may not be supported):', e);
+      }
+
+      // List available devices
+      console.log('🔍 Checking available media devices...');
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        const audioDevices = devices.filter(d => d.kind === 'audioinput');
+        console.log('📊 Available devices:', {
+          cameras: videoDevices.length,
+          microphones: audioDevices.length,
+          videoDevices: videoDevices.map(d => ({ label: d.label || 'Unknown', id: d.deviceId })),
+          audioDevices: audioDevices.map(d => ({ label: d.label || 'Unknown', id: d.deviceId }))
+        });
+
+        if (audioDevices.length === 0) {
+          throw new Error('No microphone detected on this device. Please connect a microphone and refresh the page.');
+        }
+      } catch (e) {
+        console.error('❌ Device enumeration error:', e);
+        throw e;
+      }
+
+      // Request video first
+      console.log('📹 Step 1: Requesting webcam access...');
+      let videoStream: MediaStream;
+      try {
+        videoStream = await Promise.race([
+          navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30 }
+            }
+          }),
+          new Promise<MediaStream>((_, reject) =>
+            setTimeout(() => reject(new Error('Video request timed out after 10 seconds')), 10000)
+          )
+        ]);
+        console.log('✅ Webcam access granted');
+      } catch (error: any) {
+        console.error('❌ Video request failed:', error);
+        throw new Error(`Failed to access camera: ${error.message}`);
+      }
+
+      // Request audio separately
+      console.log('🎤 Step 2: Requesting microphone access...');
+      let audioStream: MediaStream;
+      try {
+        audioStream = await Promise.race([
+          navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          }),
+          new Promise<MediaStream>((_, reject) =>
+            setTimeout(() => reject(new Error('Audio request timed out after 10 seconds')), 10000)
+          )
+        ]);
+        console.log('✅ Microphone access granted');
+      } catch (error: any) {
+        console.error('❌ Audio request failed:', error);
+        // Clean up video stream
+        videoStream.getTracks().forEach(track => track.stop());
+        throw new Error(`Failed to access microphone: ${error.message}`);
+      }
+
+      // Combine both streams
+      console.log('🔗 Combining video and audio streams...');
+      const combinedStream = new MediaStream([
+        ...videoStream.getVideoTracks(),
+        ...audioStream.getAudioTracks()
+      ]);
+
+      streamRef.current = combinedStream;
+      console.log('✅ Combined stream ready', {
+        videoTracks: combinedStream.getVideoTracks().length,
+        audioTracks: combinedStream.getAudioTracks().length,
+        videoSettings: combinedStream.getVideoTracks()[0]?.getSettings(),
+        audioSettings: combinedStream.getAudioTracks()[0]?.getSettings()
       });
-      streamRef.current = stream;
-      console.log('✅ Webcam access granted');
 
       // Set video source and wait for it to be ready
       const video = videoRef.current;
@@ -133,7 +226,7 @@ export default function StreamPage() {
         throw new Error('Video element not found');
       }
 
-      video.srcObject = stream;
+      video.srcObject = combinedStream;
 
       // Wait for video metadata to load before playing
       await new Promise<void>((resolve, reject) => {
@@ -417,16 +510,34 @@ export default function StreamPage() {
 
   // Wake word detection and Haven voice agent functions
   const startWakeWordListening = () => {
+    console.log('🔍 startWakeWordListening called', {
+      hasPatient: !!selectedPatient,
+      isStreaming,
+      havenActive,
+      isStarting: isStartingRecognitionRef.current,
+      hasRecognition: !!recognitionRef.current
+    });
+
     if (!selectedPatient) {
       console.warn('⚠️ Cannot start wake word listening without selected patient');
       return;
     }
+
+    // Prevent starting if already starting or already running
+    if (isStartingRecognitionRef.current || recognitionRef.current) {
+      console.log('⚠️ Wake word listening already active, skipping start');
+      return;
+    }
+
+    isStartingRecognitionRef.current = true;
+    console.log('✅ Starting wake word recognition...');
 
     // Check for Web Speech API support
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       console.error('❌ Speech Recognition not supported in this browser');
       setError('Wake word detection not supported in your browser. Please use Chrome or Edge.');
+      isStartingRecognitionRef.current = false;
       return;
     }
 
@@ -434,10 +545,13 @@ export default function StreamPage() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       console.log('🎤 Wake word listening started');
+      console.log('🎙️ Microphone should now be active - try speaking');
       setIsListeningForWakeWord(true);
+      isStartingRecognitionRef.current = false;
     };
 
     recognition.onresult = (event: any) => {
@@ -446,11 +560,12 @@ export default function StreamPage() {
         .join('')
         .toLowerCase();
 
-      console.log('🎤 Heard:', transcript);
+      const isFinal = event.results[event.results.length - 1].isFinal;
+      console.log(`🎤 Heard (${isFinal ? 'FINAL' : 'interim'}):`, transcript);
 
       // Check for wake word "hey haven"
       if (transcript.includes('hey haven') || transcript.includes('hey heaven')) {
-        console.log('🛡️ Wake word detected!');
+        console.log('🛡️ Wake word detected! Stopping recognition and starting Haven session...');
         recognition.stop();
         startHavenSession();
       }
@@ -458,22 +573,36 @@ export default function StreamPage() {
 
     recognition.onerror = (event: any) => {
       console.error('❌ Speech recognition error:', event.error);
+      isStartingRecognitionRef.current = false;
+
       if (event.error === 'not-allowed') {
         setError('Microphone permission denied. Please allow microphone access for wake word detection.');
+        setIsListeningForWakeWord(false);
+      } else if (event.error === 'no-speech') {
+        // No speech detected is normal, just restart
+        console.log('ℹ️ No speech detected, will restart');
+      } else {
+        console.warn('⚠️ Recognition error, will attempt restart');
       }
     };
 
     recognition.onend = () => {
-      // Restart listening if not in Haven session
+      console.log('🛑 Wake word recognition ended');
+      isStartingRecognitionRef.current = false;
+
+      // Clear any pending restart
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+      }
+
+      // Restart listening if not in Haven session and streaming is active
       if (!havenActive && isStreaming && selectedPatient) {
-        console.log('🔄 Restarting wake word listening...');
-        try {
-          recognition.start();
-        } catch (err) {
-          console.warn('Could not restart wake word listening:', err);
-        }
+        console.log('🔄 Scheduling wake word restart in 1 second...');
+        restartTimeoutRef.current = setTimeout(() => {
+          startWakeWordListening();
+        }, 1000); // Wait 1 second before restarting to prevent rapid loops
       } else {
-        console.log('🛑 Wake word listening stopped');
+        console.log('🛑 Wake word listening stopped (conditions not met for restart)');
         setIsListeningForWakeWord(false);
       }
     };
@@ -484,16 +613,30 @@ export default function StreamPage() {
     } catch (err) {
       console.error('❌ Failed to start wake word listening:', err);
       setError('Failed to start microphone for wake word detection');
+      isStartingRecognitionRef.current = false;
     }
   };
 
   const stopWakeWordListening = () => {
-    if (recognitionRef.current) {
-      console.log('🛑 Stopping wake word listening');
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-      setIsListeningForWakeWord(false);
+    console.log('🛑 Stopping wake word listening');
+
+    // Clear any pending restart
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current);
+      restartTimeoutRef.current = null;
     }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.warn('Error stopping recognition:', err);
+      }
+      recognitionRef.current = null;
+    }
+
+    isStartingRecognitionRef.current = false;
+    setIsListeningForWakeWord(false);
   };
 
   const startHavenSession = async () => {
@@ -527,7 +670,8 @@ export default function StreamPage() {
         session_id: data.session_id
       });
 
-      setHavenTranscript('Connecting to Haven AI...');
+      // Initial transcript - will be updated by voice assistant component
+      setHavenTranscript('Initializing voice connection...');
 
     } catch (err: any) {
       console.error('❌ Failed to start Haven session:', err);
@@ -602,6 +746,11 @@ export default function StreamPage() {
     }
 
     return () => {
+      // Cleanup: stop listening and clear timeouts
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = null;
+      }
       stopWakeWordListening();
     };
   }, [isStreaming, selectedPatient, havenActive]);
@@ -609,17 +758,31 @@ export default function StreamPage() {
   // Haven Voice Assistant Component
   function HavenVoiceAssistant() {
     const { state, audioTrack } = useVoiceAssistant();
+    const lastStateRef = useRef<string>('');
 
     useEffect(() => {
-      // Update transcript based on voice assistant state
-      if (state === 'connecting') {
-        setHavenTranscript('Connecting to Haven AI...');
-      } else if (state === 'listening') {
-        setHavenTranscript('Haven AI is listening. Speak naturally about your concern.');
-      } else if (state === 'thinking') {
-        setHavenTranscript('Haven AI is processing...');
-      } else if (state === 'speaking') {
-        setHavenTranscript('Haven AI is speaking...');
+      // Only update if state actually changed and add debouncing
+      if (state !== lastStateRef.current) {
+        lastStateRef.current = state;
+
+        console.log('🎤 Haven voice assistant state:', state);
+
+        // Update transcript based on voice assistant state with slight delay to avoid flicker
+        const timer = setTimeout(() => {
+          if (state === 'connecting') {
+            setHavenTranscript('Connecting to Haven AI...');
+          } else if (state === 'listening') {
+            setHavenTranscript('🎤 Haven AI is listening. Speak naturally.');
+          } else if (state === 'thinking') {
+            setHavenTranscript('🤔 Haven AI is processing your response...');
+          } else if (state === 'speaking') {
+            setHavenTranscript('🗣️ Haven AI is speaking...');
+          } else if (state === 'idle') {
+            setHavenTranscript('Haven AI connected. You can start speaking.');
+          }
+        }, 100);
+
+        return () => clearTimeout(timer);
       }
     }, [state]);
 
@@ -628,7 +791,7 @@ export default function StreamPage() {
         <RoomAudioRenderer />
         {audioTrack && (
           <div className="flex justify-center mb-4">
-            <BarVisualizer state={state} barCount={5} trackRef={audioTrack} />
+            <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="w-full" />
           </div>
         )}
       </>
