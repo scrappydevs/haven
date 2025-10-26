@@ -99,75 +99,83 @@ export default function HandoffFormsList({ limit = 10, refreshInterval = 5000 }:
 
   return (
     <>
-      <div className="bg-surface border border-neutral-200 h-full flex flex-col">
+      <div className="bg-surface border border-neutral-200 h-full flex flex-col overflow-hidden rounded-lg">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-950">
+        <div className="px-6 py-4 border-b-2 border-neutral-950 flex-shrink-0">
+          <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950">
             Active Alerts
           </h2>
-          <div className="px-2 py-0.5 bg-accent-terra/10 border border-accent-terra">
-            <span className="text-accent-terra text-[10px] font-medium">{alerts.length}</span>
-          </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-3">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin h-4 w-4 border-2 border-neutral-300 border-t-neutral-950 rounded-full"></div>
-            </div>
-          ) : alerts.length === 0 ? (
-            <div className="text-center py-8 border border-neutral-200 bg-neutral-50">
-              <p className="text-neutral-500 text-xs font-light">No active alerts</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <AnimatePresence>
-                {alerts.map((alert, idx) => (
-                  <motion.button
-                    key={alert.id}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    transition={{ delay: idx * 0.02 }}
-                    onClick={() => handleAlertClick(alert.id)}
-                    className={`w-full text-left border-l-4 ${getSeverityColor(
-                      alert.severity
-                    )} border border-neutral-200 p-3 hover:border-neutral-950 transition-all`}
-                  >
-                    {/* Single Row: Alert Type + Time */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-mono text-neutral-500 tracking-tight uppercase">
-                        {alert.alert_type}
-                      </span>
-                      <span className="text-[10px] text-neutral-400">
-                        {getTimeAgo(alert.triggered_at)}
-                      </span>
-                    </div>
+        <div className="flex-1 overflow-hidden">
+          <div className="px-6 py-4 h-full overflow-y-auto">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center text-neutral-500">
+                  <div className="animate-spin h-4 w-4 border-2 border-neutral-300 border-t-neutral-950 rounded-full mx-auto"></div>
+                </div>
+              </div>
+            ) : alerts.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center text-neutral-500">
+                  <p className="text-sm font-light">No active alerts</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2 font-mono text-xs">
+                <AnimatePresence>
+                  {alerts.map((alert, idx) => (
+                    <motion.button
+                      key={alert.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2 }}
+                      onClick={() => handleAlertClick(alert.id)}
+                      className="w-full text-left border-l-2 border-neutral-300 pl-3 py-2 hover:border-primary-700 hover:bg-neutral-50 transition-all cursor-pointer rounded-r"
+                    >
+                      {/* First line: time + severity + patient ID */}
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-neutral-400 font-mono text-[10px]">
+                          {getTimeAgo(alert.triggered_at)}
+                        </span>
+                        <span className={`text-xs font-light font-mono ${
+                          alert.severity.toLowerCase() === 'critical' ? 'text-red-600' :
+                          alert.severity.toLowerCase() === 'high' ? 'text-orange-600' :
+                          alert.severity.toLowerCase() === 'medium' ? 'text-yellow-600' :
+                          'text-neutral-950'
+                        }`}>
+                          [{alert.severity.toUpperCase()}]
+                        </span>
+                        <span className="text-xs font-light text-neutral-950">{alert.patient_id}</span>
+                      </div>
 
-                    {/* Patient ID + Severity Badge */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-xs font-medium text-neutral-950 truncate flex-1">
-                        {alert.patient_id}
-                      </p>
-                      <span
-                        className={`px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ml-2 ${getSeverityBadge(
-                          alert.severity
-                        )}`}
-                      >
-                        {alert.severity}
-                      </span>
-                    </div>
+                      {/* Second line: alert type */}
+                      <div className="flex items-start gap-2 ml-20">
+                        <span className="text-neutral-400 text-[10px]">└─</span>
+                        <span className="text-xs font-light text-neutral-950">
+                          {alert.alert_type}
+                        </span>
+                      </div>
 
-                    {/* Alert Title - Single Line */}
-                    <p className="text-[11px] text-neutral-600 font-light truncate">
-                      {alert.title}
-                    </p>
-                  </motion.button>
-                ))}
-              </AnimatePresence>
-            </div>
-          )}
+                      {/* Third line: title/description */}
+                      <div className="ml-24 text-neutral-500 text-[10px] mt-0.5 font-light">
+                        {alert.title}
+                      </div>
+                    </motion.button>
+                  ))}
+                </AnimatePresence>
+
+                {/* Monitoring indicator */}
+                {alerts.length > 0 && (
+                  <div className="flex items-center gap-2 mt-4 text-accent-terra border-l-2 border-accent-terra/30 pl-3 py-2">
+                    <span className="animate-pulse">▊</span>
+                    <span className="text-neutral-500 text-xs font-light">{alerts.length} active alert{alerts.length !== 1 ? 's' : ''}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
