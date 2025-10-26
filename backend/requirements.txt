@@ -41,7 +41,7 @@ reportlab==4.2.5
 gunicorn==23.0.0
 
 # SMS Alerts
-vonage==3.14.0
+vonage>=4.7.0
 
 # Multi-Agent System (Fetch.ai uAgents)
 # Version 0.22+ supports modern uvicorn and pydantic

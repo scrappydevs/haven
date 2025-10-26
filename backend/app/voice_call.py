@@ -16,8 +16,8 @@ class VoiceCallService:
         self.api_secret = None
         self.application_id = None
         self.private_key = None
-        self.from_number = "12178020876"  # Same as existing system
-        self.emergency_number = "+13854019951"
+        self.from_number = "12178020876"  # Vonage number
+        self.emergency_number = "+14155170250"  # Primary nurse contact
         self.enabled = False
     
     def _load_credentials(self):
