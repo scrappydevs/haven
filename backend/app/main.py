@@ -1909,15 +1909,31 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         print(f"✅ Registered streamer with normal mode as fallback")
 
     try:
+        import asyncio
         frame_count = 0
+        error_count = 0
+        last_frame_time = time.time()
 
         while True:
             try:
-                data = await websocket.receive_json()
+                # Add timeout to detect frozen connections
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
                 frame_count += 1
+                error_count = 0  # Reset error count on successful receive
+                last_frame_time = time.time()
 
                 if data.get("type") == "frame":
                     raw_frame = data.get("frame")
+                    
+                    # Validate frame data
+                    if not raw_frame or not isinstance(raw_frame, str):
+                        print(f"⚠️ Invalid frame data from {patient_id}, skipping")
+                        continue
+                    
+                    # Basic sanity check - should be base64 image
+                    if not raw_frame.startswith("data:image"):
+                        print(f"⚠️ Frame doesn't look like image data from {patient_id}, skipping")
+                        continue
 
                     # Step 1: IMMEDIATE PASSTHROUGH - Send raw frame to viewers instantly (30 FPS, no lag)
                     await manager.broadcast_frame({
@@ -1933,18 +1949,41 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
                     if frame_count % 3 == 0:
                         manager.queue_frame_for_processing(
                             patient_id, raw_frame, frame_count)
+                    
+                    # Log progress periodically
+                    if frame_count % 300 == 0:  # Every 10 seconds at 30fps
+                        print(f"📊 Patient {patient_id}: {frame_count} frames streamed, {len(manager.viewers)} viewer(s)")
+            
+            except asyncio.TimeoutError:
+                # No frame received in 10 seconds - connection might be frozen
+                print(f"⏱️  No frames from {patient_id} for 10 seconds, checking connection...")
+                if time.time() - last_frame_time > 15:
+                    print(f"❌ Patient {patient_id} stream timeout (no frames for 15s)")
+                    break
+                continue
             
             except WebSocketDisconnect:
                 print(f"❌ Patient {patient_id} stream disconnected")
                 break
+            except json.JSONDecodeError as json_err:
+                error_count += 1
+                print(f"⚠️ JSON decode error from {patient_id} (#{error_count}): {json_err}")
+                if error_count > 10:
+                    print(f"❌ Too many JSON errors from {patient_id}, closing stream")
+                    break
+                continue
             except Exception as frame_err:
                 # If websocket is closed, stop immediately
                 if "disconnect" in str(frame_err).lower() or "closed" in str(frame_err).lower():
                     print(f"❌ Patient {patient_id} connection closed")
                     break
-                # For other errors, log once and break to avoid spam
-                print(f"❌ Stream error for {patient_id}: {frame_err}")
-                break
+                # For other errors, log and continue (but break after too many)
+                error_count += 1
+                print(f"❌ Stream error for {patient_id} (#{error_count}): {frame_err}")
+                if error_count > 10:
+                    print(f"❌ Too many errors from {patient_id}, closing stream")
+                    break
+                continue
 
     except WebSocketDisconnect:
         print(f"❌ Patient {patient_id} stream disconnected (outer)")
@@ -1961,27 +2000,64 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
 async def websocket_view(websocket: WebSocket):
     """WebSocket endpoint for dashboard viewing"""
     await websocket.accept()
-    manager.viewers.append(websocket)
+    
+    # Register viewer with thread-safe lock
+    with manager.viewers_lock:
+        manager.viewers.append(websocket)
+    
     print(f"✅ Viewer connected. Total: {len(manager.viewers)}")
+    
+    # Send initial state - list of active streams
+    try:
+        active_streams = manager.get_active_streams()
+        await websocket.send_json({
+            "type": "viewer_connected",
+            "active_streams": active_streams,
+            "timestamp": time.time()
+        })
+        print(f"📤 Sent initial state to viewer: {len(active_streams)} active stream(s)")
+    except Exception as e:
+        print(f"⚠️ Failed to send initial state: {e}")
 
     try:
         import asyncio
         last_ping = time.time()
         
         while True:
+            try:
+                # Non-blocking receive with timeout to check for pong responses
+                message = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+                
+                # Handle pong response (client acknowledging ping)
+                if message.get("type") == "pong":
+                    # Connection is healthy, reset ping timer
+                    last_ping = time.time()
+                    
+            except asyncio.TimeoutError:
+                # No message received, that's okay - check if we need to ping
+                pass
+            except Exception as e:
+                # Connection error or close
+                if "disconnect" in str(e).lower() or "closed" in str(e).lower():
+                    print("Viewer disconnected gracefully")
+                    break
+                else:
+                    print(f"⚠️ Viewer receive error: {e}")
+                    break
+            
             # Send ping every 45 seconds to keep connection alive
             if time.time() - last_ping > 45:
                 try:
                     if websocket.client_state.value == 1:  # WebSocketState.CONNECTED
                         await websocket.send_json({"type": "ping", "timestamp": time.time()})
-                        last_ping = time.time()
+                        # Don't reset last_ping here - wait for pong response
                     else:
+                        print("⚠️ Viewer connection no longer active")
                         break
                 except Exception as e:
                     print(f"❌ Ping failed: {e}")
                     break
             
-            await asyncio.sleep(5)  # Check every 5 seconds
     except WebSocketDisconnect:
         print("Viewer disconnected")
     except Exception as e:

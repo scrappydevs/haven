@@ -247,6 +247,35 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         return;
       }
 
+      // Handle viewer connection acknowledgment
+      if (data.type === 'viewer_connected') {
+        console.log('✅ Viewer connected, active streams:', data.active_streams);
+        return;
+      }
+
+      // Handle stream ended notification
+      if (data.type === 'stream_ended') {
+        console.log(`🛑 Stream ended for patient ${data.patient_id}`);
+        // Clear display for this patient
+        if (patientId === data.patient_id) {
+          setLatestOverlayData(null);
+          setCvData({
+            landmarks: [],
+            head_pose_axes: null,
+            metrics: {
+              heart_rate: 0,
+              respiratory_rate: 0,
+              crs_score: 0,
+              alert: false
+            }
+          });
+          if (imgRef.current) {
+            imgRef.current.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+          }
+        }
+        return;
+      }
+
       // Handle ping/pong to keep connection alive
       if (data.type === 'ping') {
         try {

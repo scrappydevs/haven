@@ -105,6 +105,9 @@ class ConnectionManager:
         self.worker_threads: Dict[str, threading.Thread] = {}
         # {patient_id: stop_event}
         self.worker_stop_flags: Dict[str, threading.Event] = {}
+        
+        # Thread lock for viewer list operations (prevent race conditions)
+        self.viewers_lock = threading.Lock()
 
     def register_streamer(self, patient_id: str, websocket: WebSocket, analysis_mode: Optional[str] = "normal"):
         """Register a streamer for a specific patient"""
@@ -184,10 +187,33 @@ class ConnectionManager:
 
         print(
             f"❌ Unregistered streamer for patient {patient_id}. Worker stopped. Total streamers: {len(self.streamers)}")
+        
+        # Notify viewers that stream ended (run in background to not block cleanup)
+        import asyncio
+        try:
+            # Try to get event loop, create new one if needed
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Schedule notification (don't block on it)
+            asyncio.create_task(self.broadcast_frame({
+                "type": "stream_ended",
+                "patient_id": patient_id,
+                "timestamp": time.time()
+            }))
+        except Exception as e:
+            print(f"⚠️ Could not notify viewers of stream end: {e}")
 
     def get_trackers(self, patient_id: str) -> Optional[PatientMetricTrackers]:
         """Get metric trackers for a patient"""
         return self.patient_trackers.get(patient_id)
+    
+    def get_active_streams(self) -> List[str]:
+        """Get list of active stream patient IDs"""
+        return list(self.streamers.keys())
 
     def disconnect(self, websocket: WebSocket):
         """Disconnect a websocket (legacy method)"""
@@ -200,9 +226,10 @@ class ConnectionManager:
         if patient_id_to_remove:
             self.unregister_streamer(patient_id_to_remove)
 
-        # Remove from viewers
-        if websocket in self.viewers:
-            self.viewers.remove(websocket)
+        # Remove from viewers with lock
+        with self.viewers_lock:
+            if websocket in self.viewers:
+                self.viewers.remove(websocket)
 
     def queue_frame_for_processing(self, patient_id: str, frame_data: str, frame_num: int):
         """Add frame to processing queue (non-blocking, discards if full)"""
@@ -499,6 +526,7 @@ class ConnectionManager:
 
     async def broadcast_frame(self, frame_data: Dict):
         """Send processed frame to all viewers in parallel - robust and fast"""
+        # Quick check without lock (performance optimization)
         if not self.viewers:
             return
 
@@ -508,23 +536,37 @@ class ConnectionManager:
             try:
                 # Check connection state before sending
                 if viewer.client_state.value == 1:  # WebSocketState.CONNECTED
-                    await viewer.send_json(frame_data)
+                    # Add timeout to prevent slow viewers from blocking
+                    await asyncio.wait_for(viewer.send_json(frame_data), timeout=1.0)
                     return None  # Success
                 else:
                     return viewer  # Mark for removal
-            except Exception:
+            except asyncio.TimeoutError:
+                print(f"⚠️ Viewer send timeout, marking for removal")
+                return viewer  # Mark for removal on timeout
+            except Exception as e:
+                # Only log non-disconnect errors
+                if "disconnect" not in str(e).lower() and "closed" not in str(e).lower():
+                    print(f"⚠️ Viewer send error: {e}")
                 return viewer  # Mark for removal on any error
 
-        # Send to all viewers concurrently
-        results = await asyncio.gather(*[send_to_viewer(v) for v in self.viewers], return_exceptions=True)
+        # Get viewer snapshot with lock (prevent race conditions during iteration)
+        with self.viewers_lock:
+            viewers_snapshot = self.viewers.copy()
 
-        # Remove dead connections (filter out None and exceptions)
+        # Send to all viewers concurrently (using snapshot, not live list)
+        results = await asyncio.gather(*[send_to_viewer(v) for v in viewers_snapshot], return_exceptions=True)
+
+        # Remove dead connections with lock
         dead_viewers = [r for r in results if r is not None and not isinstance(r, Exception)]
-        for viewer in dead_viewers:
-            try:
-                self.viewers.remove(viewer)
-            except ValueError:
-                pass  # Already removed
+        if dead_viewers:
+            with self.viewers_lock:
+                for viewer in dead_viewers:
+                    try:
+                        self.viewers.remove(viewer)
+                    except ValueError:
+                        pass  # Already removed
+                print(f"🧹 Cleaned up {len(dead_viewers)} dead viewer(s). Remaining: {len(self.viewers)}")
   
 
 manager = ConnectionManager()
