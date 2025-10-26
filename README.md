@@ -62,12 +62,16 @@ Haven leverages the Fetch.ai uAgents framework and ASI Alliance (asi.one) ecosys
 ### Deployed Agents
 
 **haven_nurse** - Primary clinical triage and monitoring agent using Claude AI for real-time patient assessment. Processes vital sign alerts, coordinates emergency responses, escalates critical conditions, and ensures clinical trial compliance. Handles 369 interactions with 2.5 rating on Agentverse.
+[Access haven_nurse on Agentverse](https://agentverse.ai/agents/agent1q2w5ktcdjujflcq639lp6kj89zupd28yr4dla0z4qampxjf0txwtqjq3ka0)
 
 **haven_asi_coordinator** - Central orchestration hub connecting Haven to the broader ASI Alliance ecosystem. Routes complex health queries to Ocean Protocol ML models for predictive analytics, SingularityNET AI services for diagnostic pattern recognition, and Fetch.ai agent networks for resource coordination. Publishes Haven's capabilities to the asi.one marketplace and monitors network health across all three alliance partners.
+[Access haven_asi_coordinator on Agentverse](https://agentverse.ai/agents/details/agent1qt0f8spkqljl9w4kjth7mv6p62xpfflfwt2z8rg5dytjszsy9q2lke8gutt/profile)
 
 **haven_resource_allocation** - Dynamic hospital resource optimizer managing ICU beds, ventilators, specialist assignments, and equipment allocation based on real-time patient acuity. Coordinates with regional hospitals through ASI Alliance for cross-facility resource sharing during capacity constraints. Monitors utilization metrics and predicts future resource needs using decentralized ML models. Handles 21 interactions on Agentverse.
+[Access haven_resource_allocation on Agentverse](https://agentverse.ai/agents/details/agent1qvmkluyfdjw802w7xux9vllslsle3fhzkh5la7csjukg6q706xxk6azk66j/profile)
 
 **haven_reconciliation** - Medication safety agent that cross-references patient medication lists against new prescriptions to identify dangerous drug interactions before administration. Maintains connection to ASI Alliance drug interaction database and performs periodic audits of all active patients. Generates critical alerts for interactions like warfarin-aspirin bleeding risks or metformin-contrast contraindications. Handles 10 interactions on Agentverse.
+[Access haven_reconciliation on Agentverse](https://agentverse.ai/agents/details/agent1qg3wkffkfj7g04d5acyaqhx92ecz5w02jp8nm8pkdmurlk974pxezgfqnwf/profile)
 
 ### Agent Interlinking Architecture
 
@@ -79,7 +83,4 @@ The agents form a coordinated network where each specialized agent handles its d
 
 **Multi-Agent Orchestration**: haven_asi_coordinator orchestrates workflows spanning multiple alliance services - aggregating patient cohort data through Ocean Protocol, running predictive models via SingularityNET, and coordinating resource transfers through Fetch.ai agent networks. This enables capabilities beyond any single agent, such as predicting ICU demand 6 hours ahead using decentralized ML while simultaneously arranging resource pre-positioning.
 
-## Live Agent Access
-
-[haven_nurse on Agentverse](https://agentverse.ai/agents/agent1q2w5ktcdjujflcq639lp6kj89zupd28yr4dla0z4qampxjf0txwtqjq3ka0)
 
