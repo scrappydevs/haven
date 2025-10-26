@@ -3,7 +3,8 @@ Haven AI - Backend API
 FastAPI application serving pre-computed CV results and trial data
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import logging
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -46,6 +47,37 @@ except ImportError:
     anthropic_client = None
     print("⚠️  Anthropic library not installed. LLM recommendations will use keyword matching.")
 
+logger = logging.getLogger("haven.main")
+
+# LiveKit configuration checks
+REQUIRED_LIVEKIT_SECRETS = ["LIVEKIT_API_KEY",
+                            "LIVEKIT_API_SECRET", "LIVEKIT_URL"]
+try:
+    import livekit  # noqa: F401
+    _LIVEKIT_IMPORT_ERROR = None
+    _LIVEKIT_AVAILABLE = True
+except ImportError as livekit_exc:
+    _LIVEKIT_IMPORT_ERROR = livekit_exc
+    _LIVEKIT_AVAILABLE = False
+
+
+def _check_livekit_config() -> tuple[bool, list[str]]:
+    """
+    Verify LiveKit dependencies and configuration. Returns a tuple of:
+    (is_ready, list_of_issue_strings)
+    """
+    issues: list[str] = []
+
+    if not _LIVEKIT_AVAILABLE:
+        issues.append(f"LiveKit SDK not installed ({_LIVEKIT_IMPORT_ERROR})")
+
+    missing = [key for key in REQUIRED_LIVEKIT_SECRETS if not get_secret(key)]
+    if missing:
+        issues.append(f"Missing LiveKit secrets: {', '.join(missing)}")
+
+    return len(issues) == 0, issues
+
+
 app = FastAPI(
     title="Haven",
     description="Real-time patient monitoring and floor plan management for clinical trials",
@@ -77,6 +109,18 @@ if cv_file.exists():
         cv_results = json.load(f)
 else:
     print("⚠️  Warning: precomputed_cv.json not found. Run scripts/precompute_cv.py first!")
+
+
+@app.on_event("startup")
+async def _log_livekit_status():
+    """Log LiveKit readiness once the app starts."""
+    ready, issues = _check_livekit_config()
+    if ready:
+        logger.info(
+            "✅ LiveKit configuration detected (API key, secret, URL present).")
+    else:
+        for issue in issues:
+            logger.warning("⚠️ LiveKit startup issue: %s", issue)
 
 # Load patient data
 patients = []
@@ -110,7 +154,8 @@ async def startup_event():
         f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
     print(
         f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
-    print(f"   • Fetch.ai Health Agent: {'✅ Enabled' if fetch_health_agent.enabled else '⚠️  Disabled'}")
+    print(
+        f"   • Fetch.ai Health Agent: {'✅ Enabled' if fetch_health_agent.enabled else '⚠️  Disabled'}")
     print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
     print(
         f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
@@ -1382,8 +1427,8 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 # async def get_agent_system_status():
 #     """Get multi-agent system status"""
 #     return agent_system.get_system_status()
-# 
-# 
+#
+#
 # @app.get("/agents/events")
 # async def get_agent_events(limit: int = 50):
 #     """Get recent agent events for GlobalActivityFeed"""
@@ -1391,8 +1436,8 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #         "events": agent_system.get_agent_events(limit),
 #         "total": len(agent_system.agent_events)
 #     }
-# 
-# 
+#
+#
 # @app.get("/agents/alerts")
 # async def get_agent_alerts():
 #     """Get active agent alerts for AlertPanel"""
@@ -1400,8 +1445,8 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #         "alerts": agent_system.get_agent_alerts(),
 #         "total": len(agent_system.agent_alerts)
 #     }
-# 
-# 
+#
+#
 # @app.get("/agents/timeline/{patient_id}")
 # async def get_patient_timeline(patient_id: str, limit: int = 100):
 #     """Get timeline events for a specific patient"""
@@ -1410,14 +1455,14 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #             "error": "Agent system not enabled",
 #             "events": []
 #         }
-#     
+#
 #     return {
 #         "patient_id": patient_id,
 #         "events": agent_system.get_patient_timeline(patient_id, limit),
 #         "total": len(agent_system.timeline_events.get(patient_id, []))
 #     }
-# 
-# 
+#
+#
 # @app.post("/agents/analyze/{patient_id}")
 # async def manual_agent_analysis(patient_id: str):
 #     """
@@ -1429,7 +1474,7 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #             "error": "Agent system not enabled",
 #             "message": "Install uagents: pip install uagents>=0.12.0"
 #         }
-#     
+#
 #     # Get dummy metrics for testing
 #     test_metrics = {
 #         "heart_rate": 85,
@@ -1438,9 +1483,9 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #         "tremor_detected": True,
 #         "attention_score": 0.85
 #     }
-#     
+#
 #     assessment = await agent_system.analyze_patient_metrics(patient_id, test_metrics)
-#     
+#
 #     return {
 #         "patient_id": patient_id,
 #         "assessment": assessment,
@@ -1457,6 +1502,7 @@ async def get_health_agent_status():
     """Get Fetch.ai health agent status"""
     return fetch_health_agent.get_status()
 
+
 @app.get("/health-agent/patients")
 async def get_health_agent_patients():
     """Get all monitored patients"""
@@ -1464,6 +1510,7 @@ async def get_health_agent_patients():
         "patients": list(fetch_health_agent.patients.values()),
         "count": len(fetch_health_agent.patients)
     }
+
 
 @app.get("/health-agent/patient/{patient_id}")
 async def get_health_agent_patient(patient_id: str):
@@ -1473,14 +1520,17 @@ async def get_health_agent_patient(patient_id: str):
     else:
         return {"error": "Patient not found"}
 
+
 @app.get("/health-agent/alerts")
 async def get_health_agent_alerts():
     """Get active alerts"""
-    active = [a for a in fetch_health_agent.alerts if a.get("severity") in ["CRITICAL", "WARNING"]]
+    active = [a for a in fetch_health_agent.alerts if a.get("severity") in [
+        "CRITICAL", "WARNING"]]
     return {
         "alerts": active,
         "count": len(active)
     }
+
 
 @app.get("/health-agent/history")
 async def get_health_agent_history():
@@ -1821,7 +1871,7 @@ async def ai_chat(request: ChatRequest):
 
         # Build context-aware system prompt with EXTREME tool use bias
         base_system_prompt = await build_system_prompt(context)
-        
+
         # Add CRITICAL instruction with EXTREME emphasis on tool use
         system_prompt = base_system_prompt + """
 
@@ -1884,7 +1934,8 @@ WHEN IN DOUBT: CALL A TOOL. ALWAYS PREFER TOOLS.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
         print(f"\n💬 User message: {request.message}")
-        print(f"   (AI will decide whether to use tools based on strong system instructions)")
+        print(
+            f"   (AI will decide whether to use tools based on strong system instructions)")
 
         # Call Anthropic API - let AI decide but with strong prompt bias toward tools
         message = anthropic_client.messages.create(
@@ -1895,12 +1946,12 @@ WHEN IN DOUBT: CALL A TOOL. ALWAYS PREFER TOOLS.
             messages=anthropic_messages
         )
 
-        # Handle tool use with MULTI-ROUND support 
+        # Handle tool use with MULTI-ROUND support
         assistant_response = ""
         all_tool_results = []
         max_rounds = 5  # Prevent infinite loops
         round_num = 0
-        
+
         current_message = message
 
         # LOOP until Claude stops calling tools (multi-step operations)
@@ -1909,9 +1960,9 @@ WHEN IN DOUBT: CALL A TOOL. ALWAYS PREFER TOOLS.
             print(f"\n{'='*60}")
             print(f"🔄 TOOL ROUND {round_num}")
             print(f"{'='*60}")
-            
+
             tool_results = []
-            
+
             # Execute all tools in this round
             for content_block in current_message.content:
                 if content_block.type == "text":
@@ -1921,14 +1972,14 @@ WHEN IN DOUBT: CALL A TOOL. ALWAYS PREFER TOOLS.
                     print(f"   Input: {content_block.input}")
                     tool_result = await execute_tool(content_block.name, content_block.input)
                     print(f"   Result: {tool_result}")
-                    
+
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": content_block.id,
                         "content": json.dumps(tool_result)
                     })
                     all_tool_results.append(tool_result)
-            
+
             # Add this round to conversation
             anthropic_messages.append({
                 "role": "assistant",
@@ -1938,7 +1989,7 @@ WHEN IN DOUBT: CALL A TOOL. ALWAYS PREFER TOOLS.
                 "role": "user",
                 "content": tool_results
             })
-            
+
             # Build system prompt for next round
             next_system = f"""You are Haven AI. 
 
@@ -1963,15 +2014,16 @@ Only use information from tool results. Never use conversation memory."""
                 tools=HAVEN_TOOLS,
                 messages=anthropic_messages
             )
-            
-            print(f"\n📊 Round {round_num} complete. Stop reason: {current_message.stop_reason}")
-        
+
+            print(
+                f"\n📊 Round {round_num} complete. Stop reason: {current_message.stop_reason}")
+
         # Extract final text response
         if current_message.stop_reason != "tool_use":
             for content_block in current_message.content:
                 if content_block.type == "text":
                     assistant_response += content_block.text
-        
+
         print(f"\n✅ Tool execution complete after {round_num} rounds")
         print(f"   Total tools called: {len(all_tool_results)}")
 
@@ -1983,21 +2035,23 @@ Only use information from tool results. Never use conversation memory."""
 
         # Save updated context
         await write_context(session_id, context)
-        
+
         # Check if any write operations were performed (check ALL rounds)
         invalidate_cache = False
         cache_keys = set()
-        
-        print(f"\n📊 Checking {len(all_tool_results)} total tool results for cache invalidation...")
-        
+
+        print(
+            f"\n📊 Checking {len(all_tool_results)} total tool results for cache invalidation...")
+
         for tool_result in all_tool_results:
             if isinstance(tool_result, dict) and tool_result.get("success"):
                 invalidate_cache = True
-                cache_keys.update(["rooms", "patients", "patients_room", "assignments"])
+                cache_keys.update(
+                    ["rooms", "patients", "patients_room", "assignments"])
                 print(f"   ✅ Success detected - will invalidate cache")
-        
+
         cache_keys_list = list(cache_keys) if cache_keys else []
-        
+
         print(f"\n{'='*60}")
         print(f"📤 Returning to frontend:")
         print(f"   invalidate_cache: {invalidate_cache}")
@@ -2005,7 +2059,7 @@ Only use information from tool results. Never use conversation memory."""
         print(f"   tool_calls: {len(all_tool_results)}")
         print(f"   rounds: {round_num}")
         print(f"{'='*60}\n")
-        
+
         return {
             "response": assistant_response,
             "model": "claude-haiku-4.5",
@@ -2065,7 +2119,7 @@ async def download_discharge_report(patient_id: str, room_id: str):
     """
     try:
         from app.pdf_generator import generate_patient_discharge_report, REPORTLAB_AVAILABLE, generate_simple_text_report
-        
+
         if not REPORTLAB_AVAILABLE:
             # Fallback to text report
             text_report = generate_simple_text_report(patient_id, room_id)
@@ -2092,6 +2146,7 @@ async def download_discharge_report(patient_id: str, room_id: str):
         traceback.print_exc()
         return {"error": str(e)}
 
+
 @app.get("/reports/clinical-summary/{patient_id}")
 async def download_clinical_summary(patient_id: str):
     """
@@ -2100,13 +2155,13 @@ async def download_clinical_summary(patient_id: str):
     try:
         from app.pdf_generator import generate_clinical_summary_report, REPORTLAB_AVAILABLE
         from app.ai_tools import generate_patient_clinical_summary_tool
-        
+
         # Generate summary data with AI insights
         summary_data = await generate_patient_clinical_summary_tool(patient_id, include_recommendations=True)
-        
+
         if "error" in summary_data:
             return {"error": summary_data["error"]}
-        
+
         if not REPORTLAB_AVAILABLE:
             # Text fallback
             text_report = f"""HAVEN HOSPITAL - CLINICAL SUMMARY
@@ -2133,10 +2188,10 @@ Active Alerts: {summary_data.get('active_alerts_count', 0)}
                     "Content-Disposition": f"attachment; filename=clinical-summary-{patient_id}-{datetime.now().strftime('%Y%m%d')}.txt"
                 }
             )
-        
+
         # Generate PDF
         pdf_bytes = await generate_clinical_summary_report(summary_data)
-        
+
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -2184,7 +2239,8 @@ async def start_intake(request: dict):
             can_subscribe=True,
         ))
 
-        print(f"🎫 Created intake token for patient {patient_id}, room: {room_name}")
+        print(
+            f"🎫 Created intake token for patient {patient_id}, room: {room_name}")
 
         return {
             "token": token.to_jwt(),
@@ -2278,7 +2334,8 @@ async def mark_intake_reviewed(intake_id: str, request: dict):
             .eq("id", intake_id) \
             .execute()
 
-        logger.info(f"✅ Intake {intake_id} marked as reviewed by {reviewer_id}")
+        logger.info(
+            f"✅ Intake {intake_id} marked as reviewed by {reviewer_id}")
         return {"success": True}
 
     except Exception as e:
@@ -2332,7 +2389,8 @@ async def assign_intake_to_room(intake_id: str, request: dict):
         except Exception as room_error:
             logger.warning(f"Room assignment may already exist: {room_error}")
 
-        logger.info(f"🏥 Patient {patient_id} assigned to room {room_id} from intake {intake_id}")
+        logger.info(
+            f"🏥 Patient {patient_id} assigned to room {room_id} from intake {intake_id}")
 
         # Broadcast to dashboard
         await manager.broadcast_frame({
@@ -2359,7 +2417,8 @@ async def get_intake_stats():
             return {"error": "Database not available"}, 503
 
         # Count by status
-        all_intakes = supabase.table("intake_reports").select("status, urgency_level").execute()
+        all_intakes = supabase.table("intake_reports").select(
+            "status, urgency_level").execute()
 
         stats = {
             "total": len(all_intakes.data) if all_intakes.data else 0,
@@ -2407,6 +2466,13 @@ async def start_haven_session(request: dict):
     Initialize a Haven voice agent session when "Hey Haven" is detected
     Returns LiveKit access token for voice conversation
     """
+    ready, issues = _check_livekit_config()
+    if not ready:
+        raise HTTPException(
+            status_code=503,
+            detail="LiveKit configuration incomplete: " + "; ".join(issues)
+        )
+
     try:
         from livekit.api import AccessToken, VideoGrants
         import uuid
@@ -2431,7 +2497,8 @@ async def start_haven_session(request: dict):
             can_subscribe=True,
         ))
 
-        print(f"🛡️ Created Haven agent token for patient {patient_id}, room: {room_name}")
+        print(
+            f"🛡️ Created Haven agent token for patient {patient_id}, room: {room_name}")
 
         return {
             "token": token.to_jwt(),
@@ -2445,7 +2512,7 @@ async def start_haven_session(request: dict):
         print(f"❌ Error starting Haven session: {e}")
         import traceback
         traceback.print_exc()
-        return {"error": str(e)}, 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/haven/conversation")
@@ -2477,17 +2544,40 @@ async def save_haven_conversation(request: dict):
             except Exception as e:
                 print(f"⚠️ Could not get room for patient {patient_id}: {e}")
 
-        # Use Claude to analyze conversation and determine severity
+        assistant_questions = conversation_summary.get(
+            "assistant_question_count")
+        total_questions = conversation_summary.get("question_count")
+
+        if assistant_questions is None:
+            transcript = conversation_summary.get("transcript", [])
+            assistant_questions = sum(
+                1 for entry in transcript
+                if entry.get("role") == "assistant" and "?" in (entry.get("content") or "")
+            )
+        if total_questions is None:
+            total_questions = conversation_summary.get("assistant_turns")
+
+        min_required_questions = 2
+
+        if assistant_questions is not None and assistant_questions < min_required_questions:
+            print(
+                f"⚠️ Haven conversation skipped (only {assistant_questions} assistant questions)")
+            return {"success": True, "skipped": True}
+
+        if total_questions is not None and total_questions < min_required_questions:
+            print(
+                f"⚠️ Haven conversation skipped (total questions {total_questions} < {min_required_questions})")
+            return {"success": True, "skipped": True}
+
         alert_data = await _analyze_haven_conversation(
             patient_id=patient_id,
             conversation_summary=conversation_summary,
             room_id=room_id
         )
 
-        # Create alert in database
         if supabase:
             alert_result = supabase.table("alerts").insert({
-                "alert_type": "patient_concern",
+                "alert_type": "other",
                 "severity": alert_data["severity"],
                 "title": alert_data["title"],
                 "description": alert_data["description"],
@@ -2499,12 +2589,14 @@ async def save_haven_conversation(request: dict):
                     "session_id": session_id,
                     "transcript": conversation_summary.get("full_transcript_text", ""),
                     "extracted_info": conversation_summary.get("extracted_info", {}),
-                    "ai_analysis": alert_data.get("reasoning", "")
+                    "ai_analysis": alert_data.get("reasoning", ""),
+                    "concern_type": "patient_initiated"
                 })
             }).execute()
 
             alert_id = alert_result.data[0]["id"] if alert_result.data else None
-            print(f"✅ Created alert {alert_id} from Haven conversation for patient {patient_id}")
+            print(
+                f"✅ Created alert {alert_id} from Haven conversation for patient {patient_id}")
 
             # Broadcast alert to dashboard via WebSocket
             await manager.broadcast_frame({

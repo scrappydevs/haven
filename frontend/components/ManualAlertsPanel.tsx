@@ -219,7 +219,7 @@ export default function ManualAlertsPanel({ isOpen, onClose }: ManualAlertsPanel
                     <label className="block text-xs font-medium uppercase tracking-wider text-neutral-700 mb-2">
                       Alert Type
                     </label>
-                    <div className="flex gap-2 bg-neutral-100 rounded-full p-1">
+                    <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => setAlertType('call')}
