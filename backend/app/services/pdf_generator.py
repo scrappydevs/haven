@@ -25,13 +25,19 @@ logger = logging.getLogger(__name__)
 class PDFGenerator:
     """Generate professional handoff form PDFs"""
 
-    def __init__(self, output_dir: str = "/tmp/handoff_forms"):
+    def __init__(self, output_dir: str = None):
         """
         Initialize PDF generator
 
         Args:
             output_dir: Directory to save generated PDFs
         """
+        # Use persistent directory in project instead of /tmp
+        if output_dir is None:
+            # Get the backend directory
+            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            output_dir = os.path.join(backend_dir, "data", "handoff_forms")
+
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
