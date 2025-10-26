@@ -37,9 +37,9 @@ function HavenVoiceAssistant({
 
   useEffect(() => {
     // Set a timeout to detect if the agent never connects
-    // Only timeout if we never reach 'listening' or 'idle' state
+    // Only timeout if we never reach 'listening' state
     connectionTimeoutRef.current = setTimeout(() => {
-      if (!hasConnectedRef.current && state !== 'listening' && state !== 'idle' && state !== 'thinking' && state !== 'speaking') {
+      if (!hasConnectedRef.current && state !== 'listening' && state !== 'thinking' && state !== 'speaking') {
         console.error('❌ Haven voice agent connection timeout - backend agent worker not responding');
         console.error('   Current state:', state);
         console.error('   Start the backend agent: cd backend && ./start_haven_agent.sh');
@@ -61,7 +61,7 @@ function HavenVoiceAssistant({
       lastStateRef.current = state;
 
       // Mark as connected once we reach a successful state
-      if (state === 'listening' || state === 'idle' || state === 'thinking' || state === 'speaking') {
+      if (state === 'listening' || state === 'thinking' || state === 'speaking') {
         hasConnectedRef.current = true;
         // Clear timeout once we successfully connect
         if (connectionTimeoutRef.current) {
@@ -80,8 +80,6 @@ function HavenVoiceAssistant({
           onTranscriptUpdate('🤔 Haven AI is processing your response...');
         } else if (state === 'speaking') {
           onTranscriptUpdate('🗣️ Haven AI is speaking...');
-        } else if (state === 'idle') {
-          onTranscriptUpdate('Haven AI connected. You can start speaking.');
         } else if (state === 'disconnected' && hasConnectedRef.current) {
           // Only show disconnect error if we were previously connected
           console.error('❌ Haven voice agent disconnected unexpectedly');
