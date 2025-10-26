@@ -21,7 +21,7 @@ livekit==1.0.17
 livekit-api==1.0.7
 livekit-agents==1.2.15
 livekit-plugins-openai==1.2.15
-openai==1.99.2
+openai>=1.107.2
 python-dotenv==1.0.1
 
 # Data processing
@@ -44,7 +44,6 @@ gunicorn==23.0.0
 vonage==3.14.0
 
 # Multi-Agent System (Fetch.ai uAgents)
-uagents==0.14.0
-cosmpy==0.9.2
-pydantic==2.10.3
-grpcio==1.68.1
+# Using version that supports pydantic 2.x and modern Python
+uagents>=0.19.0
+# Let pip resolve pydantic automatically (FastAPI needs 2.x)
