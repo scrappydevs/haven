@@ -77,5 +77,4 @@ if __name__ == "__main__":
 
     # Use reload=False to avoid multiprocessing issues with mediapipe
     # For auto-reload during development, use: uvicorn app.main:app --reload
-    # Use ws="websockets" to fix WebSocket handshake issues with browsers
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False, ws="websockets")
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)

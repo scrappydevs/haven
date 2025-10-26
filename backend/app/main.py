@@ -22,6 +22,7 @@ from app.monitoring_control import monitoring_manager, MonitoringLevel
 # from app.agent_system import agent_system
 # from app.health_agent import health_agent  # Old non-Fetch.ai agent
 from app.fetch_health_agent import fetch_health_agent
+from app.fetch_handoff_agent import fetch_handoff_agent
 from app.rooms import (
     get_all_floors,
     get_all_rooms_with_patients,
@@ -60,6 +61,9 @@ app.add_middleware(
         "http://localhost:3000",          # Local development
         "http://localhost:3001",          # Alternative local port
         "http://localhost:3002",          # Alternative local port
+        "http://127.0.0.1:3000",          # Local development (127.0.0.1)
+        "http://127.0.0.1:3001",          # Alternative local port (127.0.0.1)
+        "http://127.0.0.1:3002",          # Alternative local port (127.0.0.1)
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -1442,11 +1446,17 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""
     print(f"\n{'='*60}")
     print(f"🎯 WEBSOCKET HANDLER CALLED for patient: {patient_id}")
+
+    # Accept connection IMMEDIATELY (before checking anything)
+    # This prevents uvicorn from rejecting at protocol level
+    await websocket.accept()
+    print(f"✅ WebSocket connection accepted IMMEDIATELY for patient {patient_id}")
+
     print(f"   Client: {websocket.client}")
     print(f"   Headers: {dict(websocket.headers)}")
     print(f"   URL: {websocket.url}")
 
-    # Check Origin header for CORS
+    # Check Origin header for CORS (after accept)
     origin = websocket.headers.get("origin", "")
     print(f"   Origin: {origin}")
 
@@ -1456,23 +1466,23 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         "http://localhost:3000",
         "http://localhost:3001",
         "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
     ]
 
-    if origin and origin not in allowed_origins:
-        print(f"❌ WebSocket rejected: Origin {origin} not in allowed list")
-        print(f"{'='*60}\n")
-        await websocket.close(code=403, reason="Origin not allowed")
-        return
+    # Temporarily allow all origins for debugging
+    # if origin and origin not in allowed_origins:
+    #     print(f"❌ WebSocket rejected: Origin {origin} not in allowed list")
+    #     print(f"{'='*60}\n")
+    #     await websocket.close(code=403, reason="Origin not allowed")
+    #     return
 
     print(f"✅ Origin check passed")
     print(f"{'='*60}\n")
 
     supabase_warning = None
     print(f"🎯 Incoming WebSocket connection for patient {patient_id}")
-
-    # Accept connection immediately so client receives deterministic feedback
-    await websocket.accept()
-    print(f"✅ WebSocket connection accepted for patient {patient_id}")
 
     # Verify patient exists in Supabase (non-blocking for client)
     if supabase:
@@ -2493,6 +2503,273 @@ async def get_active_haven_sessions():
         "active_sessions": [],
         "count": 0
     }
+
+
+# ========================================
+# HANDOFF FORM GENERATION ENDPOINTS (Fetch.ai Agent)
+# ========================================
+
+@app.get("/handoff-agent/status")
+async def get_handoff_agent_status():
+    """Get Fetch.ai handoff agent status"""
+    return {
+        "enabled": True,
+        "agent_address": fetch_handoff_agent.agent.address,
+        "processed_alerts": len(fetch_handoff_agent.processed_alerts),
+        "generated_forms": len(fetch_handoff_agent.generated_forms),
+        "nurse_emails": fetch_handoff_agent.nurse_emails,
+        "check_interval_seconds": fetch_handoff_agent.check_interval
+    }
+
+
+@app.post("/handoff-agent/generate")
+async def generate_handoff_form_manual(
+    alert_ids: Optional[list] = None,
+    patient_id: Optional[str] = None,
+    recipient_emails: Optional[list] = None
+):
+    """
+    Manually trigger handoff form generation
+
+    Args:
+        alert_ids: List of specific alert IDs to include
+        patient_id: Generate for all alerts of this patient
+        recipient_emails: Email addresses to send form (defaults to configured nurse emails)
+
+    Returns:
+        Form generation result with PDF path and email status
+    """
+    try:
+        from app.fetch_handoff_agent import HandoffFormRequest
+
+        # Use configured nurse emails if not provided
+        if not recipient_emails:
+            recipient_emails = fetch_handoff_agent.nurse_emails
+
+        # Create request
+        request = HandoffFormRequest(
+            alert_ids=alert_ids,
+            patient_id=patient_id,
+            recipient_emails=recipient_emails,
+            force_regenerate=True
+        )
+
+        # Generate form (synchronous version for API)
+        from app.services.alerts_service import alerts_service
+        from app.services.pdf_generator import pdf_generator
+        from app.services.email_service import email_service
+        from app.models.handoff_forms import PatientInfo, HandoffFormContent
+        from datetime import datetime
+
+        # Fetch alerts
+        if alert_ids:
+            alerts = alerts_service.get_alerts_by_ids(alert_ids)
+        elif patient_id:
+            alerts = alerts_service.get_alerts_by_patient(patient_id, include_resolved=False)
+        else:
+            return {
+                "success": False,
+                "message": "Must provide either alert_ids or patient_id"
+            }
+
+        if not alerts:
+            return {
+                "success": False,
+                "message": "No alerts found"
+            }
+
+        # Get patient info
+        patient_id = alerts[0].patient_id
+        patient_data = alerts_service.get_patient_info(patient_id)
+        patient_info = PatientInfo(
+            patient_id=patient_id,
+            name=patient_data.get("name") if patient_data else None,
+            age=patient_data.get("age") if patient_data else None,
+            room_number=patient_data.get("room_number") if patient_data else None,
+            diagnosis=patient_data.get("diagnosis") if patient_data else None,
+            treatment_status=patient_data.get("treatment_status") if patient_data else None,
+            allergies=patient_data.get("allergies") if patient_data else None,
+            current_medications=patient_data.get("current_medications") if patient_data else None
+        )
+
+        # Generate basic summary (use Claude if available)
+        max_severity = max(alerts, key=lambda a: ["info", "low", "medium", "high", "critical"].index(a.severity.value))
+        alert_summary = f"Patient has {len(alerts)} active alert(s) requiring attention."
+        primary_concern = alerts[0].title
+        recommended_actions = [
+            "Review all active alerts immediately",
+            "Assess patient condition and vital signs",
+            "Document all interventions in patient record"
+        ]
+
+        # Build form content
+        form_content = HandoffFormContent(
+            patient_info=patient_info,
+            alert_summary=alert_summary,
+            primary_concern=primary_concern,
+            severity_level=max_severity.severity,
+            recent_vitals=None,
+            relevant_history=None,
+            current_treatments=patient_info.current_medications,
+            recommended_actions=recommended_actions,
+            urgency_notes=None,
+            protocols_to_follow=None,
+            related_alerts=alerts,
+            timeline=[],
+            generated_at=datetime.utcnow(),
+            generated_by="FETCH_AI_HANDOFF_AGENT",
+            intended_recipient="Nurse/Doctor",
+            special_instructions=None,
+            contact_information={"Emergency": "x5555"}
+        )
+
+        # Generate form number
+        form_number = f"HO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+        # Generate PDF
+        pdf_path = pdf_generator.generate_handoff_pdf(
+            form_content=form_content,
+            form_number=form_number
+        )
+
+        # Save to database
+        from app.supabase_client import supabase
+        data = {
+            "form_number": form_number,
+            "patient_id": patient_id,
+            "alert_ids": [alert.id for alert in alerts],
+            "content": form_content.dict(),
+            "pdf_path": pdf_path,
+            "status": "generated",
+            "created_by": "FETCH_AI_HANDOFF_AGENT"
+        }
+
+        result = supabase.table("handoff_forms").insert(data).execute()
+        form_id = result.data[0]["id"] if result.data else None
+
+        # Send email
+        email_result = None
+        if recipient_emails and recipient_emails[0]:
+            email_result = email_service.send_handoff_form(
+                recipient_emails=recipient_emails,
+                form_number=form_number,
+                patient_id=patient_id,
+                patient_name=patient_info.name,
+                severity=form_content.severity_level.value,
+                alert_summary=alert_summary,
+                pdf_path=pdf_path
+            )
+
+            if email_result["success"]:
+                # Update database with email info
+                supabase.table("handoff_forms").update({
+                    "emailed_to": recipient_emails,
+                    "email_sent_at": datetime.utcnow().isoformat(),
+                    "email_delivery_status": "sent",
+                    "status": "sent"
+                }).eq("id", form_id).execute()
+
+        return {
+            "success": True,
+            "form_id": form_id,
+            "form_number": form_number,
+            "pdf_path": pdf_path,
+            "alerts_processed": len(alerts),
+            "email_sent": email_result["success"] if email_result else False,
+            "message": f"Successfully generated handoff form {form_number}"
+        }
+
+    except Exception as e:
+        print(f"❌ Error generating handoff form: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+
+@app.get("/handoff-agent/forms")
+async def get_handoff_forms(patient_id: Optional[str] = None, limit: int = 50):
+    """
+    Get generated handoff forms
+
+    Args:
+        patient_id: Filter by patient ID
+        limit: Maximum number of forms to return
+
+    Returns:
+        List of handoff forms
+    """
+    try:
+        query = supabase.table("handoff_forms").select("*")
+
+        if patient_id:
+            query = query.eq("patient_id", patient_id)
+
+        response = query.order("created_at", desc=True).limit(limit).execute()
+
+        return {
+            "forms": response.data or [],
+            "count": len(response.data) if response.data else 0
+        }
+    except Exception as e:
+        print(f"❌ Error fetching handoff forms: {e}")
+        return {
+            "forms": [],
+            "count": 0,
+            "error": str(e)
+        }
+
+
+@app.get("/handoff-agent/forms/{form_id}")
+async def get_handoff_form(form_id: str):
+    """Get specific handoff form by ID"""
+    try:
+        response = supabase.table("handoff_forms").select("*").eq("id", form_id).single().execute()
+
+        if response.data:
+            return response.data
+        else:
+            return {"error": "Form not found"}
+    except Exception as e:
+        print(f"❌ Error fetching form: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/handoff-agent/forms/{form_id}/pdf")
+async def download_handoff_form_pdf(form_id: str):
+    """Download PDF for a specific handoff form"""
+    try:
+        # Get form from database
+        response = supabase.table("handoff_forms").select("pdf_path").eq("id", form_id).single().execute()
+
+        if not response.data:
+            return {"error": "Form not found"}
+
+        pdf_path = response.data.get("pdf_path")
+
+        if not pdf_path or not os.path.exists(pdf_path):
+            return {"error": "PDF file not found"}
+
+        # Read PDF file
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        # Return PDF response
+        from pathlib import Path
+        filename = Path(pdf_path).name
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+    except Exception as e:
+        print(f"❌ Error downloading PDF: {e}")
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import VideoPlayer from '@/components/VideoPlayer';
 import InfoBar from '@/components/InfoBar';
 import DetailPanel from '@/components/DetailPanel';
@@ -708,14 +709,14 @@ export default function DashboardPage() {
           // OVERVIEW MODE: Stacked monitoring and management + activity feed
           <div className="grid grid-cols-12 gap-6">
             {/* Left Panel - Patient Monitoring & Management (8 columns) */}
-            <div className="col-span-8 space-y-6">
+            <div className="col-span-8">
               {/* Patient Monitoring - Top */}
               <div>
                 <div className="mb-4">
                   <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">Patient Monitoring</h2>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 gap-4 mb-6">
                   {boxAssignments.map((patient, boxIndex) => {
                 // Empty box - show + button (only show if it's the last empty box)
                 if (!patient) {
@@ -781,12 +782,75 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Right Column - Activity Feed (4 columns) */}
+            {/* Right Column - Alerts & Activity Feed (4 columns) */}
             <div className="col-span-4">
-              <GlobalActivityFeed
-                events={globalEventFeed}
-                onPatientClick={onPatientClicked}
-              />
+              {/* Alerts Box - Same height as Patient Monitoring section */}
+              <div className="mb-6">
+                <div className="mb-4">
+                  <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">Alerts</h2>
+                </div>
+
+                <div className="bg-surface border border-neutral-200 rounded-lg h-[190px] flex flex-col">
+                  {/* Alerts Content */}
+                  <div className="px-6 py-4 flex-1 overflow-y-auto">
+                    {isLoadingAlerts ? (
+                      <div className="flex items-center justify-center py-8">
+                        <p className="text-sm font-light text-neutral-500">Loading alerts...</p>
+                      </div>
+                    ) : alerts.length === 0 ? (
+                      <div className="flex items-center justify-center py-8">
+                        <p className="text-sm font-light text-neutral-500">No active alerts</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {alerts.map((alert) => (
+                          <div
+                            key={alert.id}
+                            className={`border-l-4 pl-4 py-2 ${
+                              alert.severity === 'critical' || alert.severity === 'high'
+                                ? 'border-red-500 bg-red-50/50'
+                                : alert.severity === 'moderate' || alert.severity === 'warning'
+                                ? 'border-yellow-500 bg-yellow-50/50'
+                                : 'border-blue-500 bg-blue-50/50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between mb-1">
+                              <span className="text-xs font-medium text-neutral-950 uppercase tracking-wider">
+                                {alert.title}
+                              </span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded uppercase tracking-wider ${
+                                alert.severity === 'critical' || alert.severity === 'high'
+                                  ? 'bg-red-100 text-red-700'
+                                  : alert.severity === 'moderate' || alert.severity === 'warning'
+                                  ? 'bg-yellow-100 text-yellow-700'
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {alert.severity}
+                              </span>
+                            </div>
+                            {alert.description && (
+                              <p className="text-xs font-light text-neutral-600 mt-1">
+                                {alert.description}
+                              </p>
+                            )}
+                            <p className="text-[10px] text-neutral-400 mt-2">
+                              {new Date(alert.triggered_at).toLocaleString()}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Activity Feed - Shorter */}
+              <div className="h-[400px]">
+                <GlobalActivityFeed
+                  events={globalEventFeed}
+                  onPatientClick={onPatientClicked}
+                />
+              </div>
             </div>
           </div>
         ) : (
