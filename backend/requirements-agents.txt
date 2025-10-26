@@ -1,4 +1,0 @@
-# Multi-Agent System (Fetch.ai uAgents)
-# Install this AFTER base requirements with --no-deps flag
-# We explicitly list only uagents, dependencies come from base requirements
-uagents==0.22.9
