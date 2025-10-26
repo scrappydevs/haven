@@ -556,8 +556,8 @@ export default function FloorPlanPage() {
           data: dataWithPhotos,
           icon: (data: any) => ({
             url: data.photoUrl,
-            width: 180,  // World-space units - 2x room icon size (was working before)
-            height: 180,
+            width: 280,  // Larger patient icons for better visibility
+            height: 280,
           }),
           // No color property = photos keep natural colors (not tinted like rooms)
           onClick: (data: any) => {
