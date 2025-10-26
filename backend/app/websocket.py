@@ -150,6 +150,12 @@ class ConnectionManager:
             del self.worker_threads[patient_id]
 
         if patient_id in self.processing_queues:
+            # Clear the queue before deleting
+            try:
+                while True:
+                    self.processing_queues[patient_id].get_nowait()
+            except queue.Empty:
+                pass
             del self.processing_queues[patient_id]
 
         if patient_id in self.worker_stop_flags:
@@ -160,6 +166,12 @@ class ConnectionManager:
 
         if patient_id in self.patient_trackers:
             del self.patient_trackers[patient_id]
+        
+        # Clean up fetch health agent state
+        from app.fetch_health_agent import fetch_health_agent
+        if patient_id in fetch_health_agent.patients:
+            del fetch_health_agent.patients[patient_id]
+            print(f"🧹 Cleaned up health agent data for {patient_id}")
 
         print(
             f"❌ Unregistered streamer for patient {patient_id}. Worker stopped. Total streamers: {len(self.streamers)}")
