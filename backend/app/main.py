@@ -4,6 +4,7 @@ FastAPI application serving pre-computed CV results and trial data
 """
 
 import logging
+import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
