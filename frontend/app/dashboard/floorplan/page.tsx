@@ -69,6 +69,7 @@ export default function FloorPlanPage() {
   const [draggedPatient, setDraggedPatient] = useState<SupabasePatient | null>(null);
   const [roomFilter, setRoomFilter] = useState<'all' | 'empty' | 'occupied'>('all');
   const [roomAlerts, setRoomAlerts] = useState<Record<string, string>>({}); // room_id -> severity
+  const [patientAlerts, setPatientAlerts] = useState<Record<string, Array<{severity: string, title: string}>>>({}); // patient_id -> alerts
   const [smplrConfig, setSmplrConfig] = useState<{
     organizationId: string;
     clientToken: string;
@@ -238,6 +239,7 @@ export default function FloorPlanPage() {
     try {
       spaceRef.current.removeDataLayer('room-icons');
       spaceRef.current.removeDataLayer('room-polygons');
+      spaceRef.current.removeDataLayer('patient-photos');
       spaceRef.current.removeDataLayer('nurse-station-icons');
       spaceRef.current.removeDataLayer('nurse-station-polygons');
       console.log('🗑️ Removed old layers');
@@ -272,9 +274,10 @@ export default function FloorPlanPage() {
           if (alertSeverity === 'critical') return '#ef4444'; // Red
           if (alertSeverity === 'high') return '#f97316';     // Orange
           if (alertSeverity === 'medium') return '#eab308';   // Yellow
-          if (alertSeverity === 'low') return '#10b981';       // Green
+          if (alertSeverity === 'low') return '#10b981';      // Green
+          if (alertSeverity === 'info') return '#3b82f6';     // Blue
           
-          // Occupied but no alerts - green
+          // Occupied but no alerts - green (stable patient)
           return '#10b981';
         },
         onClick: (data: any) => {
@@ -372,8 +375,203 @@ export default function FloorPlanPage() {
         },
         tooltip: (data: any) => {
           const room = data.room as Room;
-          return room.assignedPatient ? room.assignedPatient.name : room.name;
+          if (room.assignedPatient) {
+            const alerts = patientAlerts[room.assignedPatient.patient_id];
+            const alertText = alerts && alerts.length > 0 
+              ? `\n⚠️ ${alerts.length} alert${alerts.length > 1 ? 's' : ''}` 
+              : '';
+            return `${room.assignedPatient.name}${alertText}\n${room.name}`;
+          }
+          return room.name;
         },
+      });
+    }
+
+    // Add patient photo avatars above occupied rooms
+    const patientPhotoData = rooms
+      .filter(r => r.type === 'patient' && r.assignedPatient && r.position.x !== 0)
+      .map(room => ({
+        id: room.id + '-photo',
+        position: {
+          levelIndex: room.position.levelIndex,
+          x: room.position.x,
+          z: room.position.z - 2, // Slightly in front of the room
+          elevation: 2.2, // Above the room icon
+        },
+        room,
+      }));
+
+    console.log(`📷 Patient photo layer data: ${patientPhotoData.length} photos to render`);
+    patientPhotoData.forEach(data => {
+      console.log(`  → ${data.room.assignedPatient?.name} in ${data.room.name}, photo: ${data.room.assignedPatient?.photo_url || 'NO PHOTO'}`);
+    });
+
+    if (patientPhotoData.length > 0) {
+      // Create photo icons asynchronously
+      const loadPhotoIcon = async (patient: any): Promise<string> => {
+        if (!patient?.photo_url) {
+          // Create initials as PNG canvas - size MUST match icon width/height
+          const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+          console.log(`🔤 Creating initials PNG for ${patient?.name}: ${initials}`);
+          
+          const size = 160; // 2x larger for much better visibility
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d')!;
+          
+          // Draw circle background
+          ctx.fillStyle = '#e0f2fe';
+          ctx.beginPath();
+          ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Draw border
+          ctx.strokeStyle = '#0284c7';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          
+          // Draw initials text
+          ctx.fillStyle = '#0369a1';
+          ctx.font = `600 ${Math.floor(size * 0.4)}px system-ui, -apple-system, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(initials, size/2, size/2);
+          
+          const dataURL = canvas.toDataURL('image/png');
+          console.log(`✅ Initials PNG created for ${patient?.name} (${size}x${size})`);
+          return dataURL;
+        }
+        
+        // Load image and create circular canvas
+        return new Promise<string>((resolve) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          
+          img.onload = () => {
+            console.log(`✅ Photo loaded: ${patient.name}`, img.width, 'x', img.height);
+            const size = 160; // 2x larger for much better visibility
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d')!;
+            
+            // Save context before clipping
+            ctx.save();
+            
+            // Create circular clipping path
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            
+            // Calculate dimensions to cover the circle (like CSS object-fit: cover)
+            const imgAspect = img.width / img.height;
+            let drawWidth, drawHeight, drawX, drawY;
+            
+            if (imgAspect > 1) {
+              // Image is wider - fit to height
+              drawHeight = size;
+              drawWidth = size * imgAspect;
+              drawX = (size - drawWidth) / 2;
+              drawY = 0;
+            } else {
+              // Image is taller - fit to width
+              drawWidth = size;
+              drawHeight = size / imgAspect;
+              drawX = 0;
+              drawY = (size - drawHeight) / 2;
+            }
+            
+            // Draw image
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+            
+            // Restore context (removes clipping)
+            ctx.restore();
+            
+            // Draw border
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+            ctx.strokeStyle = '#e5e7eb';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            const dataURL = canvas.toDataURL('image/png');
+            console.log(`📸 Generated photo data URL for ${patient.name} (${size}x${size})`);
+            resolve(dataURL);
+          };
+          
+          img.onerror = (error) => {
+            console.error(`❌ Failed to load photo for ${patient.name}:`, patient.photo_url, error);
+            // Fallback to initials PNG on error
+            const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+            console.log(`🔤 Using initials fallback: ${initials}`);
+            
+            const size = 160; // Match main size
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d')!;
+            
+            ctx.fillStyle = '#e0f2fe';
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#0284c7';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#0369a1';
+            ctx.font = `600 ${Math.floor(size * 0.4)}px system-ui, -apple-system, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(initials, size/2, size/2);
+            
+            resolve(canvas.toDataURL('image/png'));
+          };
+          
+          console.log(`🔄 Loading photo for ${patient.name}:`, patient.photo_url);
+          img.src = patient.photo_url;
+        });
+      };
+      
+      // Load all photo icons
+      const photoPromises = patientPhotoData.map(async (item) => {
+        const photoUrl = await loadPhotoIcon(item.room.assignedPatient);
+        return { ...item, photoUrl };
+      });
+      
+      Promise.all(photoPromises).then((dataWithPhotos) => {
+        console.log(`✅ All ${dataWithPhotos.length} photos generated, adding layer to smplr.js`);
+        spaceRef.current.addDataLayer({
+          id: 'patient-photos',
+          type: 'icon',
+          data: dataWithPhotos,
+          icon: (data: any) => ({
+            url: data.photoUrl,
+            width: 160,  // 2x larger for better visibility
+            height: 160,
+          }),
+          // No color property = photos keep natural colors (not tinted like rooms)
+          onClick: (data: any) => {
+            const room = data.room as Room;
+            setSelectedRoom(room);
+          },
+          tooltip: (data: any) => {
+            const room = data.room as Room;
+            const patient = room.assignedPatient;
+            if (patient) {
+              const alerts = patientAlerts[patient.patient_id];
+              const alertSummary = alerts && alerts.length > 0
+                ? alerts.slice(0, 2).map(a => `  • ${a.severity.toUpperCase()}: ${a.title}`).join('\n')
+                : '  ✓ No active alerts';
+              return `${patient.name}\nAge: ${patient.age} | ${patient.patient_id}\n${room.name}\n\n${alertSummary}`;
+            }
+            return room.name;
+          },
+        });
+        console.log(`🎨 Patient photo layer added to smplr.js viewer`);
       });
     }
 
@@ -418,7 +616,7 @@ export default function FloorPlanPage() {
     }
 
     console.log('✅ Room visualization layers updated successfully!');
-  }, [isViewerReady, rooms, roomAlerts]);
+  }, [isViewerReady, rooms, roomAlerts, patientAlerts]);
 
   // Sync rooms from Smplrspace using automatic room detection
   const syncRoomsFromSmplrspace = async (spaceId: string) => {
@@ -609,25 +807,68 @@ export default function FloorPlanPage() {
       const data = await res.json();
       const alerts = Array.isArray(data) ? data : (data.alerts || []);
       
-      // Map patient alerts to their rooms
+      console.log(`🔍 Fetched ${alerts.length} active alerts`);
+      
+      // Fetch patient room assignments to map patient alerts to rooms
+      const assignmentsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/rooms`);
+      const assignmentsData = await assignmentsRes.json();
+      
+      // Build patient_id -> room_id mapping
+      const patientToRoom: Record<string, string> = {};
+      const assignments = Array.isArray(assignmentsData) ? assignmentsData : [];
+      
+      for (const assignment of assignments) {
+        if (assignment.patient_id) {
+          patientToRoom[assignment.patient_id] = assignment.room_id;
+        }
+      }
+      
+      console.log(`📍 Patient-to-room mapping:`, patientToRoom);
+      
+      // Map patient alerts to their rooms AND track patient alerts separately
       const alertMap: Record<string, string> = {};
-      const severityPriority = { 'critical': 4, 'high': 3, 'medium': 2, 'low': 1, 'info': 0 };
+      const patientAlertMap: Record<string, Array<{severity: string, title: string}>> = {};
+      const severityPriority = { 'critical': 5, 'high': 4, 'medium': 3, 'low': 2, 'info': 1 };
       
       for (const alert of alerts) {
-        if (alert.room_id) {
-          const currentSeverity = alertMap[alert.room_id];
+        // Track patient alerts
+        if (alert.patient_id) {
+          if (!patientAlertMap[alert.patient_id]) {
+            patientAlertMap[alert.patient_id] = [];
+          }
+          patientAlertMap[alert.patient_id].push({
+            severity: alert.severity,
+            title: alert.title
+          });
+        }
+        
+        // Check both room_id (direct) and patient_id (indirect via room assignment)
+        let roomId = alert.room_id;
+        
+        if (!roomId && alert.patient_id) {
+          // Map patient alert to their current room
+          roomId = patientToRoom[alert.patient_id];
+        }
+        
+        if (roomId) {
+          const currentSeverity = alertMap[roomId];
           const currentPriority = severityPriority[currentSeverity as keyof typeof severityPriority] || 0;
           const newPriority = severityPriority[alert.severity as keyof typeof severityPriority] || 0;
           
-          // Keep highest severity alert
+          console.log(`🎯 Alert for room ${roomId}: ${alert.severity} (priority ${newPriority}), current: ${currentSeverity || 'none'} (priority ${currentPriority})`);
+          
+          // Keep HIGHEST severity alert (critical > high > medium > low > info)
           if (newPriority > currentPriority) {
-            alertMap[alert.room_id] = alert.severity;
+            alertMap[roomId] = alert.severity;
+            console.log(`   ✅ Updated room ${roomId} to ${alert.severity}`);
           }
         }
       }
       
       setRoomAlerts(alertMap);
-      console.log(`🚨 Loaded alerts for ${Object.keys(alertMap).length} rooms`);
+      setPatientAlerts(patientAlertMap);
+      console.log(`🚨 Mapped alerts to ${Object.keys(alertMap).length} rooms:`, alertMap);
+      console.log(`👤 Tracked alerts for ${Object.keys(patientAlertMap).length} patients:`, patientAlertMap);
     } catch (error) {
       console.error('Error fetching room alerts:', error);
     }
@@ -652,6 +893,30 @@ export default function FloorPlanPage() {
           console.log('🔍 Position:', assignments[0].metadata?.smplrspace_data?.position);
         }
         
+        // Fetch patient details for rooms with assigned patients
+        const patientIds = assignments
+          .filter((a: any) => a.patient_id)
+          .map((a: any) => a.patient_id);
+        
+        let patientsMap: Record<string, any> = {};
+        
+        if (patientIds.length > 0) {
+          try {
+            const patientsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients`);
+            const patientsData = await patientsRes.json();
+            const patientsArray = Array.isArray(patientsData) ? patientsData : [];
+            
+            patientsMap = patientsArray.reduce((map: any, patient: any) => {
+              map[patient.patient_id] = patient;
+              return map;
+            }, {});
+            
+            console.log(`👤 Loaded ${patientsArray.length} patients with photos`);
+          } catch (error) {
+            console.error('Error fetching patients:', error);
+          }
+        }
+        
         // Convert backend room assignments to frontend Room format
         const backendRooms: Room[] = assignments.map((assignment: any) => {
           const metadata = assignment.metadata || {};
@@ -670,18 +935,36 @@ export default function FloorPlanPage() {
             polygonPoints: position.polygon.length
           });
           
-          return {
-          id: assignment.room_id,
-          name: assignment.room_name,
-          type: assignment.room_type,
-            position,
-          assignedPatient: assignment.patient_id ? {
+          // Get full patient data if assigned
+          let assignedPatient = undefined;
+          if (assignment.patient_id) {
+            const patient = patientsMap[assignment.patient_id];
+            if (patient) {
+              assignedPatient = {
+                patient_id: patient.patient_id,
+                name: patient.name || 'Unknown',
+                age: patient.age || 0,
+                condition: patient.condition || '',
+                photo_url: patient.photo_url || '',
+              };
+              console.log(`📸 Patient ${patient.name} has photo:`, !!patient.photo_url);
+            } else {
+              assignedPatient = {
             patient_id: assignment.patient_id,
             name: assignment.patient_name || 'Unknown',
             age: 0,
             condition: '',
             photo_url: '',
-          } : undefined,
+              };
+            }
+          }
+          
+          return {
+          id: assignment.room_id,
+          name: assignment.room_name,
+          type: assignment.room_type,
+            position,
+          assignedPatient,
           };
         });
         
@@ -714,7 +997,7 @@ export default function FloorPlanPage() {
       console.log(`\n🔄 [FLOOR PLAN] Cache invalidation received at ${new Date(timestamp).toLocaleTimeString()}`);
       console.log('   Keys to invalidate:', keys);
       
-      if (keys.includes('rooms') || keys.includes('patients') || keys.includes('patients_room')) {
+      if (keys.includes('rooms') || keys.includes('patients') || keys.includes('patients_room') || keys.includes('alerts')) {
         console.log('♻️ [FLOOR PLAN] Refreshing room assignments and alerts from database...');
         
         // Refresh room data and alerts
@@ -867,10 +1150,58 @@ export default function FloorPlanPage() {
 
   const handleDrop = async (e: React.DragEvent, room: Room) => {
     e.preventDefault();
-    if (draggedPatient && !room.assignedPatient) {
-      await assignPatientToRoom(draggedPatient, room.id);
+    
+    if (!draggedPatient) return;
+    
+    // Check if target room is occupied
+    if (room.assignedPatient) {
+      alert(`${room.name} is already occupied by ${room.assignedPatient.name}. Please choose an empty room.`);
       setDraggedPatient(null);
+      return;
     }
+    
+    // Check if patient is already in another room
+    const currentRoom = rooms.find(r => r.assignedPatient?.patient_id === draggedPatient.patient_id);
+    
+    if (currentRoom) {
+      // Patient is already in another room - ask to transfer
+      const confirmed = confirm(
+        `${draggedPatient.name} is currently in ${currentRoom.name}.\n\nDo you want to transfer them to ${room.name}?`
+      );
+      
+      if (confirmed) {
+        try {
+          // Transfer patient using the backend transfer endpoint
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/rooms/assign-patient`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              patient_id: draggedPatient.patient_id,
+              room_id: room.id,
+            }),
+          });
+          
+          if (response.ok) {
+            // Refresh room data
+            await fetchRoomAssignments();
+            await fetchRoomAlerts();
+            console.log(`✅ Transferred ${draggedPatient.name} from ${currentRoom.name} to ${room.name}`);
+          } else {
+            const error = await response.json();
+            alert(`Failed to transfer patient: ${error.detail || 'Unknown error'}`);
+          }
+        } catch (error) {
+          console.error('Error transferring patient:', error);
+          alert('Failed to transfer patient. Please try again.');
+        }
+      }
+      setDraggedPatient(null);
+      return;
+    }
+    
+    // Patient is unassigned - proceed with normal assignment
+    await assignPatientToRoom(draggedPatient, room.id);
+    setDraggedPatient(null);
   };
 
   const assignedPatientIds = rooms
@@ -1155,18 +1486,45 @@ export default function FloorPlanPage() {
                               {assignedRoom && (
                                 <p className="text-xs font-light text-primary-700 mt-1">
                                   📍 {assignedRoom.name}
-                                </p>
-                              )}
-                            </div>
-                          </div>
+                            </p>
+                          )}
                         </div>
+                            
+                            {/* Alert Badges - Clean Design */}
+                            {patientAlerts[patient.patient_id] && patientAlerts[patient.patient_id].length > 0 && (
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {patientAlerts[patient.patient_id].slice(0, 3).map((alert, idx) => {
+                                  const dotColor = 
+                                    alert.severity === 'critical' ? '#ef4444' :
+                                    alert.severity === 'high' ? '#f97316' :
+                                    alert.severity === 'medium' ? '#eab308' :
+                                    alert.severity === 'low' ? '#10b981' : '#3b82f6';
+                                  
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className="w-2 h-2 rounded-full flex-shrink-0"
+                                      style={{ backgroundColor: dotColor }}
+                                      title={`${alert.severity.toUpperCase()}: ${alert.title}`}
+                                    />
+                                  );
+                                })}
+                                {patientAlerts[patient.patient_id].length > 3 && (
+                                  <span className="text-xs text-neutral-400 font-light">
+                                    +{patientAlerts[patient.patient_id].length - 3}
+                      </span>
+                                )}
+                    </div>
+                            )}
+                  </div>
+              </div>
                           );
                         })
-                      )}
-                    </div>
+          )}
+            </div>
                   </>
-                )}
-              </div>
+          )}
+        </div>
 
               {/* All Rooms - Collapsible */}
               <div className="bg-surface flex-1 flex flex-col overflow-hidden">
@@ -1179,7 +1537,7 @@ export default function FloorPlanPage() {
                     <span className="text-xs font-light text-neutral-400">
                       {filteredAndSortedRooms.length}
                     </span>
-                  </div>
+      </div>
                   <svg 
                     className={`w-5 h-5 text-neutral-400 transition-transform ${roomsListCollapsed ? '' : 'rotate-180'}`}
                     fill="none" 
@@ -1238,7 +1596,7 @@ export default function FloorPlanPage() {
                     className={`border-b border-neutral-200 p-4 hover:bg-neutral-50 transition-colors cursor-pointer ${
                                 selectedRoom?.id === room.id ? 'bg-primary-50' : ''
                     }`}
-                    onClick={() => {
+            onClick={() => {
                       setSelectedRoom(room);
                                 navigateToRoom(room);
                     }}
@@ -1261,10 +1619,10 @@ export default function FloorPlanPage() {
                                   </span>
                                   <svg className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                  </svg>
+                  </svg>
+              </div>
             </div>
-        </div>
-      </div>
+                </div>
                           );
                         } else {
                           // Patient room
@@ -1288,7 +1646,7 @@ export default function FloorPlanPage() {
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                   <div className={`w-2.5 h-2.5 rounded-full ${statusColor}`} />
-                                  <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0">
                                     <p className="font-light text-neutral-950 text-sm">{room.name}</p>
                                     {room.assignedPatient && (
                                       <p className="text-xs font-light text-neutral-500 mt-1 truncate">

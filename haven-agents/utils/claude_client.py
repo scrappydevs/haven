@@ -94,7 +94,7 @@ Respond in JSON format:
 
         try:
             response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",  # Sonnet 3.5 v2
+                model="claude-haiku-4-5-20251001",  # Haiku 4.5
                 max_tokens=1024,
                 messages=[{
                     "role": "user",

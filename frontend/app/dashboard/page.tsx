@@ -420,6 +420,26 @@ export default function DashboardPage() {
     // Keep selected patient ID so CV data still updates
   };
 
+  const handleAlertResolve = async (alertId: string) => {
+    try {
+      const apiUrl = getApiUrl();
+      await fetch(`${apiUrl}/alerts/${alertId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'resolved' })
+      });
+      setAlerts(prev =>
+        prev.map(alert =>
+          alert.id === alertId ? { ...alert, status: 'resolved' } : alert
+        )
+      );
+    } catch (error) {
+      console.error('Error resolving alert:', error);
+    }
+  };
+
+  const activeAlertsCount = alerts.filter(a => a.status === 'active').length;
+
   // Throttle logging to reduce state updates (ref-based, no re-renders)
   const lastLogTime = useRef<number>(0);
   const LOG_THROTTLE_MS = 200; // Log at most 5 times per second instead of 30
@@ -599,15 +619,51 @@ export default function DashboardPage() {
       })
       .catch(err => console.error('Error fetching patients:', err));
 
-    // Fetch initial alerts
+    // Fetch initial alerts and populate activity feed
     const fetchAlerts = () => {
-      fetch(`${apiUrl}/alerts?status=active&limit=10`)
+      fetch(`${apiUrl}/alerts?status=active&limit=20`)
         .then(res => res.json())
         .then(data => {
           // Handle both array response and object with alerts property
           const alertsArray = Array.isArray(data) ? data : (data.alerts || []);
           setAlerts(alertsArray);
           setIsLoadingAlerts(false);
+          
+          // Convert alerts to activity feed events
+          const alertEvents: GlobalEvent[] = alertsArray.map((alert: any) => {
+            // Determine event type and severity
+            const eventType = alert.alert_type === 'vital_sign' ? 'vital' : 
+                             alert.severity === 'critical' ? 'alert' :
+                             alert.severity === 'high' ? 'warning' : 'monitoring';
+            
+            // Format message
+            const message = alert.title || 'Alert triggered';
+            
+            // Get patient info
+            const patientName = alert.patient_name || 
+                               (alert.patient_id ? `Patient ${alert.patient_id}` : 'Unknown Patient');
+            const patientId = alert.patient_id ? parseInt(alert.patient_id.replace(/\D/g, '')) || 0 : 0;
+            
+            // Format details
+            const room = alert.room_name || (alert.room_id ? `Room ${alert.room_id}` : '');
+            const status = alert.status === 'acknowledged' ? '✓ Acknowledged' : 'Active';
+            const details = [room, status, alert.severity?.toUpperCase()].filter(Boolean).join(' • ');
+            
+            return {
+              timestamp: alert.triggered_at || alert.created_at || new Date().toISOString(),
+              patientId,
+              patientName,
+              type: eventType,
+              severity: alert.severity || 'info',
+              message,
+              details: details || alert.description || ''
+            };
+          });
+          
+          // Update activity feed with recent alerts (most recent first)
+          setGlobalEventFeed(alertEvents.sort((a, b) => 
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          ));
         })
         .catch(err => {
           console.error('Error fetching alerts:', err);
@@ -665,35 +721,23 @@ export default function DashboardPage() {
                 Floor Plan
               </a>
               <a
-                href="/stream"
+                href="/patient-view"
                 className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
               >
                 Patient View
               </a>
             </nav>
 
-            {/* Right side: Manual Alerts, Notifications & User */}
+            {/* Right side: Manual Alerts & Notifications */}
             <div className="flex items-center gap-4">
               {/* Manual Alert Button */}
               <button 
                 onClick={() => setShowManualAlerts(true)}
-                className="px-4 py-2 border border-primary-700 text-primary-700 hover:bg-primary-700 hover:text-white transition-all text-xs uppercase tracking-wider font-light"
+                className="px-4 py-2 border border-primary-700 text-primary-700 hover:bg-primary-700 hover:text-white transition-all text-xs uppercase tracking-wider font-light rounded-full"
               >
                 Send Alert
               </button>
-              
-              {/* Notifications */}
-              <button className="relative p-2 text-neutral-500 hover:text-neutral-950 transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                </svg>
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-              </button>
 
-              {/* User avatar */}
-              <div className="w-9 h-9 rounded-full bg-neutral-200 border border-neutral-300 flex items-center justify-center text-neutral-600 text-sm font-medium">
-                U
-              </div>
             </div>
           </div>
         </div>

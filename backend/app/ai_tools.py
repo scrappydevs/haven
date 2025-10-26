@@ -85,21 +85,48 @@ HAVEN_TOOLS = [
     },
     {
         "name": "get_active_alerts",
-        "description": "Get all active alerts, optionally filtered by severity or patient.",
+        "description": "Get all active alerts, optionally filtered by severity or patient. Use for 'show alerts', 'critical alerts', 'check alerts', etc.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "severity": {
                     "type": "string",
-                    "description": "Filter by severity: 'critical', 'high', 'medium', 'low'",
-                    "enum": ["critical", "high", "medium", "low"]
+                    "description": "Filter by severity: 'critical', 'high', 'medium', 'low', 'info'",
+                    "enum": ["critical", "high", "medium", "low", "info"]
                 },
                 "patient_id": {
                     "type": "string",
                     "description": "Filter alerts for a specific patient ID"
+                },
+                "room_id": {
+                    "type": "string",
+                    "description": "Filter alerts for a specific room"
                 }
             },
             "required": []
+        }
+    },
+    {
+        "name": "get_alerts_by_room",
+        "description": "Get all alerts grouped by room. Shows which rooms have critical/high alerts. Useful for understanding hospital alert distribution.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "get_alert_details",
+        "description": "Get detailed information about a specific alert by ID. Use when user asks about 'the alert', 'that event', or references a specific alert. Returns full alert data including patient, room, description, status, and timeline.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "alert_id": {
+                    "type": "string",
+                    "description": "The alert UUID to fetch details for"
+                }
+            },
+            "required": ["alert_id"]
         }
     },
     {
@@ -369,8 +396,15 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         elif tool_name == "get_active_alerts":
             return await get_active_alerts(
                 severity=tool_input.get("severity"),
-                patient_id=tool_input.get("patient_id")
+                patient_id=tool_input.get("patient_id"),
+                room_id=tool_input.get("room_id")
             )
+        
+        elif tool_name == "get_alerts_by_room":
+            return await get_alerts_by_room()
+        
+        elif tool_name == "get_alert_details":
+            return await get_alert_details(tool_input.get("alert_id", ""))
         
         elif tool_name == "get_hospital_stats":
             return await get_hospital_stats()
@@ -695,7 +729,7 @@ async def list_available_rooms() -> Dict[str, Any]:
         return {"error": str(e)}
 
 
-async def get_active_alerts(severity: Optional[str] = None, patient_id: Optional[str] = None) -> Dict[str, Any]:
+async def get_active_alerts(severity: Optional[str] = None, patient_id: Optional[str] = None, room_id: Optional[str] = None) -> Dict[str, Any]:
     """Get active alerts with optional filters"""
     if not supabase:
         return {"error": "Database not configured"}
@@ -707,12 +741,123 @@ async def get_active_alerts(severity: Optional[str] = None, patient_id: Optional
             query = query.eq("severity", severity)
         if patient_id:
             query = query.eq("patient_id", patient_id)
+        if room_id:
+            query = query.eq("room_id", room_id)
         
-        response = query.order("triggered_at", desc=True).limit(10).execute()
+        response = query.order("triggered_at", desc=True).limit(20).execute()
+        
+        alerts = response.data or []
+        
+        # Group by severity for summary
+        by_severity = {}
+        for alert in alerts:
+            sev = alert.get('severity', 'unknown')
+            if sev not in by_severity:
+                by_severity[sev] = []
+            by_severity[sev].append(alert)
         
         return {
-            "alerts": response.data or [],
-            "count": len(response.data or [])
+            "alerts": alerts,
+            "count": len(alerts),
+            "by_severity": by_severity,
+            "critical_count": len(by_severity.get('critical', [])),
+            "high_count": len(by_severity.get('high', [])),
+            "medium_count": len(by_severity.get('medium', [])),
+        }
+    
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_alerts_by_room() -> Dict[str, Any]:
+    """Get all active alerts grouped by room"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Get all active alerts
+        alerts = supabase.table("alerts").select("*").eq("status", "active").execute()
+        
+        # Group by room
+        room_alerts = {}
+        for alert in (alerts.data or []):
+            room_id = alert.get('room_id')
+            if room_id:
+                if room_id not in room_alerts:
+                    room_alerts[room_id] = []
+                room_alerts[room_id].append(alert)
+        
+        # Enrich with room names
+        result = []
+        for room_id, room_alert_list in room_alerts.items():
+            room_data = supabase.table("rooms").select("room_name").eq("room_id", room_id).execute()
+            room_name = room_data.data[0]['room_name'] if room_data.data else room_id
+            
+            # Find highest severity
+            severities = [a.get('severity') for a in room_alert_list]
+            severity_priority = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1, 'info': 0}
+            highest_severity = max(severities, key=lambda s: severity_priority.get(s, 0))
+            
+            result.append({
+                "room_id": room_id,
+                "room_name": room_name,
+                "alert_count": len(room_alert_list),
+                "highest_severity": highest_severity,
+                "alerts": room_alert_list
+            })
+        
+        # Sort by severity (critical first)
+        result.sort(key=lambda r: severity_priority.get(r['highest_severity'], 0), reverse=True)
+        
+        return {
+            "rooms_with_alerts": result,
+            "total_rooms_affected": len(result),
+            "total_alerts": sum(r['alert_count'] for r in result)
+        }
+    
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_alert_details(alert_id: str) -> Dict[str, Any]:
+    """Get detailed information about a specific alert"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Fetch the alert
+        alert_result = supabase.table("alerts").select("*").eq("id", alert_id).execute()
+        
+        if not alert_result.data or len(alert_result.data) == 0:
+            return {"error": f"Alert with ID {alert_id} not found"}
+        
+        alert = alert_result.data[0]
+        
+        # Enrich with patient information if available
+        patient_info = None
+        if alert.get("patient_id"):
+            patient_result = supabase.table("patients").select("patient_id, name, age, condition").eq("patient_id", alert["patient_id"]).execute()
+            if patient_result.data and len(patient_result.data) > 0:
+                patient_info = patient_result.data[0]
+        
+        # Enrich with room information if available
+        room_info = None
+        if alert.get("room_id"):
+            room_result = supabase.table("rooms").select("room_id, room_name, room_type").eq("room_id", alert["room_id"]).execute()
+            if room_result.data and len(room_result.data) > 0:
+                room_info = room_result.data[0]
+        
+        # Build the response
+        return {
+            "alert": alert,
+            "patient": patient_info,
+            "room": room_info,
+            "metadata": alert.get("metadata", {}),
+            "timeline": {
+                "triggered_at": alert.get("triggered_at"),
+                "acknowledged_at": alert.get("acknowledged_at"),
+                "resolved_at": alert.get("resolved_at")
+            }
         }
     
     except Exception as e:

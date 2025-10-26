@@ -8,16 +8,22 @@ opencv-python>=4.10.0
 mediapipe>=0.10.21
 numpy>=1.26.0,<2.0
 pillow>=11.0.0
+scipy>=1.11.0  # FFT and signal filtering for seizure detection
 
 # AI/ML
 anthropic>=0.44.0
 
-# LiveKit for voice AI intake
-livekit>=0.17.0
-livekit-api>=0.6.0
-livekit-agents[openai,silero]>=1.2.0
-livekit-plugins-openai>=0.1.0
-livekit-plugins-noise-cancellation>=0.2.0
+# Protobuf pin to satisfy mediapipe<5 and cosmpy<6.0dev
+protobuf>=4.25.3,<5.0
+
+# LiveKit for voice AI intake (pin ranges to keep resolver happy)
+livekit>=1.0.12,<2.0.0
+livekit-api>=1.0.5,<2.0.0
+livekit-agents[openai,silero]>=1.2.0,<1.3.0
+livekit-plugins-openai>=0.4.0
+livekit-plugins-groq>=0.1.0
+livekit-plugins-noise-cancellation>=0.2.0,<0.4.0
+openai>=1.99.2
 python-dotenv>=1.0.0
 
 # Data processing

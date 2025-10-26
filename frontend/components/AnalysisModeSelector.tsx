@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 
 export type AnalysisMode = 'normal' | 'enhanced';
@@ -19,10 +19,15 @@ interface AnalysisModeSelectorProps {
   patient: Patient;
   onConfirm: (mode: AnalysisMode) => void;
   onBack: () => void;
+  initialMode?: AnalysisMode;
 }
 
-export default function AnalysisModeSelector({ patient, onConfirm, onBack }: AnalysisModeSelectorProps) {
-  const [selectedMode, setSelectedMode] = useState<AnalysisMode>('enhanced');
+export default function AnalysisModeSelector({ patient, onConfirm, onBack, initialMode }: AnalysisModeSelectorProps) {
+  const [selectedMode, setSelectedMode] = useState<AnalysisMode>(initialMode ?? 'enhanced');
+
+  useEffect(() => {
+    setSelectedMode(initialMode ?? 'enhanced');
+  }, [initialMode, patient]);
 
   return (
     <div className="bg-surface border border-neutral-200 rounded-lg overflow-hidden">
@@ -62,7 +67,7 @@ export default function AnalysisModeSelector({ patient, onConfirm, onBack }: Ana
             onClick={() => setSelectedMode('normal')}
             className={`relative p-6 border-2 rounded-lg text-left transition-all ${
               selectedMode === 'normal'
-                ? 'border-primary-700 bg-primary-50'
+                ? 'border-primary-700 bg-white'
                 : 'border-neutral-200 bg-white hover:border-neutral-400'
             }`}
             whileHover={{ y: -2 }}
@@ -116,7 +121,7 @@ export default function AnalysisModeSelector({ patient, onConfirm, onBack }: Ana
             onClick={() => setSelectedMode('enhanced')}
             className={`relative p-6 border-2 rounded-lg text-left transition-all ${
               selectedMode === 'enhanced'
-                ? 'border-primary-700 bg-primary-50'
+                ? 'border-primary-700 bg-white'
                 : 'border-neutral-200 bg-white hover:border-neutral-400'
             }`}
             whileHover={{ y: -2 }}
@@ -169,11 +174,6 @@ export default function AnalysisModeSelector({ patient, onConfirm, onBack }: Ana
                 <span>Real-time alerts</span>
               </div>
             </div>
-
-            {/* Recommended Badge */}
-            <div className="absolute top-4 left-4 bg-primary-700 text-white text-xs font-medium px-2 py-1 rounded">
-              RECOMMENDED
-            </div>
           </motion.button>
         </div>
       </div>
@@ -196,4 +196,3 @@ export default function AnalysisModeSelector({ patient, onConfirm, onBack }: Ana
     </div>
   );
 }
-
