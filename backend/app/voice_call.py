@@ -44,15 +44,17 @@ class VoiceCallService:
         self, 
         patient_id: str, 
         event_type: str,
-        details: str = ""
+        details: str = "",
+        to_number: Optional[str] = None
     ) -> Optional[dict]:
         """
         Make an emergency voice call
         
         Args:
             patient_id: Patient ID
-            event_type: Type of emergency (seizure, fall, agitation)
+            event_type: Type of emergency (seizure, fall, agitation, urgent_alert)
             details: Additional details
+            to_number: Optional override for phone number (defaults to emergency_number)
             
         Returns:
             Call response or None if failed
@@ -60,8 +62,11 @@ class VoiceCallService:
         # Load credentials on first call
         self._load_credentials()
         
+        # Use provided number or default emergency number
+        target_number = to_number or self.emergency_number
+        
         if not self.enabled:
-            print(f"📞 [DEMO MODE] Would call {self.emergency_number}: {event_type.upper()} for {patient_id}")
+            print(f"📞 [DEMO MODE] Would call {target_number}: {event_type.upper()} for {patient_id}")
             return None
         
         try:
@@ -75,9 +80,15 @@ class VoiceCallService:
                 "extreme_agitation": "EXTREME AGITATION DETECTED"
             }.get(event_type, "EMERGENCY ALERT")
             
-            tts_text = f"Haven Health Alert. {event_msg}. Patient ID {patient_id}. Medical assistance needed immediately."
+            # Build message based on type
+            if event_type == "urgent_alert":
+                # Manual alert from dashboard
+                tts_text = f"Haven Health Alert. {details}. Please respond immediately."
+            else:
+                # Automatic alert (seizure, fall, etc)
+                tts_text = f"Haven Health Alert. {event_msg}. Patient ID {patient_id}. Medical assistance needed immediately."
             
-            print(f"📞 CALLING {self.emergency_number}: {event_msg} for {patient_id}")
+            print(f"📞 CALLING {target_number}: {event_type.upper()} for {patient_id}")
             
             # Convert escaped newlines to actual newlines in private key
             private_key_formatted = self.private_key.replace("\\n", "\n")
@@ -92,7 +103,7 @@ class VoiceCallService:
             client = Vonage(auth=auth)
             
             # Clean phone number
-            to_number = self.emergency_number.replace("+", "").replace("-", "").replace(" ", "")
+            to_number_clean = target_number.replace("+", "").replace("-", "").replace(" ", "")
             
             # Create NCCO (Nexmo Call Control Objects)
             ncco = [
@@ -112,14 +123,18 @@ class VoiceCallService:
             
             # Make the call
             response = client.voice.create_call({
-                "to": [{"type": "phone", "number": to_number}],
+                "to": [{"type": "phone", "number": to_number_clean}],
                 "from_": {"type": "phone", "number": self.from_number},
                 "ncco": ncco
             })
             
             call_uuid = response.uuid if hasattr(response, 'uuid') else str(response)
             print(f"✅ Voice call placed - UUID: {call_uuid}")
-            return {"uuid": call_uuid, "to": self.emergency_number, "event": event_msg}
+            return {
+                "uuid": call_uuid, 
+                "to": target_number, 
+                "event": event_msg if event_type != "urgent_alert" else "urgent_alert"
+            }
             
         except Exception as e:
             print(f"❌ Voice call failed: {e}")

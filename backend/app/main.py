@@ -342,79 +342,40 @@ async def test_emergency_call():
 async def trigger_voice_alert(request: SMSAlertRequest):
     """
     Make voice call with TTS alert via Vonage
-    No 10DLC registration required - works immediately!
-
-    Voice calls bypass SMS carrier restrictions
+    FAST & SIMPLE: Uses voice_service for reliability
     """
     try:
-        # Get Vonage credentials from secrets
-        VONAGE_API_KEY = get_secret("VONAGE_API_KEY")
-        VONAGE_API_SECRET = get_secret("VONAGE_API_SECRET")
-        VONAGE_APPLICATION_ID = get_secret("VONAGE_APPLICATION_ID")
-        VONAGE_PRIVATE_KEY = get_secret("VONAGE_PRIVATE_KEY")
-
-        if not all([VONAGE_API_KEY, VONAGE_API_SECRET, VONAGE_APPLICATION_ID, VONAGE_PRIVATE_KEY]):
-            # Mock mode for demos without credentials
-            print(
-                f"⚠️  Vonage Voice not fully configured - mock calling {request.phone_number}")
-            print(f"   Message: {request.message}")
+        from app.voice_call import voice_service
+        
+        print(f"📞 Manual alert call requested to {request.phone_number}")
+        print(f"   Message: {request.message}")
+        
+        # Use the voice service (handles credentials, formatting, everything)
+        call_result = voice_service.make_emergency_call(
+            patient_id="MANUAL_ALERT",
+            event_type="urgent_alert",
+            details=request.message,
+            to_number=request.phone_number  # Pass the nurse's phone number
+        )
+        
+        if call_result:
+            # Real call placed
             return {
                 "status": "success",
-                "message": "Voice call placed (mock mode - Vonage Voice not configured)",
+                "message": "Voice call placed successfully",
+                "call_uuid": call_result.get("uuid"),
+                "to": call_result.get("to"),
+                "type": "voice"
+            }
+        else:
+            # Demo/mock mode (Vonage not configured)
+            return {
+                "status": "demo",
+                "message": "Voice call simulated (Vonage not configured)",
                 "mock_sent": True,
                 "to": request.phone_number,
-                "note": "Voice API requires Vonage Application setup - see dashboard"
+                "note": "Check backend logs for details"
             }
-
-        # Convert escaped newlines to actual newlines in private key
-        private_key_formatted = VONAGE_PRIVATE_KEY.replace("\\n", "\n")
-
-        # Import Vonage client (v4+ API)
-        from vonage import Auth, Vonage
-
-        # Create auth with application credentials for Voice API
-        auth = Auth(
-            api_key=VONAGE_API_KEY,
-            api_secret=VONAGE_API_SECRET,
-            application_id=VONAGE_APPLICATION_ID,
-            private_key=private_key_formatted
-        )
-        client = Vonage(auth=auth)
-
-        # Create voice call with TTS
-        # NCCO = Nexmo Call Control Objects
-        ncco = [
-            {
-                "action": "talk",
-                "text": f"This is an urgent alert from Haven AI. {request.message}. I repeat: {request.message}. Please check the dashboard immediately.",
-                "voiceName": "Amy",  # US English female voice
-                "bargeIn": False  # Don't allow user to interrupt
-            }
-        ]
-
-        # Remove '+' from phone numbers for Voice API
-        to_number = request.phone_number.replace(
-            "+", "").replace("-", "").replace(" ", "")
-
-        response = client.voice.create_call({
-            "to": [{"type": "phone", "number": to_number}],
-            # Your Vonage number
-            "from_": {"type": "phone", "number": "12178020876"},
-            "ncco": ncco
-        })
-
-        # Extract call UUID from response object
-        call_uuid = response.uuid if hasattr(
-            response, 'uuid') else str(response)
-        print(f"✅ Voice call placed to {request.phone_number}: {call_uuid}")
-
-        return {
-            "status": "success",
-            "message": "Voice call placed successfully",
-            "call_uuid": call_uuid,
-            "to": request.phone_number,
-            "type": "voice"
-        }
 
     except ImportError:
         # Vonage not installed - return mock success
