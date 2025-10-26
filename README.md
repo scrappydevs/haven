@@ -1,30 +1,43 @@
 # Haven
 
-AI-powered clinical trial safety monitoring platform using real-time computer vision and autonomous agents. Detects life-threatening complications in CAR-T therapy patients through continuous movement analysis and intelligent alert systems.
+A multi-agent hospital intelligence platform that coordinates autonomous and contextually aware AI agents for comprehensive patient monitoring and clinical decision support.
 
-## Multi-Agent System
+## System Overview
 
-Haven integrates 5 specialized AI agents working in concert to monitor, analyze, and respond to patient conditions. The system uses Fetch.ai uAgents for autonomous decision making, LiveKit Agents for voice interaction, and Anthropic Claude for clinical reasoning.
+Haven operates as a multi-agent hospital command center that coordinates autonomous and contextually aware AI agents for comprehensive patient monitoring and clinical decision support. The platform employs a voice intake agent via **LiveKit and OpenAI** to facilitate natural patient conversations, conducting structured follow-up questioning to collect missing clinical details, accessing validated EHR data, and generating nurse-ready summaries and action items. Multiple **Fetch.ai agents** function as health monitoring agents that continuously track patient vitals and coordinate with specialized agents (including Alert Response Agents) to detect clinical issues and generate appropriate alerts. The system incorporates spatial intelligence capabilities through a **live 3D hospital map** with real-time alert-based room visualization, powered by a **chat agent** with Anthropic Claude chain-tool calling, enabling nurses to manage hospital resources and request clinical summaries through natural language queries.
 
-**Personalized Voice Agents**: Patients activate assistance with "Hey Haven" wake word. The system conducts context-aware conversations referencing patient conditions and medical history, using intelligent follow-up questioning (max 3 questions) to gather critical information before automatically creating alerts and notifying nurses.
+## System Architecture
 
-## Advanced Vital Monitoring
+**Voice Processing Pipeline**: The system implements a robust voice interaction framework using LiveKit for real-time audio streaming, OpenAI Whisper for speech-to-text conversion, and Groq LLM for rapid response generation. Voice activity detection utilizes Silero VAD with configurable silence detection (0.3s) and minimum speech duration (0.1s) parameters. The pipeline handles connection drops, partial transcriptions, and overlapping speech through comprehensive exception handling and recovery mechanisms.
 
-**Remote Photoplethysmography (rPPG)**: Contactless heart rate detection using per-channel standardization and FastICA source separation. Real-time forehead ROI analysis with RGB signal extraction and frequency domain processing enables continuous vital tracking without patient discomfort.
+**Multi-Stream Synchronization**: Haven manages concurrent WebSocket streams from multiple sources including LiveKit (voice/video), Fetch.ai agents (vital alerts), and Claude toolchain (map updates). The system implements optimized synchronization protocols to maintain real-time data consistency while processing computer vision pipelines in background threads to prevent UI blocking.
 
-**Apple Watch Integration**: Seamless wearable device pairing with 6-digit secure codes. Real-time vitals streaming via WebSocket connections includes comprehensive health metrics (heart rate, HRV, SpO2, respiratory rate, temperature) with battery monitoring and offline synchronization.
+**Conversation Management**: The platform includes an intelligent summarization pipeline that compresses extended patient conversations while preserving critical clinical information including pain levels, symptom descriptions, and emotional context. This ensures efficient context management across agent communications and LLM interactions.
 
-## Clinical Workflows
+## Technical Architecture
 
-**For Patients**: Instant voice assistance through "Hey Haven" activation provides personalized interactions based on medical condition and history, streamlining the question process and eliminating lengthy forms.
+**Multi-Agent Coordination**: Haven employs a distributed agent architecture where specialized agents communicate through message passing and shared state management. Each agent operates independently while maintaining awareness of system-wide events through a centralized event bus.
 
-**For Healthcare Staff**: AI-powered clinical summaries generated automatically from patient interactions. Intelligent chat assistant with full database access provides context-aware decision support and automated handoff forms with AI-generated recommendations and protocols.
+**Real-Time Data Pipeline**: The system processes multiple concurrent data streams including video feeds (30fps), audio streams (16kHz), vital signs (1Hz), and agent communications. All data flows through WebSocket connections with sub-100ms latency requirements.
 
-## Technology Stack
+**Computer Vision Pipeline**: Facial photoplethysmography (FPPG) implementation using OpenCV for ROI detection, per-channel standardization for signal preprocessing, and FastICA source separation for heart rate extraction. The pipeline processes forehead regions at 30fps with 8-second rolling windows for frequency domain analysis.
 
-**Computer Vision**: Real-time movement analysis detecting falls, seizures, and agitation. Facial landmark tracking for vital sign extraction with behavioral pattern recognition and multi-modal sensor fusion combining video, audio, and wearable data.
+**Voice Processing Stack**: LiveKit integration with OpenAI Whisper for real-time transcription, Groq LLM for 75% faster response times, and OpenAI TTS with Nova voice for natural speech synthesis. Voice activity detection uses Silero VAD with 0.3s silence detection and 0.1s speech minimum duration.
 
-**Infrastructure**: Supabase for real-time database operations, WebSocket for instant data streaming, Next.js frontend with real-time updates, and Python FastAPI backend with async processing.
+**Spatial Intelligence**: 3D hospital map rendered with Three.js, updated in real-time through Claude chain-tool calling. Room states are managed through Supabase with WebSocket synchronization for instant updates across all connected clients.
+
+## Future Development
+
+**Agent Ecosystem Expansion**:
+- Medication Reconciliation Agent: Cross-references patient meds with new prescriptions to catch dangerous interactions before they happen
+- Discharge Planning Agent: Coordinates with social workers, pharmacies, and home health services to streamline patient transitions
+- Resource Allocation Agent: Dynamically assigns rooms, equipment, and staff based on real-time hospital capacity and patient acuity
+- Family Communication Agent: Proactively updates loved ones and schedules care conferences, reducing the communication burden on clinical staff
+
+**Technical Enhancements**:
+- Reinforcement Learning from Clinical Feedback: nurses would rate agent suggestions, allowing the system to improve accuracy over time and learn hospital-specific workflows
+- Multi-modal Patient Monitoring: Integrate computer vision to detect patient movement patterns, fall risk, and behavioral changes that complement vital sign monitoring
+- Federated Learning Across Hospitals: Enable Haven deployments to learn from each other while maintaining patient privacy, creating a collective intelligence that improves with every installation
 
 ## Live Agent Access
 
