@@ -33,24 +33,51 @@ class HavenAgent(Agent):
     ONLY asks follow-up questions - never provides medical advice or answers.
     """
 
-    def __init__(self, patient_id: str, session_id: str, patient_name: str = None):
-        # Haven agent instructions - ONLY ask questions, NEVER answer
-        greeting = f"Hi {patient_name}, " if patient_name else "Hi, "
+    def __init__(self, patient_id: str, session_id: str, patient_name: str = None,
+                 patient_condition: str = None, patient_notes: str = None):
+        # Build context section
+        context_parts = []
+        if patient_condition:
+            context_parts.append(f"Patient condition: {patient_condition}")
+        if patient_notes:
+            context_parts.append(f"Additional notes: {patient_notes}")
 
-        instructions = f"""You are Haven AI, a patient monitoring assistant. Your greeting: "{greeting}I'm Haven AI. How can I help you today?"
+        context_section = "\n".join(
+            context_parts) if context_parts else "No specific condition noted"
+
+        instructions = f"""You are Haven AI, a patient monitoring assistant.
+
+PATIENT CONTEXT:
+{context_section}
+
+YOUR ROLE:
+- Check on patient wellbeing with empathy and clinical precision
+- Ask smart follow-up questions based on their concern AND their condition
+- Balance clinical information gathering with emotional support
+- NEVER provide medical advice or diagnosis
+
+CONVERSATION FLOW:
+1. Initial greeting: Reference their condition naturally (e.g., "Hi [Name], I see you're being monitored for [condition]. How are you feeling?")
+2. After patient describes concern, ask 3-4 targeted follow-up questions that include:
+   - Clinical specifics (location, severity, timing, duration)
+   - Comfort/impact questions (affecting sleep/mobility/daily activities?)
+   - Pattern recognition (first time? getting worse? related to treatment?)
+3. After gathering info (max 4 questions), close with: "Thank you for sharing that. I've noted everything and a nurse will be with you shortly."
 
 RULES:
-• NOT a doctor - never give medical advice
-• Ask max 3 short questions about: symptoms, location/severity, duration
-• After 3 questions say: "I've noted everything. A nurse will be notified immediately."
-• Keep responses to 1 sentence
-• Be warm and empathetic
+- Maximum 4 follow-up questions total
+- Keep responses to 1-2 sentences
+- Be warm, empathetic, and professional
+- Adapt questions based on patient's specific condition and concern
+- If patient mentions urgent symptoms (severe pain, breathing difficulty, chest pain), immediately acknowledge and say nurse will come right away
 """
 
         super().__init__(instructions=instructions)
 
         self.patient_id = patient_id
         self.patient_name = patient_name
+        self.patient_condition = patient_condition
+        self.patient_notes = patient_notes
         self.session_id = session_id
         self.start_time = datetime.now()
 
@@ -65,7 +92,7 @@ RULES:
         }
 
         self.question_count = 0
-        self.max_questions = 3  # Maximum 3 questions
+        self.max_questions = 4  # Maximum 4 questions
         self.conversation_complete = False
 
     async def on_chat_message(self, msg: llm.ChatMessage):
@@ -125,21 +152,39 @@ RULES:
 
     def _should_end_conversation(self) -> bool:
         """
-        Determine if conversation should end.
+        Determine if conversation should end based on question count and info quality.
         """
-        # End if we have core information or hit max questions
+        # End if we hit max questions
+        if self.question_count >= self.max_questions:
+            return True
+
+        # End if we have substantial information
         has_core_info = (
             self.extracted_info.get("symptom_description") and
-            (self.extracted_info.get("pain_level")
-             or self.extracted_info.get("duration"))
+            len(self.extracted_info.get("symptom_description", "")) > 20 and
+            (self.extracted_info.get("pain_level") or
+             self.extracted_info.get("duration") or
+             self.extracted_info.get("body_location"))
         )
 
-        return has_core_info or self.question_count >= self.max_questions
+        return has_core_info and self.question_count >= 2
 
     def get_conversation_summary(self) -> Dict[str, Any]:
         """
         Get summary of conversation for alert creation.
         """
+        assistant_turns = sum(
+            1 for msg in self.conversation_transcript if msg.get("role") == "assistant"
+        )
+        assistant_question_count = sum(
+            1
+            for msg in self.conversation_transcript
+            if msg.get("role") == "assistant" and "?" in (msg.get("content") or "")
+        )
+
+        if assistant_question_count == 0:
+            assistant_question_count = assistant_turns
+
         return {
             "patient_id": self.patient_id,
             "session_id": self.session_id,
@@ -151,7 +196,10 @@ RULES:
             "full_transcript_text": "\n".join([
                 f"{msg['role']}: {msg['content']}"
                 for msg in self.conversation_transcript
-            ])
+            ]),
+            "question_count": self.question_count,
+            "assistant_question_count": assistant_question_count,
+            "assistant_turns": assistant_turns,
         }
 
 
@@ -178,11 +226,18 @@ async def entrypoint(ctx: agents.JobContext):
     logger.info(
         f"🛡️ Starting Haven agent for patient {patient_id}, session {session_id}")
 
-    # Try to get patient name from cache first, then database
+    # Try to get patient data from cache first, then database
     patient_name = None
+    patient_condition = None
+    patient_notes = None
+
     if patient_id in _patient_name_cache:
-        patient_name = _patient_name_cache[patient_id]
-        logger.info(f"✅ Found patient name in cache: {patient_name}")
+        cached_data = _patient_name_cache[patient_id]
+        if isinstance(cached_data, tuple):
+            patient_name, patient_condition, patient_notes = cached_data
+        else:
+            patient_name = cached_data  # Legacy cache format
+        logger.info(f"✅ Found patient data in cache: {patient_name}")
     else:
         try:
             # Import here to avoid circular imports
@@ -192,16 +247,21 @@ async def entrypoint(ctx: agents.JobContext):
             from supabase_client import supabase
 
             if supabase:
-                result = supabase.table("patients").select("name").eq(
+                result = supabase.table("patients").select("name, condition, notes").eq(
                     "patient_id", patient_id).single().execute()
                 if result.data:
                     patient_name = result.data.get("name")
-                    _patient_name_cache[patient_id] = patient_name  # Cache it
+                    patient_condition = result.data.get("condition")
+                    patient_notes = result.data.get("notes")
+                    # Cache all three
+                    _patient_name_cache[patient_id] = (
+                        patient_name, patient_condition, patient_notes)
                     logger.info(
-                        f"✅ Found patient name from DB: {patient_name}")
+                        f"✅ Found patient data from DB: {patient_name}, condition: {patient_condition}")
         except Exception as e:
-            logger.warning(f"⚠️ Could not fetch patient name: {e}")
-            _patient_name_cache[patient_id] = None  # Cache the None result
+            logger.warning(f"⚠️ Could not fetch patient data: {e}")
+            _patient_name_cache[patient_id] = (
+                None, None, None)  # Cache the None result
 
     try:
         # Create agent session with STT + LLM + TTS pipeline
@@ -226,7 +286,8 @@ async def entrypoint(ctx: agents.JobContext):
 
         # Start session with agent
         logger.info("🤖 Starting Haven agent session...")
-        agent_instance = HavenAgent(patient_id, session_id, patient_name)
+        agent_instance = HavenAgent(
+            patient_id, session_id, patient_name, patient_condition, patient_notes)
 
         await session.start(
             room=ctx.room,
@@ -235,9 +296,13 @@ async def entrypoint(ctx: agents.JobContext):
 
         logger.info(f"✅ Haven agent ready for patient {patient_id}")
 
-        # Generate initial greeting
-        greeting = f"Hi {patient_name}, " if patient_name else "Hi, "
-        greeting += "I'm Haven AI. How can I help you today?"
+        # Generate context-aware initial greeting
+        if patient_name and patient_condition:
+            greeting = f"Hi {patient_name}, I see you're being monitored for {patient_condition}. How are you feeling?"
+        elif patient_name:
+            greeting = f"Hi {patient_name}, I'm Haven AI. How can I help you today?"
+        else:
+            greeting = "Hi, I'm Haven AI. How can I help you today?"
 
         logger.info(f"🗣️ Speaking initial greeting: {greeting}")
         await session.say(greeting)

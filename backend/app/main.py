@@ -2389,14 +2389,37 @@ async def save_haven_conversation(request: dict):
             except Exception as e:
                 print(f"⚠️ Could not get room for patient {patient_id}: {e}")
 
-        # Use Claude to analyze conversation and determine severity
+        assistant_questions = conversation_summary.get(
+            "assistant_question_count")
+        total_questions = conversation_summary.get("question_count")
+
+        if assistant_questions is None:
+            transcript = conversation_summary.get("transcript", [])
+            assistant_questions = sum(
+                1 for entry in transcript
+                if entry.get("role") == "assistant" and "?" in (entry.get("content") or "")
+            )
+        if total_questions is None:
+            total_questions = conversation_summary.get("assistant_turns")
+
+        min_required_questions = 2
+
+        if assistant_questions is not None and assistant_questions < min_required_questions:
+            print(
+                f"⚠️ Haven conversation skipped (only {assistant_questions} assistant questions)")
+            return {"success": True, "skipped": True}
+
+        if total_questions is not None and total_questions < min_required_questions:
+            print(
+                f"⚠️ Haven conversation skipped (total questions {total_questions} < {min_required_questions})")
+            return {"success": True, "skipped": True}
+
         alert_data = await _analyze_haven_conversation(
             patient_id=patient_id,
             conversation_summary=conversation_summary,
             room_id=room_id
         )
 
-        # Create alert in database
         if supabase:
             alert_result = supabase.table("alerts").insert({
                 "alert_type": "other",

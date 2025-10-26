@@ -8,6 +8,7 @@ import PatientSearchModal from '@/components/PatientSearchModal';
 import AnalysisModeSelector, { AnalysisMode } from '@/components/AnalysisModeSelector';
 import AIVoiceAnimation from '@/components/AIVoiceAnimation';
 import { getApiUrl, getWsUrl } from '@/lib/api';
+import Link from 'next/link';
 
 interface Patient {
   id: string;
