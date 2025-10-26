@@ -130,6 +130,11 @@ class VoiceCallService:
             ]
             
             # Make the call
+            print(f"🔄 Calling Vonage API...")
+            print(f"   From: {self.from_number}")
+            print(f"   To: {to_number_clean}")
+            print(f"   Message: {tts_text[:100]}...")
+            
             response = client.voice.create_call({
                 "to": [{"type": "phone", "number": to_number_clean}],
                 "from_": {"type": "phone", "number": self.from_number},
@@ -138,6 +143,7 @@ class VoiceCallService:
             
             call_uuid = response.uuid if hasattr(response, 'uuid') else str(response)
             print(f"✅ Voice call placed - UUID: {call_uuid}")
+            print(f"   Response: {response}")
             return {
                 "uuid": call_uuid, 
                 "to": target_number, 
