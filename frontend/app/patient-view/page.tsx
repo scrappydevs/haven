@@ -23,14 +23,24 @@ interface Patient {
 }
 
 // Extract HavenVoiceAssistant outside to prevent recreation on hot reload
+type ConversationSegment = {
+  role: 'assistant' | 'patient';
+  text: string;
+  timestamp: string;
+};
+
 function HavenVoiceAssistant({ 
   onTranscriptUpdate, 
   onError, 
-  onDisconnect 
+  onDisconnect,
+  onAutoEnd,
+  onConversationSegment
 }: { 
   onTranscriptUpdate: (transcript: string) => void;
   onError: (error: string) => void;
   onDisconnect: () => void;
+  onAutoEnd: () => void;
+  onConversationSegment?: (segment: ConversationSegment) => void;
 }) {
   const { state, audioTrack } = useVoiceAssistant();
   const room = useRoomContext();
@@ -70,7 +80,7 @@ function HavenVoiceAssistant({
         console.log('✅ Agent finished speaking closing phrase - auto-ending session');
         // Wait a moment to let the audio finish playing
         setTimeout(() => {
-          onDisconnect();
+          onAutoEnd();
         }, 1500);
       }
       
@@ -106,7 +116,7 @@ function HavenVoiceAssistant({
 
       return () => clearTimeout(timer);
     }
-  }, [state, onTranscriptUpdate, onError, onDisconnect]);
+  }, [state, onTranscriptUpdate, onError, onDisconnect, onAutoEnd]);
 
   // Listen for agent transcriptions to detect closing phrases
   useEffect(() => {
@@ -117,32 +127,49 @@ function HavenVoiceAssistant({
       participant?: any,
       publication?: any
     ) => {
-      // Only process agent messages (not patient)
-      if (!participant || participant.identity.includes('patient')) return;
+      if (!participant) return;
+
+      const identity: string = participant.identity || '';
+      const isPatient = identity.includes('patient');
+      const role: ConversationSegment['role'] = isPatient ? 'patient' : 'assistant';
 
       segments.forEach((segment) => {
         if (segment.final && segment.text) {
-          const text = segment.text.toLowerCase();
-          lastAgentMessageRef.current = text;
-          console.log(`🤖 Agent said: ${text}`);
+          const rawText = segment.text.trim();
+          const text = rawText.toLowerCase();
 
-          // Detect closing phrases
-          const closingPhrases = [
-            'nurse will',
-            'nurse will be',
-            'will be with you',
-            'shortly',
-            'thank you',
-            'be right with you',
-            'on their way',
-            'coming to see you',
-            'be there soon'
-          ];
+          if (!isPatient) {
+            lastAgentMessageRef.current = text;
+            console.log(`🤖 Agent said: ${text}`);
 
-          const hasClosing = closingPhrases.some(phrase => text.includes(phrase));
-          if (hasClosing) {
-            console.log('🎯 Detected closing phrase in agent message');
-            hasClosingPhraseRef.current = true;
+            // Detect closing phrases
+            const closingPhrases = [
+              'nurse will',
+              'nurse will be',
+              'will be with you',
+              'shortly',
+              'thank you',
+              'be right with you',
+              'on their way',
+              'coming to see you',
+              'be there soon'
+            ];
+
+            const hasClosing = closingPhrases.some(phrase => text.includes(phrase));
+            if (hasClosing) {
+              console.log('🎯 Detected closing phrase in agent message');
+              hasClosingPhraseRef.current = true;
+            }
+          } else {
+            console.log(`🧑‍⚕️ Patient said: ${text}`);
+          }
+
+          if (onConversationSegment) {
+            onConversationSegment({
+              role,
+              text: rawText,
+              timestamp: new Date().toISOString()
+            });
           }
         }
       });
@@ -179,6 +206,7 @@ export default function PatientViewPage() {
   const viewStartedRef = useRef<boolean>(false);
   const havenActiveRef = useRef<boolean>(false);
   const suppressDashboardRedirectRef = useRef<boolean>(false);
+  const conversationSubmittedRef = useRef<boolean>(false);
 
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [tempPatient, setTempPatient] = useState<Patient | null>(null);
@@ -213,6 +241,9 @@ export default function PatientViewPage() {
   const listenerTriggeredRef = useRef<boolean>(false);
   const havenStartingRef = useRef<boolean>(false);
   const listenerInitializedRef = useRef<boolean>(false);
+  const havenRoomDataRef = useRef<typeof havenRoomData>(null);
+  const havenTranscriptRef = useRef<string>('');
+  const conversationLogRef = useRef<ConversationSegment[]>([]);
 
   useEffect(() => {
     return () => {
@@ -246,6 +277,100 @@ export default function PatientViewPage() {
   useEffect(() => {
     havenActiveRef.current = havenActive;
   }, [havenActive]);
+
+  useEffect(() => {
+    havenRoomDataRef.current = havenRoomData;
+  }, [havenRoomData]);
+
+  useEffect(() => {
+    havenTranscriptRef.current = havenTranscript;
+  }, [havenTranscript]);
+
+  const recordConversationSegment = useCallback((segment: ConversationSegment) => {
+    conversationLogRef.current = [...conversationLogRef.current, segment];
+
+    const speakerLabel = segment.role === 'assistant' ? 'Haven' : 'Patient';
+    const recentTranscript = conversationLogRef.current
+      .slice(-6)
+      .map(entry => `${entry.role === 'assistant' ? 'Haven' : 'Patient'}: ${entry.text}`)
+      .join('\n');
+
+    setHavenTranscript(recentTranscript || `${speakerLabel}: ${segment.text}`);
+  }, [conversationLogRef]);
+
+  const buildConversationSummary = useCallback(() => {
+    const entries = conversationLogRef.current;
+
+    const transcriptEntries = entries.map(entry => ({
+      role: entry.role,
+      content: entry.text,
+      timestamp: entry.timestamp
+    }));
+
+    const fullTranscriptText = entries
+      .map(entry => `${entry.role === 'assistant' ? 'Haven' : 'Patient'}: ${entry.text}`)
+      .join('\n');
+
+    const patientStatements = entries
+      .filter(entry => entry.role === 'patient')
+      .map(entry => entry.text);
+
+    const assistantQuestions = entries
+      .filter(entry => entry.role === 'assistant' && entry.text.includes('?'))
+      .length;
+
+    const assistantTurns = entries.filter(entry => entry.role === 'assistant').length;
+
+    const bodyLocations = ['chest', 'head', 'stomach', 'abdomen', 'back', 'leg', 'arm', 'neck', 'shoulder', 'knee', 'foot', 'hand', 'throat', 'ear', 'eye'];
+
+    let symptomDescription: string | null = null;
+    let duration: string | null = null;
+    let bodyLocation: string | null = null;
+    let painLevel: number | null = null;
+
+    for (const statement of patientStatements) {
+      if (!symptomDescription && statement.length > 10) {
+        symptomDescription = statement;
+      }
+
+      if (!duration && /(minute|hour|day|week|month|since|yesterday|today|earlier|tonight|morning|evening)/i.test(statement)) {
+        duration = statement;
+      }
+
+      if (!bodyLocation) {
+        const match = bodyLocations.find(location => statement.toLowerCase().includes(location));
+        if (match) {
+          bodyLocation = match;
+        }
+      }
+
+      if (painLevel === null && /pain|hurts|ache/i.test(statement)) {
+        const painMatch = statement.match(/(\b[0-9]{1,2}\b)(?:\s*\/\s*10|\s*(?:out of|over)\s*10)?/);
+        if (painMatch) {
+          const value = parseInt(painMatch[1], 10);
+          if (!Number.isNaN(value) && value >= 0 && value <= 10) {
+            painLevel = value;
+          }
+        }
+      }
+    }
+
+    const extractedInfo = {
+      symptom_description: symptomDescription,
+      body_location: bodyLocation,
+      pain_level: painLevel,
+      duration,
+      patient_statements: patientStatements
+    };
+
+    return {
+      transcriptEntries,
+      fullTranscriptText,
+      extractedInfo,
+      assistantQuestions,
+      assistantTurns
+    };
+  }, []);
 
   // Ensure video element has stream when it becomes visible
   useEffect(() => {
@@ -399,7 +524,7 @@ export default function PatientViewPage() {
           if (selectedPatient && data.patient_id === selectedPatient.patient_id && havenActive) {
             console.log('✅ Received haven_closing signal - auto-ending session');
             setTimeout(() => {
-              endHavenSession();
+              endHavenSession(true);
             }, 2000); // Wait 2 seconds to ensure audio has finished
           }
         }
@@ -498,6 +623,9 @@ export default function PatientViewPage() {
       havenStartingRef.current = true;
       havenActiveRef.current = true;
       listenerTriggeredRef.current = source === 'listener';
+      conversationSubmittedRef.current = false;
+      conversationLogRef.current = [];
+      havenTranscriptRef.current = '';
 
       setError(null);
       setVoiceAgentUnavailable(null);
@@ -708,46 +836,83 @@ export default function PatientViewPage() {
     }
   }, [setError, startHavenSession, voiceAgentUnavailable, setVoiceAgentUnavailable, stopListenerAgent]);
 
-  const endHavenSession = useCallback(async () => {
+  const submitConversationSummary = useCallback(async (reason: 'manual' | 'auto') => {
+    const patient = selectedPatientRef.current;
+    const roomData = havenRoomDataRef.current;
+
+    if (!patient || !roomData) {
+      console.log('⚠️ No patient or room data available for Haven summary submission');
+      return false;
+    }
+
+    if (conversationSubmittedRef.current) {
+      console.log('📬 Haven conversation summary already submitted, skipping duplicate request');
+      return true;
+    }
+
+    conversationSubmittedRef.current = true;
+
+    try {
+      const apiUrl = getApiUrl();
+      const { transcriptEntries, fullTranscriptText, extractedInfo, assistantQuestions, assistantTurns } = buildConversationSummary();
+      const hasTranscript = transcriptEntries.length > 0 && fullTranscriptText.length > 0;
+      const fallbackTranscript = havenTranscriptRef.current || 'Patient concern recorded, details unavailable.';
+
+      const summaryPayload = {
+        patient_id: patient.patient_id,
+        session_id: roomData.session_id,
+        conversation_summary: {
+          full_transcript_text: hasTranscript ? fullTranscriptText : fallbackTranscript,
+          transcript: transcriptEntries,
+          assistant_question_count: assistantQuestions,
+          assistant_turns: assistantTurns,
+          question_count: assistantQuestions,
+          total_turns: transcriptEntries.length,
+          patient_statements: extractedInfo.patient_statements,
+          extracted_info: {
+            symptom_description: extractedInfo.symptom_description || 'Patient reported concern',
+            body_location: extractedInfo.body_location,
+            pain_level: extractedInfo.pain_level,
+            duration: extractedInfo.duration,
+            patient_statements: extractedInfo.patient_statements
+          }
+        }
+      };
+
+      console.log(`📤 Sending Haven conversation summary (${reason})`);
+      const response = await fetch(`${apiUrl}/api/haven/conversation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(summaryPayload)
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        conversationSubmittedRef.current = false;
+        console.warn('⚠️ Failed to save Haven conversation:', result.error || response.statusText);
+        return false;
+      }
+
+      console.log('✅ Haven conversation saved successfully', {
+        alertId: result.alert_id,
+        severity: result.severity
+      });
+      return true;
+    } catch (err) {
+      conversationSubmittedRef.current = false;
+      console.error('❌ Error saving Haven conversation:', err);
+      return false;
+    }
+  }, []);
+
+  const endHavenSession = useCallback(async (isAutoEnd = false) => {
     if (!havenActiveRef.current) {
       return;
     }
 
-    const patient = selectedPatientRef.current;
+    console.log(`🛡️ Ending Haven voice session (${isAutoEnd ? 'auto' : 'manual'})`);
 
-    console.log('🛡️ Ending Haven voice session');
-
-    if (havenRoomData && patient) {
-      try {
-        const apiUrl = getApiUrl();
-        const summaryPayload = {
-          patient_id: patient.patient_id,
-          session_id: havenRoomData.session_id,
-          conversation_summary: {
-            full_transcript_text: havenTranscript,
-            extracted_info: {
-              symptom_description: 'Patient reported concern',
-              body_location: null,
-              pain_level: null,
-              duration: null
-            }
-          }
-        };
-
-        const response = await fetch(`${apiUrl}/api/haven/conversation`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(summaryPayload)
-        });
-
-        const result = await response.json();
-        if (!result.success) {
-          console.warn('⚠️ Failed to save Haven conversation:', result.error);
-        }
-      } catch (err) {
-        console.error('❌ Error saving Haven conversation:', err);
-      }
-    }
+    await submitConversationSummary(isAutoEnd ? 'auto' : 'manual');
 
     stopListenerAgent();
     setHavenActive(false);
@@ -756,7 +921,7 @@ export default function PatientViewPage() {
     setShowAIAnimation(false);
     listenerTriggeredRef.current = false;
     havenActiveRef.current = false;
-  }, [havenRoomData, havenTranscript, stopListenerAgent]);
+  }, [submitConversationSummary, stopListenerAgent]);
 
   useEffect(() => {
     if (listenerRestartRef.current) {
@@ -975,8 +1140,10 @@ export default function PatientViewPage() {
 
   // Callbacks for HavenVoiceAssistant
   const handleTranscriptUpdate = useCallback((transcript: string) => {
-    setHavenTranscript(transcript);
-  }, []);
+    if (conversationLogRef.current.length === 0) {
+      setHavenTranscript(transcript);
+    }
+  }, [conversationLogRef]);
 
   const handleVoiceError = useCallback((error: string) => {
     setError(error);
@@ -1291,18 +1458,20 @@ export default function PatientViewPage() {
                           </div>
 
                           {/* Voice Assistant Audio and Visualizer */}
-                          <HavenVoiceAssistant 
-                            onTranscriptUpdate={handleTranscriptUpdate}
-                            onError={handleVoiceError}
-                            onDisconnect={handleVoiceDisconnect}
-                          />
+                            <HavenVoiceAssistant 
+                              onTranscriptUpdate={handleTranscriptUpdate}
+                              onError={handleVoiceError}
+                              onDisconnect={handleVoiceDisconnect}
+                              onAutoEnd={() => endHavenSession(true)}
+                              onConversationSegment={recordConversationSegment}
+                            />
 
                           {/* Transcript Display */}
-                          <div className="mb-6">
-                            <div className="bg-neutral-100/80 border border-neutral-300 p-4 rounded-lg min-h-[100px]">
-                              <p className="body-default text-neutral-800">
-                                {havenTranscript || 'Listening...'}
-                              </p>
+                              <div className="mb-6">
+                                <div className="bg-neutral-100/80 border border-neutral-300 p-4 rounded-lg min-h-[100px]">
+                                  <p className="body-default text-neutral-800 whitespace-pre-line">
+                                    {havenTranscript || 'Listening...'}
+                                  </p>
                               {(havenTranscript.includes('Waiting') || havenTranscript.includes('Connecting to room')) && (
                                 <div className="mt-3 pt-3 border-t border-neutral-200">
                                   <p className="text-xs font-medium text-neutral-600 mb-1">Backend Required:</p>
@@ -1327,7 +1496,7 @@ export default function PatientViewPage() {
                             </div>
 
                             <button
-                              onClick={endHavenSession}
+                              onClick={() => endHavenSession(false)}
                               className="px-4 py-2 bg-neutral-900 hover:bg-neutral-700 border border-neutral-900 text-white label-uppercase text-xs transition-colors rounded"
                             >
                               End Conversation

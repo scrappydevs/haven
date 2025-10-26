@@ -5,16 +5,24 @@ Activated by "Hey Haven" wake word
 """
 
 import os
-import json
+import sys
 import logging
 import asyncio
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+
 from dotenv import load_dotenv
 
 from livekit import agents, rtc
 from livekit.agents import Agent, AgentSession, llm, tokenize
 from livekit.plugins import openai, silero, groq
+
+# Ensure shared backend modules are importable when running standalone agent
+BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+if BACKEND_ROOT not in sys.path:
+    sys.path.append(BACKEND_ROOT)
+
+from app.main import process_haven_conversation  # noqa: E402
 
 # Load environment variables
 load_dotenv()
@@ -97,6 +105,7 @@ CRITICAL RULES:
         self.question_count = 0
         self.max_questions = 4  # Maximum 4 questions
         self.conversation_complete = False
+        self.alert_saved = False
 
     async def on_chat_message(self, msg: llm.ChatMessage):
         """
@@ -132,6 +141,7 @@ CRITICAL RULES:
                     f"🎯 Detected closing phrase in assistant message: {msg.content[:100]}")
                 # Mark conversation as ready to end
                 self.conversation_complete = True
+                await self._save_alert()
 
                 # Send signal to frontend via WebSocket
                 asyncio.create_task(self._notify_closing_phrase())
@@ -147,7 +157,7 @@ CRITICAL RULES:
                     f"Haven conversation complete for patient {self.patient_id}")
                 self.conversation_complete = True
                 # Save alert to database asynchronously
-                asyncio.create_task(self._save_alert())
+                await self._save_alert()
 
     def _extract_info_from_response(self, patient_response: str):
         """
@@ -256,61 +266,39 @@ CRITICAL RULES:
         """
         Save alert to database and notify dashboard when conversation completes.
         """
-        try:
-            # Import here to avoid circular imports
-            import sys
-            import os
-            sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-            from supabase_client import supabase
+        if self.alert_saved:
+            logger.info(
+                f"⚠️ _save_alert() already executed for patient {self.patient_id}, skipping duplicate call")
+            return
 
+        logger.info(f"🔔 _save_alert() called for patient {self.patient_id}")
+        try:
+            # Import shared Haven conversation workflow from main API
             summary = self.get_conversation_summary()
 
-            # Determine urgency level
-            urgency = "medium"  # Default
-            if self.extracted_info.get("pain_level") and self.extracted_info["pain_level"] >= 7:
-                urgency = "high"
+            logger.info("📝 Submitting Haven conversation to shared processor")
+            result = await process_haven_conversation(
+                patient_id=self.patient_id,
+                session_id=self.session_id,
+                conversation_summary=summary
+            )
 
-            # Create alert record
-            alert_data = {
-                "patient_id": self.patient_id,
-                "type": "patient_concern",
-                "title": f"Patient reported: {self.extracted_info.get('symptom_description', 'concern')}",
-                "description": f"{self.patient_name or 'Patient'} reported {self.extracted_info.get('symptom_description', 'a concern')}",
-                "urgency": urgency,
-                "status": "active",
-                "metadata": {
-                    "source": "haven_ai",
-                    "session_id": self.session_id,
-                    "conversation_summary": summary,
-                    "extracted_info": self.extracted_info,
-                    "transcript": self.conversation_transcript
-                },
-                "created_at": datetime.now().isoformat()
-            }
+            if not result.get("success"):
+                logger.error(
+                    f"❌ Haven conversation processing failed: {result}")
+                return
 
-            if supabase:
-                result = supabase.table("alerts").insert(alert_data).execute()
-                alert_id = result.data[0]["id"] if result.data else None
-                logger.info(
-                    f"✅ Alert saved: {alert_id} for patient {self.patient_id}")
+            if result.get("skipped"):
+                logger.warning(
+                    f"⚠️ Haven conversation skipped for patient {self.patient_id}: insufficient data"
+                )
+                self.alert_saved = True
+                return
 
-                # Notify dashboard via WebSocket
-                try:
-                    from websocket import manager as websocket_manager
-                    await websocket_manager.broadcast_frame({
-                        "type": "new_alert",
-                        "patient_id": self.patient_id,
-                        "alert_id": alert_id,
-                        "urgency": urgency,
-                        "title": alert_data["title"],
-                        "timestamp": datetime.now().isoformat()
-                    })
-                    logger.info(
-                        f"📢 Dashboard notified of new alert for patient {self.patient_id}")
-                except Exception as e:
-                    logger.error(f"Error notifying dashboard: {e}")
-            else:
-                logger.warning("Supabase not available, alert not saved")
+            self.alert_saved = True
+            alert_id = result.get("alert_id")
+            logger.info(
+                f"✅ Alert persisted via shared workflow: {alert_id}")
 
         except Exception as e:
             logger.error(f"Error saving alert: {e}", exc_info=True)
