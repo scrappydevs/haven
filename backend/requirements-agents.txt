@@ -1,0 +1,4 @@
+# Multi-Agent System (Fetch.ai uAgents)
+# Installed AFTER base requirements to avoid conflicts
+uagents==0.12.2
+
