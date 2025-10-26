@@ -108,6 +108,31 @@ RULES:
 
         logger.info(f"[{msg.role}]: {msg.content[:100]}...")
 
+        # Detect closing phrases in assistant responses
+        if msg.role == "assistant":
+            content_lower = msg.content.lower()
+            closing_phrases = [
+                'nurse will',
+                'nurse will be',
+                'will be with you',
+                'shortly',
+                'be right with you',
+                'on their way',
+                'coming to see you',
+                'be there soon'
+            ]
+
+            has_closing = any(
+                phrase in content_lower for phrase in closing_phrases)
+            if has_closing:
+                logger.info(
+                    f"🎯 Detected closing phrase in assistant message: {msg.content[:100]}")
+                # Mark conversation as ready to end
+                self.conversation_complete = True
+
+                # Send signal to frontend via WebSocket
+                asyncio.create_task(self._notify_closing_phrase())
+
         # Extract info from patient responses
         if msg.role == "user":
             self._extract_info_from_response(msg.content)
@@ -204,6 +229,26 @@ RULES:
             "assistant_turns": assistant_turns,
         }
 
+    async def _notify_closing_phrase(self):
+        """
+        Send WebSocket signal to frontend that agent is ending conversation.
+        """
+        try:
+            # Wait a moment to allow the agent to finish speaking
+            await asyncio.sleep(2)
+
+            from websocket import manager as websocket_manager
+            await websocket_manager.broadcast_frame({
+                "type": "haven_closing",
+                "patient_id": self.patient_id,
+                "session_id": self.session_id,
+                "timestamp": datetime.now().isoformat()
+            })
+            logger.info(
+                f"📢 Notified frontend that Haven is closing for patient {self.patient_id}")
+        except Exception as e:
+            logger.error(f"Error notifying closing phrase: {e}")
+
     async def _save_alert(self):
         """
         Save alert to database and notify dashboard when conversation completes.
@@ -243,7 +288,8 @@ RULES:
             if supabase:
                 result = supabase.table("alerts").insert(alert_data).execute()
                 alert_id = result.data[0]["id"] if result.data else None
-                logger.info(f"✅ Alert saved: {alert_id} for patient {self.patient_id}")
+                logger.info(
+                    f"✅ Alert saved: {alert_id} for patient {self.patient_id}")
 
                 # Notify dashboard via WebSocket
                 try:
@@ -256,7 +302,8 @@ RULES:
                         "title": alert_data["title"],
                         "timestamp": datetime.now().isoformat()
                     })
-                    logger.info(f"📢 Dashboard notified of new alert for patient {self.patient_id}")
+                    logger.info(
+                        f"📢 Dashboard notified of new alert for patient {self.patient_id}")
                 except Exception as e:
                     logger.error(f"Error notifying dashboard: {e}")
             else:

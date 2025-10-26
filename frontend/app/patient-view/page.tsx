@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { motion } from 'framer-motion';
-import { LiveKitRoom, useVoiceAssistant, BarVisualizer, RoomAudioRenderer } from '@livekit/components-react';
+import { LiveKitRoom, useVoiceAssistant, BarVisualizer, RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import '@livekit/components-styles';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import AnalysisModeSelector, { AnalysisMode } from '@/components/AnalysisModeSelector';
@@ -10,6 +10,7 @@ import AIVoiceAnimation from '@/components/AIVoiceAnimation';
 import { getApiUrl, getWsUrl } from '@/lib/api';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { TranscriptionSegment } from 'livekit-client';
 
 interface Patient {
   id: string;
@@ -32,9 +33,12 @@ function HavenVoiceAssistant({
   onDisconnect: () => void;
 }) {
   const { state, audioTrack } = useVoiceAssistant();
+  const room = useRoomContext();
   const lastStateRef = useRef<string>('');
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasConnectedRef = useRef<boolean>(false);
+  const lastAgentMessageRef = useRef<string>('');
+  const hasClosingPhraseRef = useRef<boolean>(false);
 
   useEffect(() => {
     // Set a timeout to detect if the agent never connects
@@ -92,6 +96,64 @@ function HavenVoiceAssistant({
       return () => clearTimeout(timer);
     }
   }, [state, onTranscriptUpdate, onError, onDisconnect]);
+
+  // Listen for agent transcriptions to detect closing phrases
+  useEffect(() => {
+    if (!room) return;
+
+    const handleTranscription = (
+      segments: TranscriptionSegment[],
+      participant?: any,
+      publication?: any
+    ) => {
+      // Only process agent messages (not patient)
+      if (!participant || participant.identity.includes('patient')) return;
+
+      segments.forEach((segment) => {
+        if (segment.final && segment.text) {
+          const text = segment.text.toLowerCase();
+          lastAgentMessageRef.current = text;
+          console.log(`🤖 Agent said: ${text}`);
+
+          // Detect closing phrases
+          const closingPhrases = [
+            'nurse will',
+            'nurse will be',
+            'will be with you',
+            'shortly',
+            'thank you',
+            'be right with you',
+            'on their way',
+            'coming to see you',
+            'be there soon'
+          ];
+
+          const hasClosing = closingPhrases.some(phrase => text.includes(phrase));
+          if (hasClosing) {
+            console.log('🎯 Detected closing phrase in agent message');
+            hasClosingPhraseRef.current = true;
+          }
+        }
+      });
+    };
+
+    room.on('transcriptionReceived', handleTranscription);
+
+    return () => {
+      room.off('transcriptionReceived', handleTranscription);
+    };
+  }, [room]);
+
+  // Auto-end session when agent finishes speaking after closing phrase
+  useEffect(() => {
+    if (lastStateRef.current === 'speaking' && state === 'listening' && hasClosingPhraseRef.current) {
+      console.log('✅ Agent finished speaking closing phrase - auto-ending session');
+      // Wait a moment to let the audio finish playing
+      setTimeout(() => {
+        onDisconnect();
+      }, 1000);
+    }
+  }, [state, onDisconnect]);
 
   return (
     <>
@@ -330,6 +392,16 @@ export default function PatientViewPage() {
 
           const cleanup = startCapture();
           captureCleanupRef.current = cleanup;
+        }
+
+        if (data.type === 'haven_closing') {
+          // Agent has finished speaking closing phrase - auto-end session
+          if (selectedPatient && data.patient_id === selectedPatient.patient_id && havenActive) {
+            console.log('✅ Received haven_closing signal - auto-ending session');
+            setTimeout(() => {
+              endHavenSession();
+            }, 2000); // Wait 2 seconds to ensure audio has finished
+          }
         }
       };
 
@@ -573,14 +645,19 @@ export default function PatientViewPage() {
       const isFinal = event.results[event.results.length - 1].isFinal;
 
       if (!listenerTriggeredRef.current && isFinal && transcript.length >= 3) {
-        console.log('🔈 Listener detected speech:', transcript);
-        listenerTriggeredRef.current = true;
-        try {
-          recognition.stop();
-        } catch (stopErr) {
-          console.warn('Listener stop error:', stopErr);
+        const normalizedTranscript = transcript.toLowerCase();
+        if (normalizedTranscript.includes('haven')) {
+          console.log('🔈 Listener detected wake word "Haven" in speech:', transcript);
+          listenerTriggeredRef.current = true;
+          try {
+            recognition.stop();
+          } catch (stopErr) {
+            console.warn('Listener stop error:', stopErr);
+          }
+          void startHavenSession('listener', transcript);
+        } else {
+          console.log('🔇 Speech detected but no wake word "Haven":', transcript);
         }
-        void startHavenSession('listener', transcript);
       }
     };
 

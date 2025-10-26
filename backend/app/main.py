@@ -536,15 +536,15 @@ async def handle_critical_alert_webhook(request: dict):
         severity = request.get('severity')
         title = request.get('title')
         description = request.get('description')
-        
+
         print(f"\n🚨 CRITICAL ALERT WEBHOOK: {alert_id}")
         print(f"   Patient: {patient_id}")
         print(f"   Room: {room_id}")
         print(f"   Title: {title}")
-        
+
         # Import alert monitor logic
         from app.alert_monitor import handle_critical_alert
-        
+
         # Process the alert (make phone call)
         await handle_critical_alert({
             'id': alert_id,
@@ -553,13 +553,13 @@ async def handle_critical_alert_webhook(request: dict):
             'severity': severity,
             'message': title or description or 'Critical alert'
         })
-        
+
         return {
             "status": "success",
             "message": "Alert processed and call initiated",
             "alert_id": alert_id
         }
-    
+
     except Exception as e:
         print(f"❌ Error handling alert webhook: {e}")
         import traceback
@@ -580,13 +580,13 @@ async def handle_alert_call_response(request: dict):
         dtmf = request.get('dtmf')
         call_uuid = request.get('uuid')
         conversation_uuid = request.get('conversation_uuid')
-        
+
         print(f"📞 Call response received: DTMF={dtmf}, Call={call_uuid}")
-        
+
         if dtmf == '1':
             # Nurse acknowledged the alert
             print(f"✅ Alert acknowledged by nurse")
-            
+
             # Find and update alert with this call_id in metadata
             if supabase:
                 try:
@@ -595,30 +595,32 @@ async def handle_alert_call_response(request: dict):
                         .select("id, metadata") \
                         .eq("status", "active") \
                         .execute()
-                    
+
                     for alert in (alerts.data or []):
                         metadata = alert.get('metadata', {})
                         call_info = metadata.get('call', {})
-                        
+
                         if call_info.get('call_id') == call_uuid:
                             # Update call status and acknowledge alert
                             call_info['call_status'] = 'answered'
-                            call_info['answered_at'] = datetime.now().isoformat()
+                            call_info['answered_at'] = datetime.now(
+                            ).isoformat()
                             metadata['call'] = call_info
-                            
+
                             supabase.table("alerts").update({
                                 "status": "acknowledged",
                                 "acknowledged_at": datetime.now().isoformat(),
                                 "acknowledged_by": "nurse_phone",
                                 "metadata": metadata
                             }).eq("id", alert['id']).execute()
-                            
-                            print(f"✅ Alert {alert['id']} acknowledged and updated")
+
+                            print(
+                                f"✅ Alert {alert['id']} acknowledged and updated")
                             break
-                    
+
                 except Exception as e:
                     print(f"⚠️  Failed to update alert: {e}")
-            
+
             # Return NCCO to confirm acknowledgement
             return [{
                 "action": "talk",
@@ -632,7 +634,7 @@ async def handle_alert_call_response(request: dict):
                 "text": "No response received. Please check the alert immediately.",
                 "voiceName": "Amy"
             }]
-    
+
     except Exception as e:
         print(f"❌ Error handling call response: {e}")
         return {"status": "error"}
@@ -1548,6 +1550,7 @@ class AnalyzePatientRequest(BaseModel):
     vitals: Dict
     cv_metrics: Dict
 
+
 @app.post("/health-agent/analyze")
 async def analyze_patient_direct(request: AnalyzePatientRequest):
     """Test direct analysis via Fetch.ai agent"""
@@ -1575,23 +1578,24 @@ class TestCallRequest(BaseModel):
     event_type: str = "seizure"
     phone_number: Optional[str] = None
 
+
 @app.post("/health-agent/test-call")
 async def test_voice_call(request: TestCallRequest):
     """Test voice calling system"""
     from app.voice_call import voice_service
-    
+
     # Override phone number if provided
     original_number = voice_service.emergency_number
     if request.phone_number:
         voice_service.emergency_number = request.phone_number
-    
+
     try:
         result = voice_service.make_emergency_call(
             patient_id=request.patient_id,
             event_type=request.event_type,
             details="Test call from Haven system"
         )
-        
+
         return {
             "success": True,
             "enabled": voice_service.enabled,
@@ -2585,7 +2589,7 @@ async def save_haven_conversation(request: dict):
         if total_questions is None:
             total_questions = conversation_summary.get("assistant_turns")
 
-        min_required_questions = 2
+        min_required_questions = 1
 
         if assistant_questions is not None and assistant_questions < min_required_questions:
             print(
