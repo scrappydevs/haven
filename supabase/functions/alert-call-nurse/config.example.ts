@@ -33,4 +33,3 @@ export const CONFIG_EXAMPLE = {
  * supabase secrets set LIVEKIT_SIP_TRUNK_ID=ST_xxxxx
  * supabase secrets set NURSE_PHONE_NUMBER=+14155170250
  */
-

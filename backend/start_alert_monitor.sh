@@ -26,9 +26,8 @@ fi
 # Run the alert monitor
 echo ""
 echo "📞 Alert Monitor running..."
-echo "   Nurse: +1-385-401-9951"
+echo "   Nurse: 14085948710"
 echo "   Press Ctrl+C to stop"
 echo ""
 
 python3 -m app.alert_monitor
-

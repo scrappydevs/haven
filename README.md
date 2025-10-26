@@ -1,18 +1,5 @@
 # Haven
 
-<div align="center">
-  <table>
-    <tr>
-      <td><img src="Haven AI.gif" alt="Haven AI" width="400"/></td>
-      <td><img src="Haven AI Chat.gif" alt="Haven AI Chat" width="400"/></td>
-    </tr>
-    <tr>
-      <td><img src="Haven Seizure Example.gif" alt="Haven Seizure Example" width="400"/></td>
-      <td><img src="Haven Shoulder Pain Relief.gif" alt="Haven Shoulder Pain Relief" width="400"/></td>
-    </tr>
-  </table>
-</div>
-
 A multi-agent hospital intelligence platform that coordinates autonomous and contextually aware AI agents for comprehensive patient monitoring and clinical decision support.
 
 ## System Overview

@@ -41,7 +41,7 @@ PROTOCOL_RULES = {
 # Emergency protocol definitions
 EMERGENCY_PROTOCOLS = {
     "CRS_Grade_3": [
-        "Page on-call physician immediately (Dr. Smith - 555-0123)",
+        "Page on-call physician immediately (Dr. Smith - 14085948710)",
         "Prepare tocilizumab 8mg/kg IV (IL-6 receptor antagonist)",
         "Increase vital signs monitoring to q5min",
         "Alert ICU - reserve bed on standby",
@@ -118,4 +118,3 @@ CRS_GRADING = {
         "monitoring_frequency": 1  # Continuous monitoring
     }
 }
-
