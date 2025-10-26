@@ -12,24 +12,20 @@ function AnimatedBlob({ isActive }: { isActive: boolean }) {
   useFrame((state) => {
     if (!meshRef.current) return;
 
-    // Rotate the blob
-    meshRef.current.rotation.x = state.clock.elapsedTime * 0.2;
-    meshRef.current.rotation.y = state.clock.elapsedTime * 0.3;
-
-    // Pulse effect when active
-    if (isActive && materialRef.current) {
-      materialRef.current.distort = 0.4 + Math.sin(state.clock.elapsedTime * 2) * 0.1;
+    // Gentle rotation only when active
+    if (isActive) {
+      meshRef.current.rotation.y = state.clock.elapsedTime * 0.1;
     }
   });
 
   return (
-    <Sphere ref={meshRef} args={[1, 128, 128]} scale={2.5}>
+    <Sphere ref={meshRef} args={[1, 128, 128]} scale={2.5} position={[3, 0, 0]}>
       <MeshDistortMaterial
         ref={materialRef}
         color="#1a1a1a"
         attach="material"
         distort={isActive ? 0.4 : 0.3}
-        speed={isActive ? 3 : 1.5}
+        speed={isActive ? 2 : 0}
         roughness={0.2}
         metalness={0.6}
       />
@@ -51,10 +47,9 @@ function Particles() {
     return new Float32Array(temp);
   }, []);
 
-  useFrame((state) => {
-    if (!particlesRef.current) return;
-    particlesRef.current.rotation.y = state.clock.elapsedTime * 0.05;
-    particlesRef.current.rotation.x = state.clock.elapsedTime * 0.03;
+  // Particles remain static
+  useFrame(() => {
+    // No rotation for static view
   });
 
   return (
@@ -97,14 +92,11 @@ export default function AIVoiceAnimation({ isActive }: { isActive: boolean }) {
         {/* Particle Field */}
         <Particles />
 
-        {/* Orbit controls for subtle camera movement */}
+        {/* Orbit controls disabled to keep view static */}
         <OrbitControls
           enableZoom={false}
           enablePan={false}
-          autoRotate
-          autoRotateSpeed={0.5}
-          minPolarAngle={Math.PI / 2.5}
-          maxPolarAngle={Math.PI / 1.5}
+          enabled={false}
         />
       </Canvas>
     </div>

@@ -96,6 +96,19 @@ export default function PatientViewPage() {
     havenActiveRef.current = havenActive;
   }, [havenActive]);
 
+  // Ensure video element has stream when it becomes visible
+  useEffect(() => {
+    if (!showAIAnimation && videoRef.current && streamRef.current && isStreaming) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        console.log('🔄 Reconnecting video element to stream');
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(err => {
+          console.warn('Video play error after reconnect:', err);
+        });
+      }
+    }
+  }, [showAIAnimation, isStreaming]);
+
   const openPatientSelection = async () => {
     try {
       const apiUrl = getApiUrl();
@@ -1023,13 +1036,13 @@ export default function PatientViewPage() {
                 {/* Haven Voice Agent Conversation Overlay with AI Animation Background */}
                 {havenActive && havenRoomData && (
                   <div className="absolute inset-0">
-                    {/* Background Layer: AI Voice Animation - Left Side */}
+                    {/* Background Layer: AI Voice Animation - Right Side */}
                     <div className="absolute inset-0 z-0">
                       <AIVoiceAnimation isActive={isMicActive} />
                     </div>
 
-                    {/* LiveKit Room Layer - Right Side Panel */}
-                    <div className="absolute inset-0 z-10 flex items-center justify-end p-8">
+                    {/* LiveKit Room Layer - Left Side Panel */}
+                    <div className="absolute inset-0 z-10 flex items-center justify-start p-8">
                       <LiveKitRoom
                         token={havenRoomData.token}
                         serverUrl={havenRoomData.url}
