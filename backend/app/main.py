@@ -24,7 +24,22 @@ from app.monitoring_control import monitoring_manager, MonitoringLevel
 # from app.agent_system import agent_system
 # from app.health_agent import health_agent  # Old non-Fetch.ai agent
 from app.fetch_health_agent import fetch_health_agent
-from app.cache import patient_cache, alert_cache, stats_cache, stream_cache
+
+# Try to import caching (graceful fallback if not available)
+try:
+    from app.cache import patient_cache, alert_cache, stats_cache, stream_cache
+    CACHING_ENABLED = True
+    print("✅ Caching system loaded")
+except ImportError as e:
+    print(f"⚠️  Caching disabled: {e}")
+    CACHING_ENABLED = False
+    # Create dummy cache objects that do nothing
+    class DummyCache:
+        def get(self, key): return None
+        def set(self, key, value): pass
+        def invalidate(self, key): pass
+        def clear(self): pass
+    patient_cache = alert_cache = stats_cache = stream_cache = DummyCache()
 
 # Try to import Fetch.ai handoff agent (requires uagents)
 try:
