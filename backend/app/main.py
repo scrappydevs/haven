@@ -9,10 +9,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional, Dict, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 import os
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+from models.wearable import (
+    DevicePairingRequest,
+    DevicePairingResponse,
+    DevicePairingComplete,
+    WearableVitals,
+    WearableVitalsBatch
+)
 from app.websocket import manager, process_frame_fast, process_frame_metrics
 from app.supabase_client import supabase, SUPABASE_URL
 from app.monitoring_protocols import get_all_protocols, recommend_protocols as keyword_recommend
@@ -35,6 +44,7 @@ from app.rooms import (
     AssignPatientRequest,
     UnassignPatientRequest
 )
+from app.services.wearable_service import WearableService
 
 # Try to import anthropic for LLM recommendations
 try:
@@ -169,6 +179,9 @@ async def startup_event():
 
 # In-memory alert storage
 alerts = []
+
+# Wearable service
+wearable_service = WearableService(supabase)
 
 
 @app.get("/")
@@ -1197,6 +1210,210 @@ Only recommend protocols that are clearly relevant based on the patient's condit
     }
 
 
+# ============================================================
+# WEARABLE DEVICE ENDPOINTS
+# ============================================================
+
+@app.post("/wearable/pair/initiate", response_model=DevicePairingResponse)
+async def initiate_wearable_pairing(request: DevicePairingRequest):
+    """
+    Initiate wearable device pairing.
+    Generates a 6-digit pairing code for patient to enter on Apple Watch.
+
+    Args:
+        request: Patient ID to pair device with
+
+    Returns:
+        Pairing code and device ID (code expires in 5 minutes)
+    """
+    try:
+        response = await wearable_service.initiate_pairing(request.patient_id)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initiate pairing: {str(e)}")
+
+
+@app.post("/wearable/pair/complete")
+async def complete_wearable_pairing(request: DevicePairingComplete):
+    """
+    Complete device pairing using the pairing code.
+    Called by watchOS app after user enters code.
+
+    Args:
+        request: Pairing code and device information
+
+    Returns:
+        Device ID and patient ID
+    """
+    try:
+        result = await wearable_service.complete_pairing(
+            request.pairing_code,
+            request.device_info
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to complete pairing: {str(e)}")
+
+
+@app.get("/wearable/pair/status/{pairing_code}")
+async def check_pairing_status(pairing_code: str):
+    """
+    Check if a pairing code has been used (for dashboard polling).
+
+    Args:
+        pairing_code: 6-digit code to check
+
+    Returns:
+        Status and device info if paired
+    """
+    try:
+        status = await wearable_service.check_pairing_status(pairing_code)
+        if status:
+            return status
+        return {"status": "pending"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check status: {str(e)}")
+
+
+@app.delete("/wearable/unpair/{device_id}")
+async def unpair_wearable_device(device_id: str):
+    """
+    Unpair a wearable device from patient.
+
+    Args:
+        device_id: Device ID to unpair
+
+    Returns:
+        Success status
+    """
+    try:
+        success = await wearable_service.unpair_device(device_id)
+        if success:
+            return {"status": "unpaired", "device_id": device_id}
+        raise HTTPException(status_code=404, detail="Device not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to unpair device: {str(e)}")
+
+
+@app.get("/wearable/devices/{patient_id}")
+async def get_patient_wearable_devices(patient_id: str):
+    """
+    Get all wearable devices for a patient.
+
+    Args:
+        patient_id: Patient ID
+
+    Returns:
+        List of devices
+    """
+    try:
+        devices = await wearable_service.get_patient_devices(patient_id)
+        return {"devices": devices}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get devices: {str(e)}")
+
+
+@app.get("/wearable/vitals/{patient_id}")
+async def get_wearable_vitals(
+    patient_id: str,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    device_id: Optional[str] = None
+):
+    """
+    Get wearable vitals for a patient.
+
+    Args:
+        patient_id: Patient ID
+        start_time: Optional start time (defaults to 1 hour ago)
+        end_time: Optional end time (defaults to now)
+        device_id: Optional specific device ID
+
+    Returns:
+        List of vitals
+    """
+    try:
+        if not start_time:
+            start_time = datetime.utcnow() - timedelta(hours=1)
+        if not end_time:
+            end_time = datetime.utcnow()
+
+        vitals = await wearable_service.get_vitals_history(
+            patient_id,
+            start_time,
+            end_time,
+            device_id
+        )
+        return {"vitals": vitals}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get vitals: {str(e)}")
+
+
+@app.get("/wearable/vitals/{patient_id}/latest")
+async def get_latest_wearable_vitals(patient_id: str, device_id: Optional[str] = None):
+    """
+    Get most recent wearable vitals for a patient.
+
+    Args:
+        patient_id: Patient ID
+        device_id: Optional specific device ID
+
+    Returns:
+        Latest vitals or null
+    """
+    try:
+        vitals = await wearable_service.get_latest_vitals(patient_id, device_id)
+        return {"vitals": vitals}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get latest vitals: {str(e)}")
+
+
+@app.post("/wearable/vitals/batch")
+async def batch_upload_wearable_vitals(batch: WearableVitalsBatch):
+    """
+    Batch upload vitals (for offline sync).
+
+    Args:
+        batch: Device ID and list of vitals
+
+    Returns:
+        Success status and count
+    """
+    try:
+        count = 0
+        for vitals in batch.vitals:
+            success = await wearable_service.store_vitals(vitals)
+            if success:
+                count += 1
+        return {"status": "success", "uploaded": count, "total": len(batch.vitals)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload vitals: {str(e)}")
+
+
+@app.get("/wearable/status/{device_id}")
+async def get_wearable_device_status(device_id: str):
+    """
+    Get real-time device status.
+
+    Args:
+        device_id: Device ID
+
+    Returns:
+        Device status including latest vitals
+    """
+    try:
+        status = await wearable_service.get_device_status(device_id)
+        if status:
+            return status
+        raise HTTPException(status_code=404, detail="Device not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
+
+
 @app.get("/floors")
 async def get_floors():
     """
@@ -1598,10 +1815,22 @@ class AnalyzePatientRequest(BaseModel):
 async def analyze_patient_direct(request: AnalyzePatientRequest):
     """Test direct analysis via Fetch.ai agent"""
     try:
+        # Get room_id from Supabase
+        room_id = None
+        try:
+            from app.supabase_client import supabase
+            if supabase:
+                patient_response = supabase.table("patients").select("room_id").eq("patient_id", request.patient_id).single().execute()
+                if patient_response.data:
+                    room_id = patient_response.data.get("room_id")
+        except:
+            pass
+
         analysis = await fetch_health_agent.analyze_patient(
             request.patient_id,
             request.vitals,
-            request.cv_metrics
+            request.cv_metrics,
+            room_id=room_id
         )
         return {
             "success": True,
@@ -1877,6 +2106,113 @@ async def websocket_view(websocket: WebSocket):
         print("Viewer disconnected")
     finally:
         manager.disconnect(websocket)
+
+
+@app.websocket("/ws/wearable/{device_id}")
+async def websocket_wearable(websocket: WebSocket, device_id: str):
+    """
+    WebSocket endpoint for wearable device real-time vitals streaming.
+    Receives vitals from Apple Watch, stores in DB, and broadcasts to viewers.
+    """
+    await websocket.accept()
+
+    # Get device info to find patient_id
+    try:
+        device_result = supabase.table("wearable_devices")\
+            .select("*")\
+            .eq("device_id", device_id)\
+            .execute()
+
+        if not device_result.data or len(device_result.data) == 0:
+            await websocket.send_json({"error": "Device not found or not paired"})
+            await websocket.close()
+            return
+
+        device = device_result.data[0]
+        patient_id = device["patient_id"]
+
+        print(f"✅ Wearable device connected: {device_id} (Patient: {patient_id})")
+
+        # Update device status to online
+        supabase.table("wearable_devices")\
+            .update({"is_online": True, "last_sync_at": datetime.utcnow().isoformat()})\
+            .eq("device_id", device_id)\
+            .execute()
+
+        # Send connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "device_id": device_id,
+            "patient_id": patient_id
+        })
+
+        try:
+            while True:
+                # Receive vitals from watch
+                data = await websocket.receive_json()
+
+                if data.get("type") == "vitals":
+                    # Parse vitals
+                    vitals_data = data.get("vitals", {})
+                    vitals = WearableVitals(
+                        device_id=device_id,
+                        patient_id=patient_id,
+                        timestamp=datetime.fromisoformat(vitals_data.get("timestamp", datetime.utcnow().isoformat())),
+                        heart_rate=vitals_data.get("heart_rate"),
+                        heart_rate_variability=vitals_data.get("heart_rate_variability"),
+                        spo2=vitals_data.get("spo2"),
+                        respiratory_rate=vitals_data.get("respiratory_rate"),
+                        body_temperature=vitals_data.get("body_temperature"),
+                        confidence=vitals_data.get("confidence", 1.0),
+                        battery_level=vitals_data.get("battery_level"),
+                        is_active=vitals_data.get("is_active", True)
+                    )
+
+                    # Store in database
+                    await wearable_service.store_vitals(vitals)
+
+                    # Broadcast to dashboard viewers
+                    broadcast_msg = {
+                        "type": "wearable_vitals",
+                        "patient_id": patient_id,
+                        "device_id": device_id,
+                        "vitals": {
+                            "timestamp": vitals.timestamp.isoformat(),
+                            "heart_rate": vitals.heart_rate,
+                            "heart_rate_variability": vitals.heart_rate_variability,
+                            "spo2": vitals.spo2,
+                            "respiratory_rate": vitals.respiratory_rate,
+                            "body_temperature": vitals.body_temperature,
+                            "battery_level": vitals.battery_level,
+                            "is_active": vitals.is_active
+                        }
+                    }
+                    await manager.broadcast_message(broadcast_msg)
+
+                    # Send acknowledgment to watch
+                    await websocket.send_json({"type": "ack", "timestamp": vitals.timestamp.isoformat()})
+
+                elif data.get("type") == "ping":
+                    # Keep-alive ping
+                    await websocket.send_json({"type": "pong"})
+
+        except WebSocketDisconnect:
+            print(f"❌ Wearable device disconnected: {device_id}")
+        finally:
+            # Update device status to offline
+            supabase.table("wearable_devices")\
+                .update({"is_online": False})\
+                .eq("device_id", device_id)\
+                .execute()
+
+    except Exception as e:
+        print(f"❌ Error in wearable WebSocket: {str(e)}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
+        finally:
+            await websocket.close()
 
 
 class ChatMessage(BaseModel):

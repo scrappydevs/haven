@@ -72,15 +72,16 @@ class FetchHealthAgent:
         print(f"   Emergency Call: 1 per {self.emergency_call_cooldown:.0f}s per patient")
         print(f"   Status: {'✅ Ready' if self.enabled else '❌ Disabled'}")
     
-    async def analyze_patient(self, patient_id: str, vitals: Dict, cv_metrics: Dict) -> Dict:
+    async def analyze_patient(self, patient_id: str, vitals: Dict, cv_metrics: Dict, room_id: Optional[str] = None) -> Dict:
         """
         Send patient data to Agentverse agent for analysis
-        
+
         Args:
             patient_id: Patient identifier
             vitals: {heart_rate, temperature, blood_pressure, spo2}
             cv_metrics: {movement_event, movement_confidence, movement_details, respiratory_rate, ...}
-        
+            room_id: Optional room identifier for alert creation
+
         Returns:
             {severity, concerns, recommended_action, reasoning, confidence}
         """
@@ -137,6 +138,18 @@ class FetchHealthAgent:
                 "agent_type": "FETCH_AI_HEALTH_AGENT"
             }
             self.alerts.append(alert)
+
+            # Insert alert into Supabase database
+            await self._insert_alert_to_supabase(
+                patient_id=patient_id,
+                room_id=room_id,
+                severity=analysis["severity"],
+                concerns=analysis["concerns"],
+                reasoning=analysis["reasoning"],
+                recommended_action=analysis["recommended_action"],
+                cv_metrics=cv_metrics,
+                vitals=vitals
+            )
         
         # Concise result logging
         severity_emoji = {"CRITICAL": "🚨", "WARNING": "⚠️", "NORMAL": "✅"}.get(analysis["severity"], "ℹ️")
@@ -279,8 +292,94 @@ class FetchHealthAgent:
             "confidence": confidence
         }
     
+    async def _insert_alert_to_supabase(
+        self,
+        patient_id: str,
+        severity: str,
+        concerns: List[str],
+        reasoning: str,
+        recommended_action: str,
+        cv_metrics: Dict,
+        vitals: Dict,
+        room_id: Optional[str] = None
+    ):
+        """Insert alert into Supabase alerts table"""
+        try:
+            from app.supabase_client import supabase
+
+            if not supabase:
+                print("⚠️  Supabase not configured - skipping alert insertion")
+                return
+
+            # Determine alert_type from movement event
+            movement_event = cv_metrics.get('movement_event', 'normal').lower()
+            alert_type_map = {
+                'fall': 'fall_risk',
+                'seizure': 'vital_sign',
+                'extreme_agitation': 'other',
+                'normal': 'vital_sign'
+            }
+            alert_type = alert_type_map.get(movement_event, 'vital_sign')
+
+            # Map severity (CRITICAL/WARNING -> critical/high)
+            severity_map = {
+                'CRITICAL': 'critical',
+                'WARNING': 'high'
+            }
+            db_severity = severity_map.get(severity, 'medium')
+
+            # Create alert title based on movement event
+            if movement_event == 'fall':
+                title = "Fall Detected"
+            elif movement_event == 'seizure':
+                title = "Seizure Activity Detected"
+            elif movement_event == 'extreme_agitation':
+                title = "Extreme Agitation Detected"
+            elif vitals.get('heart_rate', 0) > 120:
+                title = "Elevated Heart Rate"
+            elif vitals.get('heart_rate', 0) < 50:
+                title = "Low Heart Rate"
+            else:
+                title = f"{severity} - Health Alert"
+
+            # Create description from concerns and reasoning
+            concerns_text = "; ".join(concerns) if concerns else ""
+            description = f"{concerns_text}. {reasoning}" if concerns_text else reasoning
+
+            # Prepare metadata
+            metadata = {
+                "cv_metrics": cv_metrics,
+                "vitals": vitals,
+                "concerns": concerns,
+                "recommended_action": recommended_action,
+                "agent_type": "FETCH_AI_HEALTH_AGENT",
+                "confidence": cv_metrics.get('movement_confidence', 0.0)
+            }
+
+            # Insert into database
+            result = supabase.table("alerts").insert({
+                "alert_type": alert_type,
+                "severity": db_severity,
+                "patient_id": patient_id,
+                "room_id": room_id,
+                "title": title,
+                "description": description[:500],  # Truncate to fit schema
+                "status": "active",
+                "triggered_by": "FETCH_AI_AGENT",
+                "metadata": metadata
+            }).execute()
+
+            if result.data:
+                alert_id = result.data[0].get('id', 'unknown')
+                print(f"✅ Alert inserted to Supabase: {alert_id} ({title})")
+            else:
+                print(f"⚠️  Alert insertion failed - no data returned")
+
+        except Exception as e:
+            print(f"❌ Error inserting alert to Supabase: {e}")
+
     # ==================== EMERGENCY CALL MANAGEMENT ====================
-    
+
     def should_make_emergency_call(self, patient_id: str, severity: str) -> bool:
         """Check if we should make an emergency voice call (prevents spam)"""
         import time

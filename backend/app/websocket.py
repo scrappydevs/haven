@@ -329,9 +329,20 @@ class ConnectionManager:
                                 thread_loop = asyncio.new_event_loop()
                                 asyncio.set_event_loop(thread_loop)
                                 
+                                # Get room_id from Supabase (if available)
+                                room_id = None
+                                try:
+                                    from app.supabase_client import supabase
+                                    if supabase:
+                                        patient_response = supabase.table("patients").select("room_id").eq("patient_id", patient_id).single().execute()
+                                        if patient_response.data:
+                                            room_id = patient_response.data.get("room_id")
+                                except Exception as e:
+                                    pass  # Continue without room_id if query fails
+
                                 # Run analysis
                                 analysis = thread_loop.run_until_complete(
-                                    fetch_health_agent.analyze_patient(patient_id, vitals, cv_metrics)
+                                    fetch_health_agent.analyze_patient(patient_id, vitals, cv_metrics, room_id=room_id)
                                 )
                                 
                                 # Truncate reasoning for UI (keep first 150 chars)
@@ -476,6 +487,10 @@ class ConnectionManager:
             r for r in results if r is not None and not isinstance(r, Exception)]
         for viewer in dead:
             self.disconnect(viewer)
+
+    async def broadcast_message(self, message: Dict):
+        """Send any message to all viewers (used for wearable vitals, alerts, etc.)"""
+        await self.broadcast_frame(message)
 
 
 manager = ConnectionManager()
