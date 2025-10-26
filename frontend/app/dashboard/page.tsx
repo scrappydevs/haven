@@ -11,7 +11,6 @@ import GlobalActivityFeed from '@/components/GlobalActivityFeed';
 import ManualAlertsPanel from '@/components/ManualAlertsPanel';
 import PatientManagement from '@/components/PatientNurseLookup';
 import { getApiUrl } from '@/lib/api';
-import AgentAlertToast from '@/components/AgentAlertToast';
 import HandoffFormsList from '@/components/HandoffFormsList';
 
 interface Patient {
@@ -113,9 +112,6 @@ export default function DashboardPage() {
     escalationsToday: number;
   }>>({});
 
-  // Agent alerts (for toast notifications)
-  const [agentAlerts, setAgentAlerts] = useState<any[]>([]);
-  
   // Manual alerts modal state
   const [showManualAlerts, setShowManualAlerts] = useState(false);
 
@@ -334,14 +330,6 @@ export default function DashboardPage() {
     }
 
     if (message.type === 'agent_alert') {
-      // Add to agent alerts for toast display
-      setAgentAlerts(prev => [...prev, {
-        id: Date.now(),
-        ...message,
-        boxIndex,
-        patientName: boxAssignments[boxIndex]?.name || 'Unknown'
-      }]);
-
       // Update last decision with full details
       setBoxLastDecision(prev => ({
         ...prev,
@@ -375,11 +363,6 @@ export default function DashboardPage() {
           details: message.reasoning
         });
       }
-
-      // Auto-dismiss alert after 10 seconds
-      setTimeout(() => {
-        setAgentAlerts(prev => prev.filter(a => a.id !== message.id));
-      }, 10000);
     }
 
     if (message.type === 'terminal_log') {
@@ -933,13 +916,6 @@ export default function DashboardPage() {
         mode="assign-stream"
       />
 
-      {/* Agent Alert Toasts - Only show in overview mode */}
-      {viewMode === 'overview' && (
-        <AgentAlertToast
-          alerts={agentAlerts}
-          onDismiss={(id) => setAgentAlerts(prev => prev.filter(a => a.id !== id))}
-        />
-      )}
     </div>
   );
 }
