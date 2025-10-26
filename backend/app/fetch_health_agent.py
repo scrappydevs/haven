@@ -104,15 +104,16 @@ class FetchHealthAgent:
         Args:
             patient_id: Patient identifier
             vitals: {heart_rate, temperature, blood_pressure, spo2}
-            cv_metrics: {distress_score, movement_score, posture_alert}
+            cv_metrics: {movement_event, movement_confidence, movement_details, respiratory_rate, ...}
         
         Returns:
             {severity, concerns, recommended_action, reasoning, confidence}
         """
-        # Concise logging for production
+        # Concise logging for production (NEW FOCUS: Movement Events)
         hr = vitals.get('heart_rate')
-        distress = cv_metrics.get('distress_score')
-        print(f"🏥 Agent analyzing {patient_id}: HR={hr}, Distress={distress:.1f}/10")
+        movement_event = cv_metrics.get('movement_event', 'normal')
+        movement_conf = cv_metrics.get('movement_confidence', 0.0)
+        print(f"🏥 Agent analyzing {patient_id}: HR={hr}, Movement={movement_event} ({movement_conf:.0%})")
         
         # Store patient data in agent state
         self.patients[patient_id] = {
@@ -151,32 +152,47 @@ class FetchHealthAgent:
         return analysis
     
     async def _analyze_with_claude(self, patient_id: str, vitals: Dict, cv_metrics: Dict) -> Dict:
-        """Use Claude (LLM reasoning engine) to analyze patient health"""
+        """Use Claude (LLM reasoning engine) to analyze patient health (UPDATED FOR MOVEMENT EMERGENCIES)"""
         
-        prompt = f"""You are a clinical AI monitoring CAR-T therapy patients. Analyze this patient's data:
+        # Extract movement emergency data
+        movement_event = cv_metrics.get('movement_event', 'normal')
+        movement_conf = cv_metrics.get('movement_confidence', 0.0)
+        movement_details = cv_metrics.get('movement_details', '')
+        calib_status = cv_metrics.get('calibration_status', {})
+        
+        prompt = f"""You are a clinical AI monitoring CAR-T therapy patients for MOVEMENT EMERGENCIES (falls, seizures, agitation). Analyze this patient:
 
 PATIENT: {patient_id}
+
 VITALS:
 - Heart Rate: {vitals.get('heart_rate', 'N/A')} bpm
-- Temperature: {vitals.get('temperature', 'N/A')}°C
+- Temperature: {vitals.get('temperature', 'N/A')}°C  
 - Blood Pressure: {vitals.get('blood_pressure', 'N/A')}
 - SpO2: {vitals.get('spo2', 'N/A')}%
+- Respiratory Rate: {cv_metrics.get('respiratory_rate', 'N/A')}/min
 
-CV METRICS (from computer vision):
-- Distress Score: {cv_metrics.get('distress_score', 0)}/10
-- Movement Score: {cv_metrics.get('movement_score', 0)}/10
-- Posture Alert: {cv_metrics.get('posture_alert', False)}
+MOVEMENT EMERGENCY DETECTION:
+- Event: {movement_event.upper()}
+- Confidence: {movement_conf:.0%}
+- Details: {movement_details}
+- Baseline Calibration: {"✓ Complete" if calib_status.get('calibrated') else f"⏳ {calib_status.get('progress', 0)}%"}
 
-CONTEXT: Monitoring for Cytokine Release Syndrome (CRS), neurological events, and general complications.
+MONITORING FOCUS:
+- FALLS: Rapid downward movement, loss of upright posture, injury risk
+- SEIZURES: Rhythmic tremor 3-6 Hz, convulsive movements, neurological emergency
+- EXTREME AGITATION: High movement levels, distress, behavioral emergency
 
 Provide:
 1. SEVERITY: NORMAL, WARNING, or CRITICAL
-2. CONCERNS: List specific concerns (if any)
-3. ACTION: Array of 3-5 recommended next steps (concise, actionable)
-4. REASONING: Brief clinical reasoning (max 150 characters)
+   - CRITICAL for falls/seizures (immediate response)
+   - WARNING for extreme agitation
+   - NORMAL if movement event is "normal"
+2. CONCERNS: Top 2-3 specific concerns (if any)
+3. ACTION: Array of 3-5 immediate next steps (concise, actionable)
+4. REASONING: Brief clinical reasoning (max 150 chars)
 5. CONFIDENCE: 0.0-1.0
 
-Format as JSON. Keep responses SHORT for UI display."""
+Format as JSON. Keep responses SHORT for real-time UI display."""
 
         try:
             response = await asyncio.to_thread(
@@ -213,39 +229,61 @@ Format as JSON. Keep responses SHORT for UI display."""
             return self._fallback_analysis(vitals, cv_metrics)
     
     def _fallback_analysis(self, vitals: Dict, cv_metrics: Dict) -> Dict:
-        """Rule-based fallback when Claude is unavailable"""
+        """Rule-based fallback when Claude is unavailable (UPDATED FOR MOVEMENT EMERGENCIES)"""
         hr = vitals.get("heart_rate", 75)
         temp = vitals.get("temperature", 37.0)
         spo2 = vitals.get("spo2", 98)
-        distress = cv_metrics.get("distress_score", 0)
+        
+        # NEW: Movement emergency data (PRIMARY)
+        movement_event = cv_metrics.get("movement_event", "normal")
+        movement_conf = cv_metrics.get("movement_confidence", 0.0)
+        movement_details = cv_metrics.get("movement_details", "")
         
         severity = "NORMAL"
         concerns = []
         
-        if hr > 120 or hr < 50:
-            severity = "WARNING"
-            concerns.append("abnormal_heart_rate")
-        
-        if temp > 38.5:
-            severity = "WARNING"
-            concerns.append("fever")
-        
-        if spo2 < 90:
+        # PRIORITY 1: Movement Emergencies (most critical)
+        if movement_event == "fall" and movement_conf > 0.6:
             severity = "CRITICAL"
-            concerns.append("hypoxia")
+            concerns.append("fall_detected")
+            action = ["Immediate bedside check", "Assess for injury", "Vital signs", "Call physician if injured"]
+            reasoning = f"FALL: {movement_details[:100]}"
         
-        if distress > 7:
-            severity = "WARNING" if severity == "NORMAL" else "CRITICAL"
-            concerns.append("high_distress")
+        elif movement_event == "seizure" and movement_conf > 0.6:
+            severity = "CRITICAL"
+            concerns.append("seizure_detected")
+            action = ["Protect patient", "Clear area", "Time seizure", "Call neurology", "Emergency protocol"]
+            reasoning = f"SEIZURE: {movement_details[:100]}"
         
-        action = ["Call physician immediately", "Activate emergency protocol"] if severity == "CRITICAL" else \
-                ["Bedside assessment", "Increase monitoring"] if severity == "WARNING" else \
-                ["Continue routine monitoring"]
+        elif movement_event == "extreme_agitation" and movement_conf > 0.6:
+            severity = "WARNING"
+            concerns.append("extreme_agitation")
+            action = ["Bedside assessment", "Check comfort", "PRN medication if needed", "Monitor closely"]
+            reasoning = f"AGITATION: {movement_details[:100]}"
         
-        reasoning = f"HR: {hr}bpm, Temp: {temp}°C, SpO2: {spo2}%, Distress: {distress}/10"
-        if concerns:
-            reasoning += f". {', '.join(concerns[:3])}"
-        # Truncate if too long
+        else:
+            # PRIORITY 2: Vital signs (if no movement emergency)
+            if hr > 120 or hr < 50:
+                severity = "WARNING"
+                concerns.append("abnormal_heart_rate")
+            
+            if temp > 38.5:
+                severity = "WARNING"
+                concerns.append("fever")
+            
+            if spo2 < 90:
+                severity = "CRITICAL"
+                concerns.append("hypoxia")
+            
+            action = ["Call physician immediately", "Activate emergency protocol"] if severity == "CRITICAL" else \
+                    ["Bedside assessment", "Increase monitoring"] if severity == "WARNING" else \
+                    ["Continue routine monitoring"]
+            
+            reasoning = f"HR: {hr}bpm, SpO2: {spo2}%, Movement: {movement_event}"
+            if concerns:
+                reasoning += f". {', '.join(concerns[:2])}"
+        
+        # Truncate reasoning if too long
         if len(reasoning) > 150:
             reasoning = reasoning[:147] + "..."
         
@@ -254,7 +292,7 @@ Format as JSON. Keep responses SHORT for UI display."""
             "concerns": concerns,
             "recommended_action": action,
             "reasoning": reasoning,
-            "confidence": 0.7
+            "confidence": 0.75 if movement_event != "normal" else 0.7
         }
     
     def get_status(self) -> Dict:

@@ -320,6 +320,22 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
             onAgentMessage(patient.id, data);
           }
         }
+
+        // Handle emergency call notifications
+        if (data.type === 'emergency_call') {
+          console.log(`📞 EMERGENCY CALL for ${data.patient_id}:`, data.message);
+          if (onAgentMessage) {
+            // Send as terminal log so it shows in the expanded view
+            onAgentMessage(patient.id, {
+              type: 'terminal_log',
+              patient_id: data.patient_id,
+              timestamp: data.timestamp,
+              message: data.message,
+              details: `Emergency response initiated - ${data.severity} situation`,
+              action: 'Nurse dispatched to patient room'
+            });
+          }
+        }
       }
     };
 

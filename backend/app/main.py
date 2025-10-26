@@ -523,6 +523,121 @@ async def vonage_message_status(request: dict):
     return {"status": "received"}
 
 
+@app.post("/api/alerts/call-nurse")
+async def handle_critical_alert_webhook(request: dict):
+    """
+    Webhook endpoint called by database trigger when critical alert is created
+    Makes phone call to nurse via Vonage Voice API
+    """
+    try:
+        alert_id = request.get('alert_id')
+        patient_id = request.get('patient_id')
+        room_id = request.get('room_id')
+        severity = request.get('severity')
+        title = request.get('title')
+        description = request.get('description')
+        
+        print(f"\n🚨 CRITICAL ALERT WEBHOOK: {alert_id}")
+        print(f"   Patient: {patient_id}")
+        print(f"   Room: {room_id}")
+        print(f"   Title: {title}")
+        
+        # Import alert monitor logic
+        from app.alert_monitor import handle_critical_alert
+        
+        # Process the alert (make phone call)
+        await handle_critical_alert({
+            'id': alert_id,
+            'patient_id': patient_id,
+            'room_id': room_id,
+            'severity': severity,
+            'message': title or description or 'Critical alert'
+        })
+        
+        return {
+            "status": "success",
+            "message": "Alert processed and call initiated",
+            "alert_id": alert_id
+        }
+    
+    except Exception as e:
+        print(f"❌ Error handling alert webhook: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+@app.post("/api/alerts/call-response")
+async def handle_alert_call_response(request: dict):
+    """
+    Handle DTMF input from nurse during alert call
+    When nurse presses 1, acknowledge the alert
+    """
+    try:
+        dtmf = request.get('dtmf')
+        call_uuid = request.get('uuid')
+        conversation_uuid = request.get('conversation_uuid')
+        
+        print(f"📞 Call response received: DTMF={dtmf}, Call={call_uuid}")
+        
+        if dtmf == '1':
+            # Nurse acknowledged the alert
+            print(f"✅ Alert acknowledged by nurse")
+            
+            # Find and update alert with this call_id in metadata
+            if supabase:
+                try:
+                    # Find alert with matching call_id in metadata
+                    alerts = supabase.table("alerts") \
+                        .select("id, metadata") \
+                        .eq("status", "active") \
+                        .execute()
+                    
+                    for alert in (alerts.data or []):
+                        metadata = alert.get('metadata', {})
+                        call_info = metadata.get('call', {})
+                        
+                        if call_info.get('call_id') == call_uuid:
+                            # Update call status and acknowledge alert
+                            call_info['call_status'] = 'answered'
+                            call_info['answered_at'] = datetime.now().isoformat()
+                            metadata['call'] = call_info
+                            
+                            supabase.table("alerts").update({
+                                "status": "acknowledged",
+                                "acknowledged_at": datetime.now().isoformat(),
+                                "acknowledged_by": "nurse_phone",
+                                "metadata": metadata
+                            }).eq("id", alert['id']).execute()
+                            
+                            print(f"✅ Alert {alert['id']} acknowledged and updated")
+                            break
+                    
+                except Exception as e:
+                    print(f"⚠️  Failed to update alert: {e}")
+            
+            # Return NCCO to confirm acknowledgement
+            return [{
+                "action": "talk",
+                "text": "Thank you. Alert acknowledged. Hang up or stay on the line for more information.",
+                "voiceName": "Amy"
+            }]
+        else:
+            # No acknowledgement - just hang up
+            return [{
+                "action": "talk",
+                "text": "No response received. Please check the alert immediately.",
+                "voiceName": "Amy"
+            }]
+    
+    except Exception as e:
+        print(f"❌ Error handling call response: {e}")
+        return {"status": "error"}
+
+
 @app.get("/smplrspace/config")
 async def get_smplrspace_config():
     """
@@ -1424,6 +1539,46 @@ async def get_health_agent_history():
         "history": fetch_health_agent.alerts,
         "count": len(fetch_health_agent.alerts)
     }
+
+
+# === VOICE CALL TEST ENDPOINT ===
+class TestCallRequest(BaseModel):
+    patient_id: str = "P-TEST-001"
+    event_type: str = "seizure"
+    phone_number: Optional[str] = None
+
+@app.post("/health-agent/test-call")
+async def test_voice_call(request: TestCallRequest):
+    """Test voice calling system"""
+    from app.voice_call import voice_service
+    
+    # Override phone number if provided
+    original_number = voice_service.emergency_number
+    if request.phone_number:
+        voice_service.emergency_number = request.phone_number
+    
+    try:
+        result = voice_service.make_emergency_call(
+            patient_id=request.patient_id,
+            event_type=request.event_type,
+            details="Test call from Haven system"
+        )
+        
+        return {
+            "success": True,
+            "enabled": voice_service.enabled,
+            "called_number": voice_service.emergency_number,
+            "result": result
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "enabled": voice_service.enabled,
+            "error": str(e)
+        }
+    finally:
+        # Restore original number
+        voice_service.emergency_number = original_number
 
 
 # ============================================================================

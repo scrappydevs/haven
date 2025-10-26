@@ -8,6 +8,7 @@ opencv-python>=4.10.0
 mediapipe>=0.10.21
 numpy>=1.26.0,<2.0
 pillow>=11.0.0
+scipy>=1.11.0  # FFT and signal filtering for seizure detection
 
 # AI/ML
 anthropic>=0.44.0
