@@ -1906,7 +1906,16 @@ async def websocket_view(websocket: WebSocket):
 
     try:
         import asyncio
+        last_ping = time.time()
         while True:
+            # Send ping every 30 seconds to keep connection alive
+            if time.time() - last_ping > 30:
+                try:
+                    await websocket.send_json({"type": "ping", "timestamp": time.time()})
+                    last_ping = time.time()
+                except:
+                    break  # Connection died
+            
             await asyncio.sleep(1)
     except WebSocketDisconnect:
         print("Viewer disconnected")

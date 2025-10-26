@@ -488,9 +488,15 @@ class ConnectionManager:
 
         async def send_to_viewer(viewer):
             try:
-                await viewer.send_json(frame_data)
-                return None
+                # Check if viewer is still connected before sending
+                if viewer.client_state.value == 1:  # WebSocketState.CONNECTED
+                    await viewer.send_json(frame_data)
+                    return None
+                else:
+                    # Connection not in connected state, mark for removal
+                    return viewer
             except Exception as e:
+                # Connection died, mark for removal
                 print(f"❌ Failed to send to viewer: {e}")
                 return viewer
 
