@@ -709,6 +709,26 @@ async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
         return alerts
 
 
+@app.get("/alerts/{alert_id}")
+async def get_alert_by_id(alert_id: str):
+    """
+    Get a single alert by ID
+    """
+    if not supabase:
+        return {"error": "Database not configured"}
+
+    try:
+        response = supabase.table("alerts").select("*").eq("id", alert_id).single().execute()
+
+        if not response.data:
+            return {"error": "Alert not found"}
+
+        return response.data
+    except Exception as e:
+        print(f"❌ Error fetching alert {alert_id}: {e}")
+        return {"error": str(e)}
+
+
 @app.post("/alerts")
 async def create_alert(
     alert_type: str,
