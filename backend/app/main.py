@@ -1713,7 +1713,7 @@ WHEN IN DOUBT: CALL A TOOL. ALWAYS PREFER TOOLS.
             messages=anthropic_messages
         )
 
-        # Handle tool use with MULTI-ROUND support (like auctor-1)
+        # Handle tool use with MULTI-ROUND support 
         assistant_response = ""
         all_tool_results = []
         max_rounds = 5  # Prevent infinite loops

@@ -52,7 +52,25 @@ export default function FloorPlanLegend({ totalRooms, occupiedRooms, totalNurses
           <div className="w-5 h-5 bg-green-500 flex items-center justify-center rounded-sm">
             <span className="text-white text-xs">✓</span>
           </div>
-          <span className="text-xs font-light text-neutral-600">Occupied Room</span>
+          <span className="text-xs font-light text-neutral-600">Normal - No Alerts</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 bg-yellow-500 flex items-center justify-center rounded-sm">
+            <span className="text-white text-xs font-bold">!</span>
+          </div>
+          <span className="text-xs font-light text-neutral-600">Medium Alert</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 bg-orange-500 flex items-center justify-center rounded-sm">
+            <span className="text-white text-xs font-bold">⚠</span>
+          </div>
+          <span className="text-xs font-light text-neutral-600">High Alert</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 bg-red-500 flex items-center justify-center rounded-sm">
+            <span className="text-white text-xs font-bold">●</span>
+          </div>
+          <span className="text-xs font-light text-neutral-600">Critical Alert</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="w-5 h-5 bg-blue-500 flex items-center justify-center rounded-sm">

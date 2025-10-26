@@ -61,11 +61,14 @@ export default function FloorPlanPage() {
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [showNurseModal, setShowNurseModal] = useState(false);
   const [availablePatients, setAvailablePatients] = useState<SupabasePatient[]>([]);
+  const [allPatients, setAllPatients] = useState<SupabasePatient[]>([]);
   const [roomsLoaded, setRoomsLoaded] = useState(false);
   const [roomsListCollapsed, setRoomsListCollapsed] = useState(false);
   const [patientsListCollapsed, setPatientsListCollapsed] = useState(false);
+  const [patientFilter, setPatientFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [draggedPatient, setDraggedPatient] = useState<SupabasePatient | null>(null);
   const [roomFilter, setRoomFilter] = useState<'all' | 'empty' | 'occupied'>('all');
+  const [roomAlerts, setRoomAlerts] = useState<Record<string, string>>({}); // room_id -> severity
   const [smplrConfig, setSmplrConfig] = useState<{
     organizationId: string;
     clientToken: string;
@@ -98,8 +101,13 @@ export default function FloorPlanPage() {
     setViewerError(null);
     setUseDemoMode(false);
     
-    // Fetch rooms on mount
+    // Fetch rooms and alerts on mount
     fetchRoomAssignments();
+    fetchRoomAlerts();
+    
+    // Refresh alerts every 10 seconds
+    const alertInterval = setInterval(fetchRoomAlerts, 10000);
+    return () => clearInterval(alertInterval);
   }, []);
 
   // Initialize Smplrspace viewer
@@ -217,14 +225,14 @@ export default function FloorPlanPage() {
     }
   };
 
-  // Update room markers when rooms change (patient assignment status)
+  // Update room markers when rooms OR alerts change
   useEffect(() => {
     if (!isViewerReady || !spaceRef.current || rooms.length === 0) {
       console.log('⏸️ Skipping layer update:', { isViewerReady, hasSpace: !!spaceRef.current, roomCount: rooms.length });
       return;
     }
 
-    console.log('🎨 Updating room visualization layers...');
+    console.log('🎨 Updating room visualization layers (rooms + alerts)...');
 
     // Remove old layers if they exist
     try {
@@ -251,10 +259,23 @@ export default function FloorPlanPage() {
         id: 'room-polygons',
         type: 'polygon',
         data: patientPolygonData,
-        alpha: 0.4, // Subtle overlay
+        alpha: 0.4,
         color: (data: any) => {
           const room = data.room as Room;
-          return room.assignedPatient ? '#10b981' : '#f3f4f6'; // Green if occupied, very light gray if empty
+          
+          // Empty rooms - light gray
+          if (!room.assignedPatient) return '#e5e7eb';
+          
+          // Check for alerts in this room
+          const alertSeverity = roomAlerts[room.id];
+          
+          if (alertSeverity === 'critical') return '#ef4444'; // Red
+          if (alertSeverity === 'high') return '#f97316';     // Orange
+          if (alertSeverity === 'medium') return '#eab308';   // Yellow
+          if (alertSeverity === 'low') return '#10b981';       // Green
+          
+          // Occupied but no alerts - green
+          return '#10b981';
         },
         onClick: (data: any) => {
           const room = data.room as Room;
@@ -262,7 +283,13 @@ export default function FloorPlanPage() {
         },
         tooltip: (data: any) => {
           const room = data.room as Room;
-          return room.assignedPatient ? room.assignedPatient.name : room.name;
+          const alertSeverity = roomAlerts[room.id];
+          if (room.assignedPatient) {
+            return alertSeverity 
+              ? `${room.assignedPatient.name} - ${alertSeverity.toUpperCase()} ALERT`
+              : room.assignedPatient.name;
+          }
+          return room.name;
         },
       });
     }
@@ -324,7 +351,20 @@ export default function FloorPlanPage() {
         },
         color: (data: any) => {
           const room = data.room as Room;
-          return room.assignedPatient ? '#10b981' : '#94a3b8';
+          
+          // Empty rooms - gray
+          if (!room.assignedPatient) return '#94a3b8';
+          
+          // Check for alerts
+          const alertSeverity = roomAlerts[room.id];
+          
+          if (alertSeverity === 'critical') return '#ef4444'; // Red
+          if (alertSeverity === 'high') return '#f97316';     // Orange  
+          if (alertSeverity === 'medium') return '#eab308';   // Yellow
+          if (alertSeverity === 'low') return '#10b981';       // Green
+          
+          // Occupied, no alerts - green
+          return '#10b981';
         },
         onClick: (data: any) => {
           const room = data.room as Room;
@@ -378,7 +418,7 @@ export default function FloorPlanPage() {
     }
 
     console.log('✅ Room visualization layers updated successfully!');
-  }, [isViewerReady, rooms]);
+  }, [isViewerReady, rooms, roomAlerts]);
 
   // Sync rooms from Smplrspace using automatic room detection
   const syncRoomsFromSmplrspace = async (spaceId: string) => {
@@ -562,6 +602,37 @@ export default function FloorPlanPage() {
     }
   };
 
+  // Fetch alerts and map to rooms by severity
+  const fetchRoomAlerts = async () => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/alerts?status=active`);
+      const data = await res.json();
+      const alerts = Array.isArray(data) ? data : (data.alerts || []);
+      
+      // Map patient alerts to their rooms
+      const alertMap: Record<string, string> = {};
+      const severityPriority = { 'critical': 4, 'high': 3, 'medium': 2, 'low': 1, 'info': 0 };
+      
+      for (const alert of alerts) {
+        if (alert.room_id) {
+          const currentSeverity = alertMap[alert.room_id];
+          const currentPriority = severityPriority[currentSeverity as keyof typeof severityPriority] || 0;
+          const newPriority = severityPriority[alert.severity as keyof typeof severityPriority] || 0;
+          
+          // Keep highest severity alert
+          if (newPriority > currentPriority) {
+            alertMap[alert.room_id] = alert.severity;
+          }
+        }
+      }
+      
+      setRoomAlerts(alertMap);
+      console.log(`🚨 Loaded alerts for ${Object.keys(alertMap).length} rooms`);
+    } catch (error) {
+      console.error('Error fetching room alerts:', error);
+    }
+  };
+
   // Fetch room assignments from backend
   const fetchRoomAssignments = async () => {
     try {
@@ -643,11 +714,12 @@ export default function FloorPlanPage() {
       console.log(`\n🔄 [FLOOR PLAN] Cache invalidation received at ${new Date(timestamp).toLocaleTimeString()}`);
       console.log('   Keys to invalidate:', keys);
       
-      if (keys.includes('rooms') || keys.includes('patients')) {
-        console.log('♻️ [FLOOR PLAN] Refreshing room assignments from database...');
+      if (keys.includes('rooms') || keys.includes('patients') || keys.includes('patients_room')) {
+        console.log('♻️ [FLOOR PLAN] Refreshing room assignments and alerts from database...');
         
-        // Refresh room data
+        // Refresh room data and alerts
         await fetchRoomAssignments();
+        await fetchRoomAlerts();
         
         // Force re-render of room visualization
         console.log('🎨 [FLOOR PLAN] Triggering visualization update...');
@@ -667,20 +739,32 @@ export default function FloorPlanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch available patients
+  // Fetch all patients
   useEffect(() => {
     const fetchPatients = async () => {
       try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/search?q=`);
         const data = await res.json();
-        setAvailablePatients(Array.isArray(data) ? data : []);
+        const patients = Array.isArray(data) ? data : [];
+        
+        // Enrich with room assignments
+        const enrichedPatients = patients.map((p: any) => {
+          const assignedRoom = rooms.find(r => r.assignedPatient?.patient_id === p.patient_id);
+          return {
+            ...p,
+            currentRoom: assignedRoom?.name || null
+          };
+        });
+        
+        setAllPatients(enrichedPatients);
+        setAvailablePatients(enrichedPatients);
       } catch (error) {
         console.error('Error fetching patients:', error);
       }
     };
 
     fetchPatients();
-  }, []);
+  }, [rooms]);
 
   const assignPatientToRoom = async (patient: SupabasePatient, roomId?: string) => {
     const targetRoomId = roomId || selectedRoom?.id;
@@ -793,9 +877,17 @@ export default function FloorPlanPage() {
     .filter(r => r.assignedPatient)
     .map(r => r.assignedPatient!.patient_id);
 
-  const filteredPatients = availablePatients.filter(
-    p => !assignedPatientIds.includes(p.patient_id)
-  );
+  // Filter patients based on selected tab
+  const getFilteredPatients = () => {
+    if (patientFilter === 'assigned') {
+      return allPatients.filter(p => assignedPatientIds.includes(p.patient_id));
+    } else if (patientFilter === 'unassigned') {
+      return allPatients.filter(p => !assignedPatientIds.includes(p.patient_id));
+    }
+    return allPatients; // 'all'
+  };
+  
+  const filteredPatients = getFilteredPatients();
 
   // Filter and sort all rooms (patient rooms and nurse stations)
   const getFilteredAndSortedRooms = () => {
@@ -959,16 +1051,16 @@ export default function FloorPlanPage() {
                 />
               </div>
 
-              {/* Available Patients - Collapsible */}
+              {/* All Patients - Collapsible with Tabs */}
               <div className="bg-surface flex-shrink-0">
                 <button
                   onClick={() => setPatientsListCollapsed(!patientsListCollapsed)}
                   className="w-full px-5 py-4 border-b border-neutral-200 flex items-center justify-between hover:bg-neutral-50 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-light text-neutral-600">Available Patients</p>
+                    <p className="text-sm font-light text-neutral-600">All Patients</p>
                     <span className="text-xs font-light text-primary-700 bg-primary-100 px-2 py-0.5 rounded">
-                      {filteredPatients.length}
+                      {allPatients.length}
                     </span>
                   </div>
                   <svg 
@@ -983,15 +1075,52 @@ export default function FloorPlanPage() {
                 </button>
 
                 {!patientsListCollapsed && (
-                  <div className="overflow-y-auto max-h-[350px]">
-                    {filteredPatients.length === 0 ? (
-                      <div className="p-5 text-center">
-                        <p className="text-sm font-light text-neutral-400">
-                          No available patients
-                        </p>
-                      </div>
-                    ) : (
-                      filteredPatients.map((patient) => (
+                  <>
+                    {/* Patient Filter Tabs */}
+                    <div className="px-5 py-3 border-b border-neutral-200 flex gap-4 flex-shrink-0">
+                      <button
+                        onClick={() => setPatientFilter('all')}
+                        className={`px-3 py-1.5 text-xs font-light transition-colors ${
+                          patientFilter === 'all'
+                            ? 'text-neutral-950 border-b-2 border-primary-700'
+                            : 'text-neutral-500 hover:text-neutral-950'
+                        }`}
+                      >
+                        All
+                      </button>
+                      <button
+                        onClick={() => setPatientFilter('assigned')}
+                        className={`px-3 py-1.5 text-xs font-light transition-colors ${
+                          patientFilter === 'assigned'
+                            ? 'text-neutral-950 border-b-2 border-primary-700'
+                            : 'text-neutral-500 hover:text-neutral-950'
+                        }`}
+                      >
+                        Assigned
+                      </button>
+                      <button
+                        onClick={() => setPatientFilter('unassigned')}
+                        className={`px-3 py-1.5 text-xs font-light transition-colors ${
+                          patientFilter === 'unassigned'
+                            ? 'text-neutral-950 border-b-2 border-primary-700'
+                            : 'text-neutral-500 hover:text-neutral-950'
+                        }`}
+                      >
+                        Unassigned
+                      </button>
+                    </div>
+                  
+                    <div className="overflow-y-auto max-h-[350px]">
+                      {filteredPatients.length === 0 ? (
+                        <div className="p-5 text-center">
+                          <p className="text-sm font-light text-neutral-400">
+                            No patients in this category
+                          </p>
+                        </div>
+                      ) : (
+                        filteredPatients.map((patient) => {
+                          const assignedRoom = rooms.find(r => r.assignedPatient?.patient_id === patient.patient_id);
+                          return (
                         <div
                           key={patient.id}
                           draggable
@@ -1023,12 +1152,19 @@ export default function FloorPlanPage() {
                               <p className="text-xs font-light text-neutral-500">
                                 {patient.age}y/o • {patient.patient_id}
                               </p>
-                  </div>
-              </div>
-            </div>
-                      ))
-          )}
-        </div>
+                              {assignedRoom && (
+                                <p className="text-xs font-light text-primary-700 mt-1">
+                                  📍 {assignedRoom.name}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
 
