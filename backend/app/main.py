@@ -24,6 +24,7 @@ from app.monitoring_control import monitoring_manager, MonitoringLevel
 # from app.agent_system import agent_system
 # from app.health_agent import health_agent  # Old non-Fetch.ai agent
 from app.fetch_health_agent import fetch_health_agent
+from app.cache import patient_cache, alert_cache, stats_cache, stream_cache
 
 # Try to import Fetch.ai handoff agent (requires uagents)
 try:
@@ -701,6 +702,7 @@ async def get_patient(patient_id: int):
 async def search_patients(q: str = ""):
     """
     Search patients by name from Supabase
+    CACHED for 30 seconds (patient data changes infrequently)
 
     Args:
         q: Search query string
@@ -712,22 +714,31 @@ async def search_patients(q: str = ""):
         print("⚠️ Supabase not configured - returning empty patient list")
         return []
 
+    # Cache key based on query
+    cache_key = f"patients_search:{q}"
+    
+    # Try cache first
+    cached = patient_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         if q:
             # Search by name (case-insensitive)
             print(f"🔍 Searching patients with query: '{q}'")
             response = supabase.table("patients") \
-                .select("*") \
+                .select("patient_id,name,age,room_id,enrollment_status") \
                 .ilike("name", f"%{q}%") \
                 .order("name") \
+                .limit(20) \
                 .execute()
         else:
             # Return all patients if no search query
             print("📋 Fetching all patients")
             response = supabase.table("patients") \
-                .select("*") \
+                .select("patient_id,name,age,room_id,enrollment_status") \
                 .order("name") \
-                .limit(50) \
+                .limit(20) \
                 .execute()
 
         result_count = len(response.data) if response.data else 0
@@ -742,7 +753,12 @@ async def search_patients(q: str = ""):
             ]
             print(
                 f"📊 After enrollment_status filter: {len(filtered_data)} patients")
+            
+            # Cache for 30 seconds
+            patient_cache.set(cache_key, filtered_data)
             return filtered_data
+        
+        patient_cache.set(cache_key, [])
         return []
     except Exception as e:
         print(f"❌ Error searching patients: {e}")
@@ -873,10 +889,19 @@ async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
     """
     Get alerts from database with enriched patient and room information
     Optionally filter by status and/or severity
+    CACHED for 5 seconds + OPTIMIZED with batch queries
     """
     if not supabase:
         # Fallback to in-memory alerts if no database
         return alerts
+
+    # Cache key based on filters
+    cache_key = f"alerts:{status}:{severity}:{limit}"
+    
+    # Try cache first
+    cached = alert_cache.get(cache_key)
+    if cached is not None:
+        return cached
 
     try:
         query = supabase.table("alerts").select("*")
@@ -891,45 +916,54 @@ async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
 
         alerts_data = response.data or []
 
-        # Enrich alerts with patient and room names
+        if not alerts_data:
+            alert_cache.set(cache_key, [])
+            return []
+
+        # OPTIMIZED: Batch fetch all patients and rooms at once
+        patient_ids = list(set(alert.get('patient_id') for alert in alerts_data if alert.get('patient_id')))
+        
+        # Fetch all patients in one query
+        patients_map = {}
+        if patient_ids:
+            patients_response = supabase.table("patients").select("patient_id,name").in_("patient_id", patient_ids).execute()
+            patients_map = {p['patient_id']: p['name'] for p in (patients_response.data or [])}
+        
+        # Fetch all room assignments in one query
+        room_assignments_map = {}
+        if patient_ids:
+            room_assignments_response = supabase.table("patients_room").select("patient_id,room_id").in_("patient_id", patient_ids).execute()
+            room_assignments_map = {r['patient_id']: r['room_id'] for r in (room_assignments_response.data or [])}
+        
+        # Fetch all rooms in one query
+        room_ids = list(set(room_assignments_map.values()))
+        rooms_map = {}
+        if room_ids:
+            rooms_response = supabase.table("rooms").select("room_id,room_name").in_("room_id", room_ids).execute()
+            rooms_map = {r['room_id']: r['room_name'] for r in (rooms_response.data or [])}
+
+        # Enrich alerts with patient and room names (no additional queries!)
         for alert in alerts_data:
-            # Add patient name and room info
-            if alert.get('patient_id'):
-                try:
-                    # Get patient name
-                    patient = supabase.table("patients").select("name").eq(
-                        "patient_id", alert['patient_id']).execute()
-                    if patient.data and len(patient.data) > 0:
-                        alert['patient_name'] = patient.data[0]['name']
+            patient_id = alert.get('patient_id')
+            if patient_id:
+                # Add patient name
+                alert['patient_name'] = patients_map.get(patient_id, 'Unknown')
+                
+                # Add room info
+                room_id = room_assignments_map.get(patient_id)
+                if room_id:
+                    if not alert.get('room_id'):
+                        alert['room_id'] = room_id
+                    alert['room_name'] = rooms_map.get(room_id, 'Unknown')
 
-                    # Get room assignment for this patient
-                    room_assignment = supabase.table("patients_room").select(
-                        "room_id").eq("patient_id", alert['patient_id']).execute()
-                    if room_assignment.data and len(room_assignment.data) > 0:
-                        assigned_room_id = room_assignment.data[0]['room_id']
-                        # If alert doesn't have room_id, use patient's current room
-                        if not alert.get('room_id'):
-                            alert['room_id'] = assigned_room_id
-
-                        # Get room name
-                        room = supabase.table("rooms").select("room_name").eq(
-                            "room_id", assigned_room_id).execute()
-                        if room.data and len(room.data) > 0:
-                            alert['room_name'] = room.data[0]['room_name']
-                except Exception as e:
-                    print(f"Error enriching alert with patient/room data: {e}")
-
-            # If alert has room_id but no room_name yet
+            # If alert has room_id but no room_name yet, get from rooms_map
             if alert.get('room_id') and not alert.get('room_name'):
-                try:
-                    room = supabase.table("rooms").select("room_name").eq(
-                        "room_id", alert['room_id']).execute()
-                    if room.data and len(room.data) > 0:
-                        alert['room_name'] = room.data[0]['room_name']
-                except Exception as e:
-                    print(f"Error fetching room name: {e}")
+                alert['room_name'] = rooms_map.get(alert['room_id'], 'Unknown')
 
         print(f"✅ Enriched {len(alerts_data)} alerts with patient/room data")
+        
+        # Cache for 5 seconds
+        alert_cache.set(cache_key, alerts_data)
         return alerts_data
     except Exception as e:
         print(f"⚠️ Error fetching alerts from database: {e}")
@@ -1154,6 +1188,7 @@ async def get_stats():
 async def get_active_streams():
     """
     Get list of patient IDs currently streaming with their analysis modes
+    CACHED for 2 seconds to reduce load
 
     Returns:
         {
@@ -1165,6 +1200,12 @@ async def get_active_streams():
             "count": 2
         }
     """
+    # Try cache first (2 second TTL)
+    cached = stream_cache.get("active_streams")
+    if cached is not None:
+        return cached
+    
+    # Build fresh response
     active_patient_ids = list(manager.streamers.keys())
     stream_details = {}
 
@@ -1174,11 +1215,15 @@ async def get_active_streams():
             "analysis_mode": trackers.analysis_mode if trackers else "normal"
         }
 
-    return {
+    result = {
         "active_streams": active_patient_ids,
         "stream_details": stream_details,
         "count": len(active_patient_ids)
     }
+    
+    # Cache for 2 seconds
+    stream_cache.set("active_streams", result)
+    return result
 
 
 @app.get("/monitoring/protocols")

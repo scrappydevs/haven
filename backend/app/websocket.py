@@ -112,6 +112,10 @@ class ConnectionManager:
     def register_streamer(self, patient_id: str, websocket: WebSocket, analysis_mode: Optional[str] = "normal"):
         """Register a streamer for a specific patient"""
         self.streamers[patient_id] = websocket
+        
+        # Invalidate stream cache (new stream active)
+        from app.cache import stream_cache
+        stream_cache.invalidate("active_streams")
 
         # Initialize metric trackers for this patient
         trackers = PatientMetricTrackers()
@@ -187,6 +191,10 @@ class ConnectionManager:
 
         print(
             f"❌ Unregistered streamer for patient {patient_id}. Worker stopped. Total streamers: {len(self.streamers)}")
+        
+        # Invalidate stream cache (stream ended)
+        from app.cache import stream_cache
+        stream_cache.invalidate("active_streams")
         
         # Notify viewers that stream ended (run in background to not block cleanup)
         import asyncio
