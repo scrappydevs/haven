@@ -413,8 +413,8 @@ export default function FloorPlanPage() {
           // Create initials as PNG canvas - size MUST match icon width/height
           const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
           console.log(`🔤 Creating initials PNG for ${patient?.name}: ${initials}`);
-          
-          const size = 160; // Optimal size for smplr.js rendering
+
+          const size = 400; // Larger canvas for better quality
           const canvas = document.createElement('canvas');
           canvas.width = size;
           canvas.height = size;
@@ -450,7 +450,7 @@ export default function FloorPlanPage() {
           
           img.onload = () => {
             console.log(`✅ Photo loaded: ${patient.name}`, img.width, 'x', img.height);
-            const size = 160; // Optimal size for smplr.js rendering
+            const size = 400; // Larger canvas for better quality
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -512,8 +512,8 @@ export default function FloorPlanPage() {
             // Fallback to initials PNG on error
             const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
             console.log(`🔤 Using initials fallback: ${initials}`);
-            
-            const size = 160; // Match main size - optimal for smplr.js
+
+            const size = 400; // Larger canvas for better quality
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -556,8 +556,8 @@ export default function FloorPlanPage() {
           data: dataWithPhotos,
           icon: (data: any) => ({
             url: data.photoUrl,
-            width: 280,  // Larger patient icons for better visibility
-            height: 280,
+            width: 500,  // Much larger patient icons for better visibility
+            height: 500,
           }),
           // No color property = photos keep natural colors (not tinted like rooms)
           onClick: (data: any) => {
