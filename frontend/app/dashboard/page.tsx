@@ -12,6 +12,7 @@ import ManualAlertsPanel from '@/components/ManualAlertsPanel';
 import PatientManagement from '@/components/PatientNurseLookup';
 import { getApiUrl } from '@/lib/api';
 import AgentAlertToast from '@/components/AgentAlertToast';
+import HandoffFormsList from '@/components/HandoffFormsList';
 
 interface Patient {
   id: number;
@@ -782,69 +783,14 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Right Column - Alerts & Activity Feed (4 columns) */}
+            {/* Right Column - Handoff Forms & Activity Feed (4 columns) */}
             <div className="col-span-4">
-              {/* Alerts Box - Same height as Patient Monitoring section */}
-              <div className="mb-6">
-                <div className="mb-4">
-                  <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">Alerts</h2>
-                </div>
-
-                <div className="bg-surface border border-neutral-200 rounded-lg h-[190px] flex flex-col">
-                  {/* Alerts Content */}
-                  <div className="px-6 py-4 flex-1 overflow-y-auto">
-                    {isLoadingAlerts ? (
-                      <div className="flex items-center justify-center py-8">
-                        <p className="text-sm font-light text-neutral-500">Loading alerts...</p>
-                      </div>
-                    ) : alerts.length === 0 ? (
-                      <div className="flex items-center justify-center py-8">
-                        <p className="text-sm font-light text-neutral-500">No active alerts</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {alerts.map((alert) => (
-                          <div
-                            key={alert.id}
-                            className={`border-l-4 pl-4 py-2 ${
-                              alert.severity === 'critical' || alert.severity === 'high'
-                                ? 'border-red-500 bg-red-50/50'
-                                : alert.severity === 'moderate' || alert.severity === 'warning'
-                                ? 'border-yellow-500 bg-yellow-50/50'
-                                : 'border-blue-500 bg-blue-50/50'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between mb-1">
-                              <span className="text-xs font-medium text-neutral-950 uppercase tracking-wider">
-                                {alert.title}
-                              </span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded uppercase tracking-wider ${
-                                alert.severity === 'critical' || alert.severity === 'high'
-                                  ? 'bg-red-100 text-red-700'
-                                  : alert.severity === 'moderate' || alert.severity === 'warning'
-                                  ? 'bg-yellow-100 text-yellow-700'
-                                  : 'bg-blue-100 text-blue-700'
-                              }`}>
-                                {alert.severity}
-                              </span>
-                            </div>
-                            {alert.description && (
-                              <p className="text-xs font-light text-neutral-600 mt-1">
-                                {alert.description}
-                              </p>
-                            )}
-                            <p className="text-[10px] text-neutral-400 mt-2">
-                              {new Date(alert.triggered_at).toLocaleString()}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {/* Handoff Forms - Compact List */}
+              <div className="mb-6 h-[600px]">
+                <HandoffFormsList limit={10} refreshInterval={30000} />
               </div>
 
-              {/* Live Activity Feed - Shorter */}
+              {/* Live Activity Feed - Below Handoff Forms */}
               <div className="h-[400px]">
                 <GlobalActivityFeed
                   events={globalEventFeed}

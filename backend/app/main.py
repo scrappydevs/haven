@@ -7,7 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from datetime import datetime
 import json
 from pathlib import Path
@@ -2522,12 +2522,13 @@ async def get_handoff_agent_status():
     }
 
 
+class GenerateHandoffRequest(BaseModel):
+    alert_ids: Optional[List[str]] = None
+    patient_id: Optional[str] = None
+    recipient_emails: Optional[List[str]] = None
+
 @app.post("/handoff-agent/generate")
-async def generate_handoff_form_manual(
-    alert_ids: Optional[list] = None,
-    patient_id: Optional[str] = None,
-    recipient_emails: Optional[list] = None
-):
+async def generate_handoff_form_manual(request: GenerateHandoffRequest):
     """
     Manually trigger handoff form generation
 
@@ -2540,19 +2541,10 @@ async def generate_handoff_form_manual(
         Form generation result with PDF path and email status
     """
     try:
-        from app.fetch_handoff_agent import HandoffFormRequest
-
         # Use configured nurse emails if not provided
+        recipient_emails = request.recipient_emails
         if not recipient_emails:
             recipient_emails = fetch_handoff_agent.nurse_emails
-
-        # Create request
-        request = HandoffFormRequest(
-            alert_ids=alert_ids,
-            patient_id=patient_id,
-            recipient_emails=recipient_emails,
-            force_regenerate=True
-        )
 
         # Generate form (synchronous version for API)
         from app.services.alerts_service import alerts_service
@@ -2562,10 +2554,10 @@ async def generate_handoff_form_manual(
         from datetime import datetime
 
         # Fetch alerts
-        if alert_ids:
-            alerts = alerts_service.get_alerts_by_ids(alert_ids)
-        elif patient_id:
-            alerts = alerts_service.get_alerts_by_patient(patient_id, include_resolved=False)
+        if request.alert_ids:
+            alerts = alerts_service.get_alerts_by_ids(request.alert_ids)
+        elif request.patient_id:
+            alerts = alerts_service.get_alerts_by_patient(request.patient_id, include_resolved=False)
         else:
             return {
                 "success": False,
@@ -2623,8 +2615,13 @@ async def generate_handoff_form_manual(
             contact_information={"Emergency": "x5555"}
         )
 
-        # Generate form number
-        form_number = f"HO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        # Generate form number using database function
+        try:
+            form_num_result = supabase.rpc("generate_form_number").execute()
+            form_number = form_num_result.data if form_num_result.data else f"HO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        except:
+            # Fallback if function doesn't exist
+            form_number = f"HO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
         # Generate PDF
         pdf_path = pdf_generator.generate_handoff_pdf(
@@ -2634,11 +2631,12 @@ async def generate_handoff_form_manual(
 
         # Save to database
         from app.supabase_client import supabase
+        import json
         data = {
             "form_number": form_number,
             "patient_id": patient_id,
             "alert_ids": [alert.id for alert in alerts],
-            "content": form_content.dict(),
+            "content": json.loads(form_content.json()),  # Use json() to handle datetime serialization
             "pdf_path": pdf_path,
             "status": "generated",
             "created_by": "FETCH_AI_HANDOFF_AGENT"

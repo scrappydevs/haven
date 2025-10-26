@@ -59,13 +59,13 @@ class AlertInfo(BaseModel):
 class PatientInfo(BaseModel):
     """Patient information for handoff form"""
     patient_id: str
-    name: Optional[str]
-    age: Optional[int]
-    room_number: Optional[str]
-    diagnosis: Optional[str]
-    treatment_status: Optional[str]
-    allergies: Optional[List[str]]
-    current_medications: Optional[List[str]]
+    name: Optional[str] = None
+    age: Optional[int] = None
+    room_number: Optional[str] = None
+    diagnosis: Optional[str] = None
+    treatment_status: Optional[str] = None
+    allergies: Optional[List[str]] = None
+    current_medications: Optional[List[str]] = None
 
 
 class HandoffFormContent(BaseModel):

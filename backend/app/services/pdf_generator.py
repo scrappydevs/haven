@@ -94,9 +94,9 @@ class PDFGenerator:
             spaceAfter=4
         ))
 
-        # Body text
+        # Body text (use CustomBody to avoid conflict)
         self.styles.add(ParagraphStyle(
-            name='BodyText',
+            name='CustomBody',
             parent=self.styles['Normal'],
             fontSize=10,
             spaceAfter=6,
@@ -282,7 +282,7 @@ class PDFGenerator:
         elements.append(Paragraph(concern_text, self.styles['AlertTitle']))
 
         # Detailed summary
-        elements.append(Paragraph(content.alert_summary, self.styles['BodyText']))
+        elements.append(Paragraph(content.alert_summary, self.styles['CustomBody']))
 
         return elements
 
@@ -294,22 +294,22 @@ class PDFGenerator:
 
         # Recent vitals
         if content.recent_vitals:
-            elements.append(Paragraph("<b>Recent Vital Signs:</b>", self.styles['BodyText']))
+            elements.append(Paragraph("<b>Recent Vital Signs:</b>", self.styles['CustomBody']))
             vitals_text = []
             for key, value in content.recent_vitals.items():
                 vitals_text.append(f"• {key}: {value}")
-            elements.append(Paragraph("<br/>".join(vitals_text), self.styles['BodyText']))
+            elements.append(Paragraph("<br/>".join(vitals_text), self.styles['CustomBody']))
 
         # Current treatments
         if content.current_treatments:
-            elements.append(Paragraph("<b>Current Treatments:</b>", self.styles['BodyText']))
+            elements.append(Paragraph("<b>Current Treatments:</b>", self.styles['CustomBody']))
             treatments_text = "<br/>".join([f"• {t}" for t in content.current_treatments])
-            elements.append(Paragraph(treatments_text, self.styles['BodyText']))
+            elements.append(Paragraph(treatments_text, self.styles['CustomBody']))
 
         # Relevant history
         if content.relevant_history:
-            elements.append(Paragraph("<b>Relevant History:</b>", self.styles['BodyText']))
-            elements.append(Paragraph(content.relevant_history, self.styles['BodyText']))
+            elements.append(Paragraph("<b>Relevant History:</b>", self.styles['CustomBody']))
+            elements.append(Paragraph(content.relevant_history, self.styles['CustomBody']))
 
         return elements
 
@@ -321,20 +321,20 @@ class PDFGenerator:
 
         # Recommended actions (numbered list)
         for i, action in enumerate(content.recommended_actions, 1):
-            elements.append(Paragraph(f"{i}. {action}", self.styles['BodyText']))
+            elements.append(Paragraph(f"{i}. {action}", self.styles['CustomBody']))
 
         # Urgency notes
         if content.urgency_notes:
             elements.append(Spacer(1, 0.1*inch))
             urgency_text = f"<font color='{self.critical_color}'><b>⚠ URGENT: {content.urgency_notes}</b></font>"
-            elements.append(Paragraph(urgency_text, self.styles['BodyText']))
+            elements.append(Paragraph(urgency_text, self.styles['CustomBody']))
 
         # Protocols to follow
         if content.protocols_to_follow:
             elements.append(Spacer(1, 0.1*inch))
-            elements.append(Paragraph("<b>Protocols to Follow:</b>", self.styles['BodyText']))
+            elements.append(Paragraph("<b>Protocols to Follow:</b>", self.styles['CustomBody']))
             protocols_text = "<br/>".join([f"• {p}" for p in content.protocols_to_follow])
-            elements.append(Paragraph(protocols_text, self.styles['BodyText']))
+            elements.append(Paragraph(protocols_text, self.styles['CustomBody']))
 
         return elements
 
@@ -347,7 +347,7 @@ class PDFGenerator:
         for alert in content.related_alerts[:5]:  # Limit to 5 most recent
             severity_color = self._get_severity_color(alert.severity.value)
             alert_text = f"<font color='{severity_color}'><b>[{alert.severity.value.upper()}]</b></font> {alert.title}"
-            elements.append(Paragraph(alert_text, self.styles['BodyText']))
+            elements.append(Paragraph(alert_text, self.styles['CustomBody']))
 
             if alert.description:
                 elements.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{alert.description}", self.styles['SmallText']))
@@ -370,7 +370,7 @@ class PDFGenerator:
             details = event.get("details", "")
 
             event_text = f"<b>{timestamp}</b> - {event_type}"
-            elements.append(Paragraph(event_text, self.styles['BodyText']))
+            elements.append(Paragraph(event_text, self.styles['CustomBody']))
 
             if details:
                 elements.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{details}", self.styles['SmallText']))
@@ -386,8 +386,8 @@ class PDFGenerator:
 
         # Special instructions
         if content.special_instructions:
-            elements.append(Paragraph("<b>Special Instructions:</b>", self.styles['BodyText']))
-            elements.append(Paragraph(content.special_instructions, self.styles['BodyText']))
+            elements.append(Paragraph("<b>Special Instructions:</b>", self.styles['CustomBody']))
+            elements.append(Paragraph(content.special_instructions, self.styles['CustomBody']))
 
         # Contact information
         if content.contact_information:
