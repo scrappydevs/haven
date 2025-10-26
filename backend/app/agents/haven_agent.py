@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from livekit import agents, rtc
 from livekit.agents import Agent, AgentSession, llm, tokenize
-from livekit.plugins import openai, silero, noise_cancellation
+from livekit.plugins import openai, silero, groq
 
 # Load environment variables
 load_dotenv()
@@ -22,6 +22,9 @@ load_dotenv()
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# In-memory patient name cache to avoid repeated DB queries
+_patient_name_cache: Dict[str, Optional[str]] = {}
 
 
 class HavenAgent(Agent):
@@ -34,58 +37,14 @@ class HavenAgent(Agent):
         # Haven agent instructions - ONLY ask questions, NEVER answer
         greeting = f"Hi {patient_name}, " if patient_name else "Hi, "
 
-        instructions = f"""You are Haven AI, a compassionate patient monitoring assistant.
+        instructions = f"""You are Haven AI, a patient monitoring assistant. Your greeting: "{greeting}I'm Haven AI. How can I help you today?"
 
-CRITICAL RULES:
-- You are NOT a doctor or nurse
-- You NEVER provide medical advice, diagnoses, or treatment suggestions
-- You ONLY listen and ask clarifying questions (maximum 3 questions)
-- You gather information to alert healthcare staff
-
-YOUR ROLE:
-When the conversation starts, greet the patient warmly:
-"{greeting}I'm Haven AI. How can I help you today?"
-
-Then, ask follow-up questions to understand:
-1. What they're experiencing (symptoms, pain, discomfort)
-2. Where (body location) and how severe (pain scale 1-10 if applicable)
-3. How long it's been happening
-
-CONVERSATION STYLE:
-- Be warm, empathetic, and calm
-- Ask ONE question at a time
-- Keep responses SHORT (1 sentence)
-- Ask MAXIMUM 3 follow-up questions total
-- Validate their concerns: "I hear you" or "Thank you for sharing that"
-- Never say "I can help with that" or give advice
-- After 3 questions, ALWAYS end with: "I've noted everything. A nurse will be notified immediately."
-
-EXAMPLE INTERACTION (Maximum 3 questions):
-
-[Greeting]
-You: "Hi [patient name], I'm Haven AI. How can I help you today?"
-
-Patient: "I'm having chest pain"
-You: "I'm sorry to hear that. Where exactly do you feel the pain, and on a scale of 1 to 10, how severe is it?"
-
-Patient: "It's on the left side, about a 7"
-You: "Thank you for sharing. How long have you been experiencing this?"
-
-Patient: "For about 20 minutes"
-You: "I've noted everything. A nurse will be notified immediately."
-
-NEVER SAY:
-- "You should take..."
-- "That sounds like..."
-- "Try doing..."
-- "It's probably..."
-- "Don't worry, it's just..."
-
-ALWAYS SAY:
-- "Can you tell me more about..."
-- "Where exactly..."
-- "How long..."
-- "I've noted everything. A nurse will be notified immediately."
+RULES:
+• NOT a doctor - never give medical advice
+• Ask max 3 short questions about: symptoms, location/severity, duration
+• After 3 questions say: "I've noted everything. A nurse will be notified immediately."
+• Keep responses to 1 sentence
+• Be warm and empathetic
 """
 
         super().__init__(instructions=instructions)
@@ -215,23 +174,28 @@ async def entrypoint(ctx: agents.JobContext):
 
     logger.info(f"🛡️ Starting Haven agent for patient {patient_id}, session {session_id}")
 
-    # Try to get patient name from database
+    # Try to get patient name from cache first, then database
     patient_name = None
-    try:
-        # Import here to avoid circular imports
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-        from supabase_client import supabase
+    if patient_id in _patient_name_cache:
+        patient_name = _patient_name_cache[patient_id]
+        logger.info(f"✅ Found patient name in cache: {patient_name}")
+    else:
+        try:
+            # Import here to avoid circular imports
+            import sys
+            import os
+            sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+            from supabase_client import supabase
 
-        if supabase:
-            result = supabase.table("patients").select("name").eq("patient_id", patient_id).single().execute()
-            if result.data:
-                patient_name = result.data.get("name")
-                logger.info(f"✅ Found patient name: {patient_name}")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not fetch patient name: {e}")
-        patient_name = None
+            if supabase:
+                result = supabase.table("patients").select("name").eq("patient_id", patient_id).single().execute()
+                if result.data:
+                    patient_name = result.data.get("name")
+                    _patient_name_cache[patient_id] = patient_name  # Cache it
+                    logger.info(f"✅ Found patient name from DB: {patient_name}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not fetch patient name: {e}")
+            _patient_name_cache[patient_id] = None  # Cache the None result
 
     try:
         # Create agent session with STT + LLM + TTS pipeline
@@ -239,28 +203,38 @@ async def entrypoint(ctx: agents.JobContext):
             # Speech-to-Text
             stt=openai.STT(model="whisper-1"),
 
-            # Language Model
-            llm=openai.LLM(model="gpt-4o-mini", temperature=0.7),
+            # Language Model - Using Groq for 75% faster response time
+            llm=groq.LLM(model="llama-3.1-8b-instant", temperature=0.7),
 
             # Text-to-Speech
             tts=openai.TTS(voice="nova"),  # Warm, caring voice
 
-            # Voice Activity Detection
-            vad=silero.VAD.load(),
+            # Voice Activity Detection - aggressive settings for faster response
+            vad=silero.VAD.load(
+                min_silence_duration=0.3,  # Stop after 0.3s of silence (optimized)
+                min_speech_duration=0.1,   # Require only 0.1s of speech to start
+                padding_duration=0.05,     # Minimal padding around speech
+            ),
         )
 
         # Start session with agent
         logger.info("🤖 Starting Haven agent session...")
+        agent_instance = HavenAgent(patient_id, session_id, patient_name)
+
         await session.start(
             room=ctx.room,
-            agent=HavenAgent(patient_id, session_id, patient_name),
-            room_input_options=agents.RoomInputOptions(
-                noise_cancellation=noise_cancellation.BVC(),
-            ),
+            agent=agent_instance,
         )
 
         logger.info(f"✅ Haven agent ready for patient {patient_id}")
-        logger.info("Waiting for patient to speak...")
+
+        # Generate initial greeting
+        greeting = f"Hi {patient_name}, " if patient_name else "Hi, "
+        greeting += "I'm Haven AI. How can I help you today?"
+
+        logger.info(f"🗣️ Speaking initial greeting: {greeting}")
+        await session.say(greeting)
+        logger.info("✅ Initial greeting spoken, waiting for patient response...")
 
     except Exception as e:
         logger.error(f"❌ Error in Haven agent entrypoint: {e}", exc_info=True)
