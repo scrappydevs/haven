@@ -19,7 +19,7 @@ class MonitoringConfig:
         self.patient_id = patient_id
         self.level = MonitoringLevel.BASELINE
         self.enabled_metrics = ["heart_rate", "respiratory_rate", "crs_score"]
-        self.frequency_seconds = 10  # Reduced from 5s to 10s for better performance
+        self.frequency_seconds = 3  # Fast detection for emergency events (seizures, falls)
         self.activated_at = datetime.now()
         self.expires_at = None  # None = indefinite
         self.activation_reason = ""
@@ -59,7 +59,7 @@ class MonitoringManager:
         config = self.get_config(patient_id)
         config.level = MonitoringLevel.BASELINE
         config.enabled_metrics = ["heart_rate", "respiratory_rate", "crs_score"]
-        config.frequency_seconds = 10  # Reduced from 5s to 10s for better performance
+        config.frequency_seconds = 3  # Fast detection for emergency events
         config.expires_at = None
         config.activation_reason = reason
         config.activated_at = datetime.now()
@@ -86,7 +86,7 @@ class MonitoringManager:
             "eye_openness",
             "face_touching_frequency"
         ]
-        config.frequency_seconds = 5
+        config.frequency_seconds = 2  # Very fast for concerning patients
         config.expires_at = datetime.now() + timedelta(minutes=duration_minutes)
         config.activation_reason = reason
         config.activated_at = datetime.now()
@@ -114,7 +114,7 @@ class MonitoringManager:
             "head_roll",
             "posture_score"
         ]
-        config.frequency_seconds = 3  # Faster sampling
+        config.frequency_seconds = 1  # Ultra-fast for critical patients
         config.expires_at = None  # Critical doesn't expire automatically
         config.activation_reason = reason
         config.activated_at = datetime.now()
