@@ -12,6 +12,7 @@ class VoiceCallService:
     def __init__(self):
         # Credentials loaded lazily on first call
         self._credentials_loaded = False
+        self._client = None  # Cache Vonage client for speed
         self.api_key = None
         self.api_secret = None
         self.application_id = None
@@ -78,9 +79,6 @@ class VoiceCallService:
             return None
         
         try:
-            # Import Vonage client (v4+ API) - same as existing /alerts/call
-            from vonage import Auth, Vonage
-            
             # Create TTS message
             event_msg = {
                 "seizure": "SEIZURE DETECTED",
@@ -98,17 +96,25 @@ class VoiceCallService:
             
             print(f"📞 CALLING {target_number}: {event_type.upper()} for {patient_id}")
             
-            # Convert escaped newlines to actual newlines in private key
-            private_key_formatted = self.private_key.replace("\\n", "\n")
+            # Initialize Vonage client once and cache it (JWT signing is slow!)
+            if self._client is None:
+                print(f"🔄 Initializing Vonage client (first call)...")
+                from vonage import Auth, Vonage
+                
+                # Convert escaped newlines to actual newlines in private key
+                private_key_formatted = self.private_key.replace("\\n", "\n")
+                
+                # Create auth with application credentials for Voice API
+                auth = Auth(
+                    api_key=self.api_key,
+                    api_secret=self.api_secret,
+                    application_id=self.application_id,
+                    private_key=private_key_formatted
+                )
+                self._client = Vonage(auth=auth)
+                print(f"✅ Client initialized and cached")
             
-            # Create auth with application credentials for Voice API
-            auth = Auth(
-                api_key=self.api_key,
-                api_secret=self.api_secret,
-                application_id=self.application_id,
-                private_key=private_key_formatted
-            )
-            client = Vonage(auth=auth)
+            client = self._client
             
             # Clean phone number
             to_number_clean = target_number.replace("+", "").replace("-", "").replace(" ", "")
@@ -129,25 +135,38 @@ class VoiceCallService:
                 }
             ]
             
-            # Make the call
-            print(f"🔄 Calling Vonage API...")
-            print(f"   From: {self.from_number}")
-            print(f"   To: {to_number_clean}")
-            print(f"   Message: {tts_text[:100]}...")
+            # Make the call asynchronously (fire-and-forget for speed)
+            import threading
+            import time
             
-            response = client.voice.create_call({
-                "to": [{"type": "phone", "number": to_number_clean}],
-                "from_": {"type": "phone", "number": self.from_number},
-                "ncco": ncco
-            })
+            call_start_time = time.time()
+            call_result = {"uuid": None, "error": None}
             
-            call_uuid = response.uuid if hasattr(response, 'uuid') else str(response)
-            print(f"✅ Voice call placed - UUID: {call_uuid}")
-            print(f"   Response: {response}")
+            def make_call_async():
+                try:
+                    response = client.voice.create_call({
+                        "to": [{"type": "phone", "number": to_number_clean}],
+                        "from_": {"type": "phone", "number": self.from_number},
+                        "ncco": ncco
+                    })
+                    call_uuid = response.uuid if hasattr(response, 'uuid') else str(response)
+                    call_result["uuid"] = call_uuid
+                    elapsed = time.time() - call_start_time
+                    print(f"✅ Call placed - UUID: {call_uuid} → {target_number} ({elapsed:.1f}s)")
+                except Exception as e:
+                    call_result["error"] = str(e)
+                    print(f"❌ Call failed: {e}")
+            
+            # Start call in background thread (don't wait for Vonage response)
+            thread = threading.Thread(target=make_call_async, daemon=True)
+            thread.start()
+            
+            # Return immediately with pending status
             return {
-                "uuid": call_uuid, 
+                "uuid": "pending",  # Will be updated in logs when call completes
                 "to": target_number, 
-                "event": event_msg if event_type != "urgent_alert" else "urgent_alert"
+                "event": event_msg if event_type != "urgent_alert" else "urgent_alert",
+                "status": "placing_call"
             }
             
         except Exception as e:
@@ -156,4 +175,30 @@ class VoiceCallService:
 
 # Global instance
 voice_service = VoiceCallService()
+
+# Pre-warm the client on module import for instant calls
+def _prewarm_client():
+    """Initialize Vonage client in background to avoid first-call delay"""
+    import threading
+    def init():
+        try:
+            voice_service._load_credentials()
+            if voice_service.enabled and voice_service._client is None:
+                from vonage import Auth, Vonage
+                private_key = voice_service.private_key.replace("\\n", "\n")
+                auth = Auth(
+                    api_key=voice_service.api_key,
+                    api_secret=voice_service.api_secret,
+                    application_id=voice_service.application_id,
+                    private_key=private_key
+                )
+                voice_service._client = Vonage(auth=auth)
+                print(f"⚡ Vonage client pre-warmed - calls will be instant!")
+        except Exception as e:
+            print(f"⚠️ Client pre-warm failed: {e}")
+    
+    threading.Thread(target=init, daemon=True).start()
+
+# Start pre-warming immediately
+_prewarm_client()
 
