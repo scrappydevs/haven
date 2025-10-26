@@ -7,12 +7,25 @@ MODE=${1:-dev}
 
 echo "🚀 Starting Haven Voice Agent..."
 echo "   Mode: $MODE"
-echo "   Conda Environment: aegis"
+echo "   Conda Environment: haven"
 echo ""
 
-# Activate conda environment
-source /opt/miniconda3/etc/profile.d/conda.sh
-conda activate aegis
+# Activate conda environment - find conda dynamically
+if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/miniconda3/etc/profile.d/conda.sh"
+elif [ -f "/opt/miniconda3/etc/profile.d/conda.sh" ]; then
+    source "/opt/miniconda3/etc/profile.d/conda.sh"
+elif [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/anaconda3/etc/profile.d/conda.sh"
+elif command -v conda &> /dev/null; then
+    # Try using conda init
+    eval "$(conda shell.bash hook)"
+else
+    echo "❌ Could not find conda. Please ensure conda is installed."
+    exit 1
+fi
+
+conda activate haven
 
 # Check if Infisical CLI is available
 if command -v infisical &> /dev/null; then

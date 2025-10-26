@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+1. Never use emoji's
+2. Never create .md and .sql files
+3. Remember that everything goes under the conda env haven
+4. All ui changes should be made while keeping the site's general ui in mind

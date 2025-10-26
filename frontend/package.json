@@ -11,6 +11,8 @@
   "dependencies": {
     "@livekit/components-react": "^2.9.15",
     "@livekit/components-styles": "^1.1.6",
+    "@react-three/drei": "^10.7.6",
+    "@react-three/fiber": "^9.4.0",
     "@smplrspace/smplr-loader": "^2.42.0",
     "framer-motion": "^11.0.0",
     "livekit-client": "^2.15.13",
@@ -22,6 +24,7 @@
     "react-markdown": "^10.1.0",
     "recharts": "^2.10.0",
     "remark-gfm": "^4.0.1",
+    "three": "^0.180.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
