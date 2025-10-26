@@ -14,15 +14,15 @@ scipy==1.16.2
 anthropic==0.44.0
 
 # Protobuf - required by LiveKit and mediapipe
-protobuf==4.25.3
+protobuf>=4.25.3,<5.0
 
-# LiveKit for voice AI - updated to 1.2.x agents framework
+# LiveKit for voice AI - using compatible versions
 livekit==1.0.17
 livekit-api==1.0.7
-livekit-agents==1.2.15
-livekit-plugins-openai==1.2.15
-livekit-plugins-silero==1.2.15
-livekit-plugins-groq==1.2.15
+livekit-agents==1.1.0
+livekit-plugins-openai==1.1.0
+livekit-plugins-silero==1.1.0
+livekit-plugins-groq==1.1.0
 livekit-plugins-noise-cancellation==0.2.5
 openai>=1.50.0
 python-dotenv==1.1.1
@@ -49,6 +49,5 @@ gunicorn==23.0.0
 # SMS Alerts
 vonage==4.7.2
 
-# Multi-Agent System (Fetch.ai uAgents)
-# Version 0.22+ supports modern uvicorn and pydantic
-uagents>=0.22.0
+# Multi-Agent System (Fetch.ai uAgents) - temporarily disabled due to protobuf conflicts
+# uagents==0.21.0
