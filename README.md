@@ -42,6 +42,12 @@ Haven operates as a multi-agent hospital command center that coordinates autonom
 
 **Spatial Intelligence**: 3D hospital map rendered with Three.js, updated in real-time through Claude chain-tool calling. Room states are managed through Supabase with WebSocket synchronization for instant updates across all connected clients.
 
+## Tech Stack
+<div align="center">
+  <img src="Haven Tech Stack.png" alt="Haven Tech Stack" width="800"/>
+  <br/>
+</div>
+
 ## Future Development
 
 **Agent Ecosystem Expansion**:
