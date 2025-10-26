@@ -38,7 +38,13 @@ class VoiceCallService:
         if self.enabled:
             print(f"✅ Voice Call Service enabled - Emergency: {self.emergency_number}")
         else:
-            print(f"⚠️ Voice Call Service disabled - Missing Vonage credentials")
+            missing = []
+            if not self.api_key: missing.append("VONAGE_API_KEY")
+            if not self.api_secret: missing.append("VONAGE_API_SECRET")
+            if not self.application_id: missing.append("VONAGE_APPLICATION_ID")
+            if not self.private_key: missing.append("VONAGE_PRIVATE_KEY")
+            print(f"⚠️ Voice Call Service disabled - Missing: {', '.join(missing)}")
+            print(f"   Set these in Render environment variables or Infisical")
     
     def make_emergency_call(
         self, 
@@ -67,6 +73,8 @@ class VoiceCallService:
         
         if not self.enabled:
             print(f"📞 [DEMO MODE] Would call {target_number}: {event_type.upper()} for {patient_id}")
+            print(f"   ⚠️  Vonage not configured - check Render environment variables")
+            print(f"   Required: VONAGE_API_KEY, VONAGE_API_SECRET, VONAGE_APPLICATION_ID, VONAGE_PRIVATE_KEY")
             return None
         
         try:

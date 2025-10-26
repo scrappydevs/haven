@@ -297,7 +297,7 @@ async def trigger_sms_alert(request: SMSAlertRequest):
         }
 
 
-@app.post("/alerts/test-call")
+@app.post("/test-emergency-call")
 async def test_emergency_call():
     """
     Quick test endpoint for emergency calling
