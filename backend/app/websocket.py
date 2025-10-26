@@ -62,12 +62,13 @@ def get_pose():
     global _pose
     if _pose is None:
         _pose = mp.solutions.pose.Pose(
-            # Video mode - tracks between frames (much faster)
+            # Optimized for speed - video mode with lite model
             static_image_mode=False,
-            model_complexity=0,  # 0 = lite model (faster)
-            smooth_landmarks=True,  # Smooth tracking for better visual quality
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+            model_complexity=0,  # 0 = lite model (fastest)
+            smooth_landmarks=True,  # Smooth tracking
+            min_detection_confidence=0.3,  # Lower for speed
+            min_tracking_confidence=0.3,  # Lower for speed
+            enable_segmentation=False  # Disable segmentation for speed
         )
     return _pose
 
@@ -273,16 +274,16 @@ class ConnectionManager:
                 # Agent analysis: if we just calculated metrics, analyze them
                 if slow_result and slow_result.get("metrics"):
                     try:
-                        # Broadcast "thinking" message
-                        loop.run_until_complete(self.broadcast_frame({
-                            "type": "agent_thinking",
-                            "patient_id": patient_id,
-                            "message": "🤖 AI Agent analyzing...",
-                            "timestamp": time.time()
-                        }))
+                        # DISABLED: Old "thinking" message (replaced by Fetch.ai Health Agent logs)
+                        # loop.run_until_complete(self.broadcast_frame({
+                        #     "type": "agent_thinking",
+                        #     "patient_id": patient_id,
+                        #     "message": "🤖 AI Agent analyzing...",
+                        #     "timestamp": time.time()
+                        # }))
 
                         # ====== FETCH.AI HEALTH AGENT (PRIMARY) ======
-                        from app.health_agent import health_agent
+                        from app.fetch_health_agent import fetch_health_agent
                         
                         # Prepare vitals and CV metrics
                         vitals = {
@@ -297,55 +298,78 @@ class ConnectionManager:
                             "posture_alert": slow_result["metrics"].get("tremor_detected", False)
                         }
                         
-                        # Analyze with Fetch.ai Health Agent
-                        analysis = loop.run_until_complete(
-                            health_agent.analyze_patient(patient_id, vitals, cv_metrics)
-                        )
-                        
-                        # Log analysis
-                        print(f"🤖 Fetch.ai Health Agent → {patient_id}: {analysis['severity']}")
-                        print(f"   Reasoning: {analysis['reasoning']}")
-                        
-                        # Broadcast health alert to dashboard in the format UI expects
+                        # Analyze with Fetch.ai Health Agent (NON-BLOCKING)
+                        # Run agent in separate thread to never block CV processing
                         from datetime import datetime as dt
+                        import threading
                         
-                        # Create log entry for TerminalLog component
-                        severity_icon = {
-                            "CRITICAL": "🚨",
-                            "WARNING": "⚠️",
-                            "NORMAL": "✅"
-                        }.get(analysis["severity"], "ℹ️")
+                        def agent_worker():
+                            """Background thread for agent analysis - never blocks CV"""
+                            try:
+                                # Create new event loop for this thread
+                                import asyncio
+                                thread_loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(thread_loop)
+                                
+                                # Run analysis
+                                analysis = thread_loop.run_until_complete(
+                                    fetch_health_agent.analyze_patient(patient_id, vitals, cv_metrics)
+                                )
+                                
+                                # Truncate reasoning for UI (keep first 150 chars)
+                                reasoning_full = analysis["reasoning"]
+                                reasoning_short = reasoning_full[:150] + "..." if len(reasoning_full) > 150 else reasoning_full
+                                
+                                # Format action as bullet list (first 3 items only if list)
+                                action = analysis["recommended_action"]
+                                if isinstance(action, list):
+                                    action_short = "\n".join([f"• {a}" for a in action[:3]])
+                                    if len(action) > 3:
+                                        action_short += f"\n• ...{len(action) - 3} more"
+                                else:
+                                    action_short = action[:200] + "..." if len(str(action)) > 200 else str(action)
+                                
+                                # Create log entry for TerminalLog component
+                                severity_icon = {
+                                    "CRITICAL": "🚨",
+                                    "WARNING": "⚠️",
+                                    "NORMAL": "✅"
+                                }.get(analysis["severity"], "ℹ️")
+                                
+                                log_message = {
+                                    "type": "terminal_log",
+                                    "patient_id": patient_id,
+                                    "timestamp": dt.now().isoformat(),
+                                    "message": f"{severity_icon} Fetch.ai Agent: {analysis['severity']}",
+                                    "details": reasoning_short,
+                                    "action": action_short
+                                }
+                                
+                                # Also send as alert for AlertPanel
+                                alert_message = {
+                                    "type": "agent_alert",
+                                    "patient_id": patient_id,
+                                    "severity": analysis["severity"],
+                                    "agent": "FETCH_AI_HEALTH_AGENT",
+                                    "message": f"Patient {patient_id}: {analysis['severity']}",
+                                    "reasoning": reasoning_short,
+                                    "recommended_action": action_short,
+                                    "concerns": analysis["concerns"],
+                                    "confidence": analysis["confidence"],
+                                    "timestamp": dt.now().isoformat()
+                                }
+                                
+                                # Send both messages
+                                thread_loop.run_until_complete(self.broadcast_frame(log_message))
+                                thread_loop.run_until_complete(self.broadcast_frame(alert_message))
+                                
+                                thread_loop.close()
+                                
+                            except Exception as e:
+                                print(f"⚠️ Agent thread error: {e}")
                         
-                        log_message = {
-                            "type": "terminal_log",
-                            "patient_id": patient_id,
-                            "timestamp": dt.now().isoformat(),
-                            "message": f"{severity_icon} Fetch.ai Health Agent: {analysis['severity']}",
-                            "details": analysis["reasoning"],
-                            "action": analysis["recommended_action"]
-                        }
-                        
-                        # Also send as alert for AlertPanel
-                        alert_message = {
-                            "type": "agent_alert",
-                            "patient_id": patient_id,
-                            "severity": analysis["severity"],
-                            "agent": "FETCH_AI_HEALTH_AGENT",
-                            "message": health_agent._create_alert_message(patient_id, analysis),
-                            "reasoning": analysis["reasoning"],
-                            "recommended_action": analysis["recommended_action"],
-                            "concerns": analysis["concerns"],
-                            "confidence": analysis["confidence"],
-                            "timestamp": dt.now().isoformat()
-                        }
-                        
-                        # Send both messages to viewers
-                        loop.run_until_complete(
-                            self.send_to_all_viewers(json.dumps(log_message))
-                        )
-                        loop.run_until_complete(
-                            self.send_to_all_viewers(json.dumps(alert_message))
-                        )
+                        # Start agent in background thread - CV processing continues immediately
+                        threading.Thread(target=agent_worker, daemon=True).start()
                         
                         # LEGACY AGENTS (DISABLED - using Fetch.ai Health Agent instead)
                         # if agent_system.enabled:
@@ -363,9 +387,9 @@ class ConnectionManager:
 
                 loop.close()
 
-                if fast_time > 0.1:
-                    print(
-                        f"⚠️ Fast processing slow: {fast_time*1000:.0f}ms (frame {frame_num})")
+                # Only log if extremely slow (>200ms)
+                if fast_time > 0.2:
+                    print(f"⚠️ Slow frame {frame_num}: {fast_time*1000:.0f}ms")
 
             except queue.Empty:
                 # No frames to process, continue waiting
@@ -491,9 +515,9 @@ def process_frame_fast(frame_base64: str, patient_id: Optional[str] = None) -> D
             }
 
         total_time = time.time() - start
-        if total_time > 0.1:  # Log if >100ms
-            print(
-                f"⚠️ Fast processing slow: {total_time*1000:.0f}ms (decode: {decode_time*1000:.0f}ms, resize: {resize_time*1000:.0f}ms, MediaPipe: {mediapipe_time*1000:.0f}ms)")
+        # Only log if extremely slow (>200ms) to reduce noise
+        if total_time > 0.2:
+            print(f"⚠️ Slow CV: {total_time*1000:.0f}ms (MP: {mediapipe_time*1000:.0f}ms)")
 
         return {
             "landmarks": landmark_data,
@@ -676,20 +700,12 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                     fx, fy = int(forehead_lm.x * w), int(forehead_lm.y * h)
                     forehead_roi = frame[max(
                         0, fy-30):min(h, fy+10), max(0, fx-40):min(w, fx+40)]
-                    print(
-                        f"❤️ HR Debug: Calling tracker with forehead_roi shape={forehead_roi.shape if forehead_roi.size > 0 else 'EMPTY'}")
-                    heart_rate = trackers.heart_rate.process_frame(
-                        frame, forehead_roi)
-                    print(f"❤️ HR Result: {heart_rate}")
+                    heart_rate = trackers.heart_rate.process_frame(frame, forehead_roi)
 
                 # Respiratory rate (FFT on nose movement)
                 if "respiratory_rate" in enabled_metrics:
                     nose_y = landmarks.landmark[1].y
-                    print(
-                        f"🫁 RR Debug: Calling tracker with nose_y={nose_y:.4f}")
-                    respiratory_rate = trackers.respiratory_rate.process_frame(
-                        nose_y)
-                    print(f"🫁 RR Result: {respiratory_rate}")
+                    respiratory_rate = trackers.respiratory_rate.process_frame(nose_y)
 
                 # Face touching detection
                 if "face_touching_frequency" in enabled_metrics:

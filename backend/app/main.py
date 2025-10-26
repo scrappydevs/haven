@@ -20,7 +20,8 @@ from app.monitoring_control import monitoring_manager, MonitoringLevel
 # Legacy agents disabled - using Fetch.ai Health Agent only
 # from app.patient_guardian_agent import patient_guardian
 # from app.agent_system import agent_system
-from app.health_agent import health_agent
+# from app.health_agent import health_agent  # Old non-Fetch.ai agent
+from app.fetch_health_agent import fetch_health_agent
 from app.rooms import (
     get_all_floors,
     get_all_rooms_with_patients,
@@ -109,7 +110,7 @@ async def startup_event():
         f"   • Supabase: {'✅ Connected' if supabase else '❌ Not configured'}")
     print(
         f"   • Anthropic AI: {'✅ Enabled' if anthropic_client else '⚠️  Disabled (using keyword matching)'}")
-    print(f"   • Fetch.ai Health Agent: {'✅ Enabled' if health_agent.enabled else '⚠️  Disabled'}")
+    print(f"   • Fetch.ai Health Agent: {'✅ Enabled' if fetch_health_agent.enabled else '⚠️  Disabled'}")
     print(f"   • CV Data: {'✅ Loaded' if cv_results else '⚠️  Not loaded'}")
     print(
         f"   • Patients (local): {'✅ Loaded (' + str(len(patients)) + ')' if patients else '⚠️  Not loaded'}")
@@ -1338,40 +1339,40 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 
 @app.get("/health-agent/status")
 async def get_health_agent_status():
-    """Get health agent status"""
-    return health_agent.get_status()
+    """Get Fetch.ai health agent status"""
+    return fetch_health_agent.get_status()
 
 @app.get("/health-agent/patients")
 async def get_health_agent_patients():
     """Get all monitored patients"""
     return {
-        "patients": health_agent.get_all_patients(),
-        "count": len(health_agent.get_all_patients())
+        "patients": list(fetch_health_agent.patients.values()),
+        "count": len(fetch_health_agent.patients)
     }
 
 @app.get("/health-agent/patient/{patient_id}")
 async def get_health_agent_patient(patient_id: str):
     """Get specific patient status"""
-    status = health_agent.get_patient_status(patient_id)
-    if status:
-        return {"patient_id": patient_id, **status}
+    if patient_id in fetch_health_agent.patients:
+        return {"patient_id": patient_id, **fetch_health_agent.patients[patient_id]}
     else:
         return {"error": "Patient not found"}
 
 @app.get("/health-agent/alerts")
 async def get_health_agent_alerts():
     """Get active alerts"""
+    active = [a for a in fetch_health_agent.alerts if a.get("severity") in ["CRITICAL", "WARNING"]]
     return {
-        "alerts": health_agent.get_active_alerts(),
-        "count": len(health_agent.get_active_alerts())
+        "alerts": active,
+        "count": len(active)
     }
 
 @app.get("/health-agent/history")
 async def get_health_agent_history():
     """Get alert history"""
     return {
-        "history": health_agent.get_alert_history(),
-        "count": len(health_agent.get_alert_history())
+        "history": fetch_health_agent.alerts,
+        "count": len(fetch_health_agent.alerts)
     }
 
 

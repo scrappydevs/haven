@@ -40,3 +40,4 @@ vonage>=3.0.0
 
 # Multi-Agent System (Fetch.ai uAgents)
 uagents>=0.12.0
+uagents-core>=0.3.0

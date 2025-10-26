@@ -121,64 +121,65 @@ export default function DetailPanel({
     setTerminalEntries(prev => [...prev, newEntry]);
   }, [events?.length]); // Only trigger when events array length changes
 
+  // DISABLED: Old CV metric logging (replaced by Fetch.ai Health Agent)
   // Add vital sign entries when metrics update
-  useEffect(() => {
-    if (!cvData?.metrics) return;
+  // useEffect(() => {
+  //   if (!cvData?.metrics) return;
 
-    const hr = getValue('heart_rate');
-    const rr = getValue('respiratory_rate');
-    const crs = getValue('crs_score');
+  //   const hr = getValue('heart_rate');
+  //   const rr = getValue('respiratory_rate');
+  //   const crs = getValue('crs_score');
 
-    // Only log significant changes (throttle) - but always log concerning values
-    const hrConcerning = hr > 90;
-    const rrConcerning = rr > 18;
-    const crsConcerning = crs > 0.5;
-    const shouldLog = hrConcerning || rrConcerning || crsConcerning || Math.random() < 0.15; // 15% chance + always log concerning
+  //   // Only log significant changes (throttle) - but always log concerning values
+  //   const hrConcerning = hr > 90;
+  //   const rrConcerning = rr > 18;
+  //   const crsConcerning = crs > 0.5;
+  //   const shouldLog = hrConcerning || rrConcerning || crsConcerning || Math.random() < 0.15; // 15% chance + always log concerning
 
-    if (!shouldLog) return;
+  //   if (!shouldLog) return;
 
-    // Log HR if concerning or random
-    if (hr && (hrConcerning || Math.random() < 0.3)) {
-      const status = hr > 100 ? '[ELEVATED]' : hr > 90 ? '[HIGH]' : '[NORMAL]';
-      const entry: TerminalLogEntry = {
-        id: logIdCounterRef.current++, // Atomic increment
-        timestamp: new Date(),
-        type: 'vital',
-        severity: hr > 100 ? 'critical' : hr > 90 ? 'warning' : 'normal',
-        message: `HR  → ${hr} bpm ${status}`,
-        metadata: { value: hr }
-      };
-      setTerminalEntries(prev => [...prev, entry].slice(-100)); // Keep last 100
-    }
+  //   // Log HR if concerning or random
+  //   if (hr && (hrConcerning || Math.random() < 0.3)) {
+  //     const status = hr > 100 ? '[ELEVATED]' : hr > 90 ? '[HIGH]' : '[NORMAL]';
+  //     const entry: TerminalLogEntry = {
+  //       id: logIdCounterRef.current++, // Atomic increment
+  //       timestamp: new Date(),
+  //       type: 'vital',
+  //       severity: hr > 100 ? 'critical' : hr > 90 ? 'warning' : 'normal',
+  //       message: `HR  → ${hr} bpm ${status}`,
+  //       metadata: { value: hr }
+  //     };
+  //     setTerminalEntries(prev => [...prev, entry].slice(-100)); // Keep last 100
+  //   }
 
-    // Log RR if concerning
-    if (rr && (rrConcerning || Math.random() < 0.3)) {
-      const status = rr > 22 ? '[ELEVATED]' : rr > 18 ? '[HIGH]' : '[NORMAL]';
-      const entry: TerminalLogEntry = {
-        id: logIdCounterRef.current++, // Atomic increment
-        timestamp: new Date(),
-        type: 'vital',
-        severity: rr > 22 ? 'critical' : rr > 18 ? 'warning' : 'normal',
-        message: `RR  → ${rr} /min ${status}`,
-        metadata: { value: rr }
-      };
-      setTerminalEntries(prev => [...prev, entry].slice(-100));
-    }
+  //   // Log RR if concerning
+  //   if (rr && (rrConcerning || Math.random() < 0.3)) {
+  //     const status = rr > 22 ? '[ELEVATED]' : rr > 18 ? '[HIGH]' : '[NORMAL]';
+  //     const entry: TerminalLogEntry = {
+  //       id: logIdCounterRef.current++, // Atomic increment
+  //       timestamp: new Date(),
+  //       type: 'vital',
+  //       severity: rr > 22 ? 'critical' : rr > 18 ? 'warning' : 'normal',
+  //       message: `RR  → ${rr} /min ${status}`,
+  //       metadata: { value: rr }
+  //     };
+  //     setTerminalEntries(prev => [...prev, entry].slice(-100));
+  //   }
 
-    // Log CRS if concerning
-    if (crs !== undefined && (crsConcerning || Math.random() < 0.3)) {
-      const status = crs > 0.7 ? '[CRITICAL]' : crs > 0.5 ? '[CONCERNING]' : '[STABLE]';
-      const entry: TerminalLogEntry = {
-        id: logIdCounterRef.current++, // Atomic increment
-        timestamp: new Date(),
-        type: 'vital',
-        severity: crs > 0.7 ? 'critical' : crs > 0.5 ? 'warning' : 'normal',
-        message: `CRS → ${crs.toFixed(2)} ${status}`,
-        metadata: { value: crs }
-      };
-      setTerminalEntries(prev => [...prev, entry].slice(-100));
-    }
-  }, [cvData?.metrics?.heart_rate, cvData?.metrics?.respiratory_rate, cvData?.metrics?.crs_score]);
+  //   // Log CRS if concerning
+  //   if (crs !== undefined && (crsConcerning || Math.random() < 0.3)) {
+  //     const status = crs > 0.7 ? '[CRITICAL]' : crs > 0.5 ? '[CONCERNING]' : '[STABLE]';
+  //     const entry: TerminalLogEntry = {
+  //       id: logIdCounterRef.current++, // Atomic increment
+  //       timestamp: new Date(),
+  //       type: 'vital',
+  //       severity: crs > 0.7 ? 'critical' : crs > 0.5 ? 'warning' : 'normal',
+  //       message: `CRS → ${crs.toFixed(2)} ${status}`,
+  //       metadata: { value: crs }
+  //     };
+  //     setTerminalEntries(prev => [...prev, entry].slice(-100));
+  //   }
+  // }, [cvData?.metrics?.heart_rate, cvData?.metrics?.respiratory_rate, cvData?.metrics?.crs_score]);
 
   // Basic vitals
   const heartRate = getValue('heart_rate');
