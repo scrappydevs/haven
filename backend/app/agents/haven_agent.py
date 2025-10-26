@@ -207,8 +207,17 @@ RULES:
     async def _save_alert(self):
         """
         Save alert to database and notify dashboard when conversation completes.
+        Only saves once per conversation to prevent duplicates.
         """
+        # Prevent duplicate alerts from being saved
+        if hasattr(self, '_alert_saved') and self._alert_saved:
+            logger.warning(f"⚠️ Alert already saved for patient {self.patient_id}, skipping duplicate")
+            return
+
         try:
+            # Mark as saving immediately to prevent race conditions
+            self._alert_saved = True
+
             # Import here to avoid circular imports
             import sys
             import os
@@ -243,7 +252,9 @@ RULES:
             if supabase:
                 result = supabase.table("alerts").insert(alert_data).execute()
                 alert_id = result.data[0]["id"] if result.data else None
-                logger.info(f"✅ Alert saved: {alert_id} for patient {self.patient_id}")
+                # Count how many questions were actually asked
+                questions_asked = sum(1 for msg in self.conversation_transcript if msg['role'] == 'assistant' and '?' in msg['content'])
+                logger.info(f"✅ Alert saved: {alert_id} for patient {self.patient_id} (after {questions_asked} questions)")
 
                 # Notify dashboard via WebSocket
                 try:
@@ -263,7 +274,9 @@ RULES:
                 logger.warning("Supabase not available, alert not saved")
 
         except Exception as e:
-            logger.error(f"Error saving alert: {e}", exc_info=True)
+            # Reset flag on error so alert can be retried
+            self._alert_saved = False
+            logger.error(f"❌ Error saving alert for {self.patient_id}: {e}", exc_info=True)
 
 
 # LiveKit Agent Entry Point
@@ -351,6 +364,41 @@ async def entrypoint(ctx: agents.JobContext):
         logger.info("🤖 Starting Haven agent session...")
         agent_instance = HavenAgent(
             patient_id, session_id, patient_name, patient_condition, patient_notes)
+
+        # ===== ENFORCE 3-QUESTION LIMIT =====
+        # Wrap session.say() to count questions and force-stop after 3
+        question_count = [0]  # Use list for closure mutability
+        original_say = session.say
+
+        async def limited_say(text: str, *args, **kwargs):
+            """Intercept outgoing speech to enforce 3-question limit"""
+
+            # Count questions (any message with '?')
+            if '?' in text:
+                question_count[0] += 1
+                logger.info(f"📊 Question {question_count[0]}/3 asked to {patient_id}")
+
+                # Block 4th question, force closing statement
+                if question_count[0] > 3:
+                    closing = "I've noted everything. A nurse will be notified immediately."
+                    logger.info(f"🛑 Max questions reached for {patient_id}, forcing close")
+                    await original_say(closing, *args, **kwargs)
+                    # Save alert and mark complete
+                    agent_instance.conversation_complete = True
+                    await agent_instance._save_alert()
+                    return  # Don't speak the 4th question
+
+            # Allow the message through
+            await original_say(text, *args, **kwargs)
+
+            # Auto-complete after 3rd question
+            if question_count[0] >= 3 and not agent_instance.conversation_complete:
+                logger.info(f"📋 3 questions complete for {patient_id}, will save alert after next response")
+                agent_instance.conversation_complete = True
+
+        # Replace session.say with our enforced wrapper
+        session.say = limited_say
+        # ===== END 3-QUESTION LIMIT =====
 
         await session.start(
             room=ctx.room,

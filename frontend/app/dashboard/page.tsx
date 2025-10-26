@@ -12,7 +12,7 @@ import ManualAlertsPanel from '@/components/ManualAlertsPanel';
 import PatientManagement from '@/components/PatientNurseLookup';
 import { getApiUrl } from '@/lib/api';
 import AgentAlertToast from '@/components/AgentAlertToast';
-import AlertsModal from '@/components/AlertsModal';
+import HandoffFormsList from '@/components/HandoffFormsList';
 
 interface Patient {
   id: number;
@@ -118,7 +118,6 @@ export default function DashboardPage() {
   
   // Manual alerts modal state
   const [showManualAlerts, setShowManualAlerts] = useState(false);
-  const [showAlertsModal, setShowAlertsModal] = useState(false);
 
   // Patient selection modal (one-step flow)
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -739,20 +738,6 @@ export default function DashboardPage() {
                 Send Alert
               </button>
 
-              {/* Notifications */}
-              <button
-                onClick={() => setShowAlertsModal(true)}
-                className="relative p-2 text-neutral-500 hover:text-neutral-950 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                </svg>
-                {activeAlertsCount > 0 && (
-                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                    {activeAlertsCount}
-                  </span>
-                )}
-              </button>
             </div>
           </div>
         </div>
@@ -769,14 +754,14 @@ export default function DashboardPage() {
           // OVERVIEW MODE: Stacked monitoring and management + activity feed
           <div className="grid grid-cols-12 gap-6">
             {/* Left Panel - Patient Monitoring & Management (8 columns) */}
-            <div className="col-span-8 space-y-6">
+            <div className="col-span-8">
               {/* Patient Monitoring - Top */}
               <div>
                 <div className="mb-4">
                   <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">Patient Monitoring</h2>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 gap-4 mb-6">
                   {boxAssignments.map((patient, boxIndex) => {
                 // Empty box - show + button (only show if it's the last empty box)
                 if (!patient) {
@@ -842,12 +827,20 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Right Column - Activity Feed (4 columns) */}
+            {/* Right Column - Handoff Forms & Activity Feed (4 columns) */}
             <div className="col-span-4">
-              <GlobalActivityFeed
-                events={globalEventFeed}
-                onPatientClick={onPatientClicked}
-              />
+              {/* Handoff Forms - Compact List */}
+              <div className="mb-6 h-[350px]">
+                <HandoffFormsList limit={10} refreshInterval={5000} />
+              </div>
+
+              {/* Live Activity Feed - Below Handoff Forms */}
+              <div className="h-[400px]">
+                <GlobalActivityFeed
+                  events={globalEventFeed}
+                  onPatientClick={onPatientClicked}
+                />
+              </div>
             </div>
           </div>
         ) : (
@@ -926,14 +919,6 @@ export default function DashboardPage() {
       <ManualAlertsPanel 
         isOpen={showManualAlerts}
         onClose={() => setShowManualAlerts(false)}
-      />
-
-      {/* Active Alerts Modal */}
-      <AlertsModal
-        isOpen={showAlertsModal}
-        onClose={() => setShowAlertsModal(false)}
-        alerts={alerts}
-        onAlertResolve={handleAlertResolve}
       />
 
       {/* Patient Search Modal */}
