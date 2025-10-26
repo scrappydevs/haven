@@ -131,9 +131,17 @@ export default function DashboardPage() {
     // Fetch active streams
     try {
       const apiUrl = getApiUrl();
+      console.log('📡 Dashboard fetching active streams from:', `${apiUrl}/streams/active`);
       const res = await fetch(`${apiUrl}/streams/active`);
       const data = await res.json();
+      console.log('📡 Dashboard received active streams:', data);
       setActiveStreams(data.active_streams || []);
+      
+      // Also log current box assignments
+      const currentAssignments = boxAssignments
+        .filter((p): p is SupabasePatient => p !== null)
+        .map(p => p.patient_id);
+      console.log('📡 Dashboard current assignments:', currentAssignments);
     } catch (error) {
       console.error('Error fetching active streams:', error);
     }

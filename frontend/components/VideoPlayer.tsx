@@ -238,6 +238,16 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         return;
       }
 
+      // Handle ping/pong to keep connection alive
+      if (data.type === 'ping') {
+        try {
+          ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        } catch (e) {
+          console.warn('Failed to send pong:', e);
+        }
+        return;
+      }
+
       // Filter by patient_id if provided, otherwise accept all messages
       if (!patientId || data.patient_id === patientId) {
         // Handle raw frame update (30 FPS smooth video)
