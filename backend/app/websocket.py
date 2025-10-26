@@ -92,6 +92,11 @@ class ConnectionManager:
         self.viewers: List[WebSocket] = []
         # {patient_id: trackers}
         self.patient_trackers: Dict[str, PatientMetricTrackers] = {}
+        
+        # MOVEMENT EMERGENCY DETECTION (Simple & Reliable)
+        # {patient_id: SimpleMovementDetector}
+        from app.simple_movement_detector import SimpleMovementDetector
+        self.movement_detectors: Dict[str, SimpleMovementDetector] = {}
 
         # Queue-based processing (one queue per patient)
         # {patient_id: queue}
@@ -110,6 +115,11 @@ class ConnectionManager:
         trackers.analysis_mode = analysis_mode if analysis_mode in [
             "normal", "enhanced"] else "normal"
         self.patient_trackers[patient_id] = trackers
+        
+        # Initialize simple movement detector for this patient
+        from app.simple_movement_detector import SimpleMovementDetector
+        self.movement_detectors[patient_id] = SimpleMovementDetector()
+        print(f"✓ Simple movement detector initialized for {patient_id}")
 
         # Start dedicated processing worker for this patient
         self.processing_queues[patient_id] = queue.Queue(
@@ -284,8 +294,9 @@ class ConnectionManager:
 
                         # ====== FETCH.AI HEALTH AGENT (PRIMARY) ======
                         from app.fetch_health_agent import fetch_health_agent
+                        from app.voice_call import voice_service
                         
-                        # Prepare vitals and CV metrics
+                        # Prepare vitals and CV metrics (NEW MOVEMENT EMERGENCY FOCUS)
                         vitals = {
                             "heart_rate": slow_result["metrics"].get("heart_rate", 75),
                             "temperature": 37.0,  # Would come from sensors in production
@@ -293,9 +304,16 @@ class ConnectionManager:
                             "spo2": 98  # Would come from sensors
                         }
                         cv_metrics = {
-                            "distress_score": slow_result["metrics"].get("crs_score", 0) * 10,
-                            "movement_score": slow_result["metrics"].get("attention_score", 0) * 10,
-                            "posture_alert": slow_result["metrics"].get("tremor_detected", False)
+                            # PRIMARY: Movement emergency detection
+                            "movement_event": slow_result["metrics"].get("movement_event", "normal"),
+                            "movement_confidence": slow_result["metrics"].get("movement_confidence", 0.0),
+                            "movement_details": slow_result["metrics"].get("movement_details", ""),
+                            "calibration_status": slow_result["metrics"].get("calibration_status", {}),
+                            
+                            # SECONDARY: Legacy metrics (keep for context)
+                            "respiratory_rate": slow_result["metrics"].get("respiratory_rate", 14),
+                            "tremor_detected": slow_result["metrics"].get("tremor_detected", False),
+                            "attention_score": slow_result["metrics"].get("attention_score", 0.5)
                         }
                         
                         # Analyze with Fetch.ai Health Agent (NON-BLOCKING)
@@ -359,8 +377,43 @@ class ConnectionManager:
                                     "timestamp": dt.now().isoformat()
                                 }
                                 
-                                # Send both messages
+                                # === EMERGENCY CALL SYSTEM ===
+                                # Log nurse call for CRITICAL/WARNING alerts
+                                if analysis["severity"] in ["CRITICAL", "WARNING"]:
+                                    movement_event = cv_metrics.get("movement_event", "unknown")
+                                    if movement_event in ["seizure", "fall"]:
+                                        emergency_msg = f"{movement_event.upper()} DETECTED! Medical help needed!"
+                                    elif movement_event == "extreme_agitation":
+                                        emergency_msg = "EXTREME AGITATION! Patient needs attention!"
+                                    else:
+                                        emergency_msg = "ALERT! Patient needs assessment!"
+                                    
+                                    print(f"📞 CALLING AVAILABLE NURSE: {emergency_msg}")
+                                    
+                                    # === VONAGE VOICE CALL ===
+                                    # Make actual phone call for CRITICAL alerts
+                                    if analysis["severity"] == "CRITICAL":
+                                        voice_service.make_emergency_call(
+                                            patient_id=patient_id,
+                                            event_type=movement_event,
+                                            details=reasoning_short
+                                        )
+                                    
+                                    # Send call notification FIRST (before other logs)
+                                    call_message = {
+                                        "type": "emergency_call",
+                                        "patient_id": patient_id,
+                                        "message": f"📞 Calling nurse: {emergency_msg}",
+                                        "severity": analysis["severity"],
+                                        "timestamp": dt.now().isoformat()
+                                    }
+                                    thread_loop.run_until_complete(self.broadcast_frame(call_message))
+                                    # Small delay to prevent WebSocket overflow
+                                    thread_loop.run_until_complete(asyncio.sleep(0.05))
+                                
+                                # Send log and alert messages
                                 thread_loop.run_until_complete(self.broadcast_frame(log_message))
+                                thread_loop.run_until_complete(asyncio.sleep(0.05))
                                 thread_loop.run_until_complete(self.broadcast_frame(alert_message))
                                 
                                 thread_loop.close()
@@ -734,6 +787,39 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                     heart_rate = int(75 + (crs_score * 30))
                 if "respiratory_rate" in enabled_metrics:
                     respiratory_rate = int(14 + (crs_score * 10))
+        
+        # === MOVEMENT EMERGENCY DETECTION (NEW - Replacing CRS focus) ===
+        movement_event = None
+        movement_confidence = 0.0
+        movement_details = ""
+        calibration_status = {}
+        
+        # DEBUG: Check if pose data exists
+        if not pose_results.pose_landmarks:
+            print(f"⚠️ NO POSE LANDMARKS for {patient_id}")
+        
+        if pose_results.pose_landmarks and patient_id:
+            # Get simple movement detector for this patient
+            detector = manager.movement_detectors.get(patient_id)
+            
+            if not detector:
+                print(f"❌ NO DETECTOR for {patient_id}")
+            else:
+                print(f"✅ Processing movement for {patient_id}")
+                # Process with simple detector
+                movement_result = detector.process(pose_results.pose_landmarks.landmark, time.time())
+                
+                movement_event = movement_result["event"]
+                movement_confidence = movement_result["confidence"]
+                movement_details = movement_result["details"]
+                # Simple detector doesn't have separate calibration status
+                calibration_status = {
+                    "calibrated": detector.is_calibrated,
+                    "progress": min(100, int((detector.calibration_count / detector.CALIBRATION_FRAMES) * 100)),
+                    "message": "✓ Ready" if detector.is_calibrated else "Calibrating..."
+                }
+        else:
+            print(f"⚠️ Skipping movement detection: pose={pose_results.pose_landmarks is not None}, patient={patient_id}")
 
         # Return ONLY metrics (no overlay data)
         return {
@@ -742,12 +828,18 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                 "heart_rate": int(heart_rate),
                 "respiratory_rate": int(respiratory_rate),
 
-                # CRS-specific metrics
+                # === MOVEMENT EMERGENCY METRICS (PRIMARY) ===
+                "movement_event": movement_event if movement_event else "normal",
+                "movement_confidence": float(round(movement_confidence, 2)),
+                "movement_details": movement_details,
+                "calibration_status": calibration_status,
+
+                # Legacy CRS metrics (kept for backward compat, but downweighted)
                 "crs_score": float(round(crs_score, 2)),
                 "face_touching_frequency": int(face_touching_freq),
                 "restlessness_index": float(round(restlessness_index, 2)),
 
-                # Seizure-specific metrics
+                # Legacy tremor metrics (now replaced by movement event seizure detection)
                 "tremor_magnitude": float(round(tremor_magnitude, 2)),
                 "tremor_detected": bool(tremor_detected),
                 "movement_vigor": float(round(movement_vigor, 2)),
@@ -768,11 +860,10 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
                 "lean_forward": upper_body_metrics["lean_forward"],
                 "arm_asymmetry": upper_body_metrics["arm_asymmetry"],
 
-                # Alerts
-                "alert": bool(crs_score > 0.7 or tremor_detected),
+                # Alerts (now based on movement events)
+                "alert": bool(movement_event in ["fall", "seizure", "extreme_agitation"]),
                 "alert_triggers": list(filter(None, [
-                    f"CRS Score Critical: {int(crs_score * 100)}%" if crs_score > 0.7 else None,
-                    f"Tremor Detected: {tremor_magnitude:.1f}" if tremor_detected else None
+                    f"{movement_event.upper()}: {movement_details}" if movement_event and movement_event != "normal" else None
                 ]))
             }
         }

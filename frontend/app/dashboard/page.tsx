@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import VideoPlayer from '@/components/VideoPlayer';
 import InfoBar from '@/components/InfoBar';
 import DetailPanel from '@/components/DetailPanel';

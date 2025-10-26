@@ -1491,6 +1491,46 @@ async def get_health_agent_history():
     }
 
 
+# === VOICE CALL TEST ENDPOINT ===
+class TestCallRequest(BaseModel):
+    patient_id: str = "P-TEST-001"
+    event_type: str = "seizure"
+    phone_number: Optional[str] = None
+
+@app.post("/health-agent/test-call")
+async def test_voice_call(request: TestCallRequest):
+    """Test voice calling system"""
+    from app.voice_call import voice_service
+    
+    # Override phone number if provided
+    original_number = voice_service.emergency_number
+    if request.phone_number:
+        voice_service.emergency_number = request.phone_number
+    
+    try:
+        result = voice_service.make_emergency_call(
+            patient_id=request.patient_id,
+            event_type=request.event_type,
+            details="Test call from Haven system"
+        )
+        
+        return {
+            "success": True,
+            "enabled": voice_service.enabled,
+            "called_number": voice_service.emergency_number,
+            "result": result
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "enabled": voice_service.enabled,
+            "error": str(e)
+        }
+    finally:
+        # Restore original number
+        voice_service.emergency_number = original_number
+
+
 # ============================================================================
 # Patient Guardian Agent Endpoints (LEGACY - keeping for compatibility)
 # ============================================================================
