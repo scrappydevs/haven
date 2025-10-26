@@ -20,7 +20,7 @@ protobuf==4.25.5
 livekit==1.0.17
 livekit-api==1.0.7
 livekit-agents==0.12.21
-livekit-plugins-openai==0.12.21
+livekit-plugins-openai==0.12.4
 openai>=1.50.0
 python-dotenv==1.0.1
 
