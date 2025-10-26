@@ -2029,18 +2029,33 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
 
 @app.websocket("/ws/view")
 async def websocket_view(websocket: WebSocket):
-    """WebSocket endpoint for dashboard viewing"""
+    """WebSocket endpoint for dashboard viewing - optimized for smooth streaming"""
     await websocket.accept()
-    manager.viewers.append(websocket)
+    
+    # Thread-safe viewer registration
+    with manager.viewers_lock:
+        manager.viewers.append(websocket)
+    
     print(f"✅ Viewer connected. Total: {len(manager.viewers)}")
+    
+    # Send initial welcome message with active streams
+    try:
+        active_streams = list(manager.streamers.keys())
+        await websocket.send_json({
+            "type": "viewer_connected",
+            "active_streams": active_streams,
+            "timestamp": time.time()
+        })
+    except Exception as e:
+        print(f"⚠️ Failed to send welcome message: {e}")
 
     try:
         import asyncio
         last_ping = time.time()
 
         while True:
-            # Send ping every 45 seconds to keep connection alive
-            if time.time() - last_ping > 45:
+            # Send ping every 30 seconds to keep connection alive (reduced from 45s)
+            if time.time() - last_ping > 30:
                 try:
                     if websocket.client_state.value == 1:  # WebSocketState.CONNECTED
                         await websocket.send_json({"type": "ping", "timestamp": time.time()})
@@ -2051,13 +2066,16 @@ async def websocket_view(websocket: WebSocket):
                     print(f"❌ Ping failed: {e}")
                     break
 
-            await asyncio.sleep(5)  # Check every 5 seconds
+            await asyncio.sleep(2)  # Check every 2 seconds (reduced from 5s for faster detection)
     except WebSocketDisconnect:
         print("Viewer disconnected")
     except Exception as e:
         print(f"❌ Viewer connection error: {e}")
     finally:
-        manager.disconnect(websocket)
+        # Thread-safe viewer removal
+        with manager.viewers_lock:
+            if websocket in manager.viewers:
+                manager.viewers.remove(websocket)
         print(f"🧹 Viewer cleanup complete. Remaining: {len(manager.viewers)}")
 
 

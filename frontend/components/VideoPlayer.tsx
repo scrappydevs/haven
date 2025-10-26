@@ -214,9 +214,10 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     if (wsRef.current) {
       const state = wsRef.current.readyState;
       if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
-        console.log('⏸️  Skipping reconnect - WebSocket already active');
+        // Connection already active - keep using it
         return;
       }
+      // If CLOSING or CLOSED, allow reconnection
     }
 
     const wsUrl = getWsUrl('/ws/view');
@@ -398,11 +399,18 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       } else {
         console.warn('⚠️  Stream disconnected (code:', event.code, ')');
       }
+      // Clear ref so next component can reconnect
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
     };
 
+    // Cleanup: Don't immediately close WebSocket on component updates
+    // Only mark it for cleanup - let the browser/server timeout handle it
     return () => {
-      console.log('🧹 Cleaning up WebSocket');
-      ws.close();
+      // Don't close immediately - this prevents reconnection flicker
+      // when switching between preview and expanded views
+      // The connection will timeout naturally if no viewers remain
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive]); // Intentionally excluding alertFired - don't reconnect WebSocket when alert fires
