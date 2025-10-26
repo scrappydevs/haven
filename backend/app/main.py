@@ -23,7 +23,16 @@ from app.monitoring_control import monitoring_manager, MonitoringLevel
 # from app.agent_system import agent_system
 # from app.health_agent import health_agent  # Old non-Fetch.ai agent
 from app.fetch_health_agent import fetch_health_agent
-from app.fetch_handoff_agent import fetch_handoff_agent
+
+# Try to import Fetch.ai handoff agent (requires uagents)
+try:
+    from app.fetch_handoff_agent import fetch_handoff_agent
+    FETCH_HANDOFF_AVAILABLE = True
+except ImportError:
+    fetch_handoff_agent = None
+    FETCH_HANDOFF_AVAILABLE = False
+    print("⚠️  Fetch.ai handoff agent not available - install uagents if needed")
+
 from app.rooms import (
     get_all_floors,
     get_all_rooms_with_patients,
@@ -2854,6 +2863,12 @@ async def get_active_haven_sessions():
 @app.get("/handoff-agent/status")
 async def get_handoff_agent_status():
     """Get Fetch.ai handoff agent status"""
+    if not FETCH_HANDOFF_AVAILABLE:
+        return {
+            "enabled": False,
+            "error": "Fetch.ai handoff agent not available - install uagents package"
+        }
+    
     return {
         "enabled": True,
         "agent_address": fetch_handoff_agent.agent.address,
@@ -2882,6 +2897,12 @@ async def generate_handoff_form_manual(request: GenerateHandoffRequest):
     Returns:
         Form generation result with PDF path and email status
     """
+    if not FETCH_HANDOFF_AVAILABLE:
+        return {
+            "success": False,
+            "message": "Fetch.ai handoff agent not available - install uagents package"
+        }
+    
     try:
         # Use configured nurse emails if not provided
         recipient_emails = request.recipient_emails

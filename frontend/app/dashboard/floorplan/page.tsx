@@ -414,7 +414,7 @@ export default function FloorPlanPage() {
           const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
           console.log(`🔤 Creating initials PNG for ${patient?.name}: ${initials}`);
           
-          const size = 160; // 2x larger for much better visibility
+          const size = 300; // Much larger for better visibility
           const canvas = document.createElement('canvas');
           canvas.width = size;
           canvas.height = size;
@@ -423,12 +423,12 @@ export default function FloorPlanPage() {
           // Draw circle background
           ctx.fillStyle = '#e0f2fe';
           ctx.beginPath();
-          ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+          ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
           ctx.fill();
           
           // Draw border
           ctx.strokeStyle = '#0284c7';
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 3;
           ctx.stroke();
           
           // Draw initials text
@@ -450,7 +450,7 @@ export default function FloorPlanPage() {
           
           img.onload = () => {
             console.log(`✅ Photo loaded: ${patient.name}`, img.width, 'x', img.height);
-            const size = 160; // 2x larger for much better visibility
+            const size = 300; // Much larger for better visibility
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -461,7 +461,7 @@ export default function FloorPlanPage() {
             
             // Create circular clipping path
             ctx.beginPath();
-            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+            ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
             ctx.closePath();
             ctx.clip();
             
@@ -491,9 +491,9 @@ export default function FloorPlanPage() {
             
             // Draw border
             ctx.beginPath();
-            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+            ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
             ctx.strokeStyle = '#e5e7eb';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
             ctx.stroke();
             
             const dataURL = canvas.toDataURL('image/png');
@@ -507,7 +507,7 @@ export default function FloorPlanPage() {
             const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
             console.log(`🔤 Using initials fallback: ${initials}`);
             
-            const size = 160; // Match main size
+            const size = 300; // Match main size
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -515,11 +515,11 @@ export default function FloorPlanPage() {
             
             ctx.fillStyle = '#e0f2fe';
             ctx.beginPath();
-            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+            ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
             ctx.fill();
             
             ctx.strokeStyle = '#0284c7';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
             ctx.stroke();
             
             ctx.fillStyle = '#0369a1';
@@ -550,8 +550,8 @@ export default function FloorPlanPage() {
           data: dataWithPhotos,
           icon: (data: any) => ({
             url: data.photoUrl,
-            width: 160,  // 2x larger for better visibility
-            height: 160,
+            width: 300,  // Large for excellent visibility
+            height: 300,
           }),
           // No color property = photos keep natural colors (not tinted like rooms)
           onClick: (data: any) => {
