@@ -18,7 +18,7 @@ export const CONFIG_EXAMPLE = {
   LIVEKIT_SIP_TRUNK_ID: 'ST_xxxxxxxxxxxxx',
 
   // Nurse Contact
-  NURSE_PHONE_NUMBER: '+13854019951',
+  NURSE_PHONE_NUMBER: '14085948710',
 
   // Edge Function URL (for database trigger)
   // Format: https://PROJECT_REF.supabase.co/functions/v1/alert-call-nurse
@@ -31,6 +31,5 @@ export const CONFIG_EXAMPLE = {
  * supabase secrets set LIVEKIT_API_KEY=APIxxxxxxxxxxx
  * supabase secrets set LIVEKIT_API_SECRET=your-secret
  * supabase secrets set LIVEKIT_SIP_TRUNK_ID=ST_xxxxx
- * supabase secrets set NURSE_PHONE_NUMBER=+13854019951
+ * supabase secrets set NURSE_PHONE_NUMBER=14085948710
  */
-

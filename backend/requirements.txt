@@ -1,5 +1,5 @@
 # FastAPI and server
-fastapi==0.115.5
+fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 
@@ -7,22 +7,25 @@ python-multipart==0.0.20
 opencv-python-headless==4.10.0.84
 mediapipe==0.10.21
 numpy==1.26.4
-pillow==11.0.0
-scipy==1.14.1
+pillow==11.1.0
+scipy==1.16.2
 
 # AI/ML
 anthropic==0.44.0
 
-# Protobuf - pinned to satisfy mediapipe and cosmpy
-protobuf==4.25.5
+# Protobuf - required by LiveKit and mediapipe
+protobuf==4.25.3
 
-# LiveKit for voice AI intake - using 0.12.x versions compatible with protobuf 4.x
+# LiveKit for voice AI - updated to 1.2.x agents framework
 livekit==1.0.17
 livekit-api==1.0.7
-livekit-agents==0.12.21
-livekit-plugins-openai==0.12.4
+livekit-agents==1.2.15
+livekit-plugins-openai==1.2.15
+livekit-plugins-silero==1.2.15
+livekit-plugins-groq==1.2.15
+livekit-plugins-noise-cancellation==0.2.5
 openai>=1.50.0
-python-dotenv==1.0.1
+python-dotenv==1.1.1
 
 # Data processing
 pandas==2.2.3
@@ -31,17 +34,20 @@ pandas==2.2.3
 supabase==2.22.2
 realtime==2.22.2
 postgrest==0.19.1
-websockets==14.1
+websockets==15.0.1
 httpx==0.27.2
 
-# PDF Generation
-reportlab==4.2.5
+# PDF Generation (optional - install if needed for discharge reports)
+# reportlab==4.2.5
+
+# System utilities
+psutil==7.1.2
 
 # Production
 gunicorn==23.0.0
 
 # SMS Alerts
-vonage==3.14.0
+vonage==4.7.2
 
 # Multi-Agent System (Fetch.ai uAgents)
 # Version 0.22+ supports modern uvicorn and pydantic
