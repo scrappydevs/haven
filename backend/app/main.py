@@ -1969,6 +1969,505 @@ Active Alerts: {summary_data.get('active_alerts_count', 0)}
         return {"error": str(e)}
 
 
+# ========================================
+# PATIENT INTAKE ENDPOINTS (LiveKit-based)
+# ========================================
+
+@app.post("/api/intake/start")
+async def start_intake(request: dict):
+    """
+    Initialize a patient intake session and return LiveKit access token
+    """
+    try:
+        from livekit.api import AccessToken, VideoGrants
+        import uuid
+
+        patient_id = request.get("patient_id")
+        if not patient_id:
+            return {"error": "patient_id is required"}, 400
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())[:8]
+        room_name = f"intake-{patient_id}-{session_id}"
+
+        # Create LiveKit access token for patient
+        token = AccessToken(
+            os.getenv("LIVEKIT_API_KEY"),
+            os.getenv("LIVEKIT_API_SECRET")
+        )
+        token = token.with_identity(f"patient-{patient_id}").with_name(patient_id).with_grants(VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+        ))
+
+        print(f"🎫 Created intake token for patient {patient_id}, room: {room_name}")
+
+        return {
+            "token": token.to_jwt(),
+            "url": os.getenv("LIVEKIT_URL"),
+            "room_name": room_name,
+            "patient_id": patient_id,
+            "session_id": session_id
+        }
+
+    except Exception as e:
+        print(f"❌ Error starting intake: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/pending")
+async def get_pending_intakes():
+    """
+    Get all intake reports awaiting review, sorted by urgency and time
+    """
+    try:
+        if not supabase:
+            return []
+
+        result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("status", "pending_review") \
+            .order("created_at", desc=True) \
+            .execute()
+
+        # Sort by urgency (high first) then by time
+        intakes = result.data if result.data else []
+        urgency_order = {"high": 0, "medium": 1, "low": 2}
+        intakes.sort(key=lambda x: (
+            urgency_order.get(x.get("urgency_level", "low"), 2),
+            x.get("created_at", "")
+        ))
+
+        logger.info(f"📋 Retrieved {len(intakes)} pending intakes")
+        return intakes
+
+    except Exception as e:
+        logger.error(f"Error fetching pending intakes: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/{intake_id}")
+async def get_intake_report(intake_id: str):
+    """
+    Get full intake report by ID
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("id", intake_id) \
+            .single() \
+            .execute()
+
+        if not result.data:
+            return {"error": "Intake report not found"}, 404
+
+        logger.info(f"📄 Retrieved intake report: {intake_id}")
+        return result.data
+
+    except Exception as e:
+        logger.error(f"Error fetching intake report: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/intake/{intake_id}/review")
+async def mark_intake_reviewed(intake_id: str, request: dict):
+    """
+    Mark intake as reviewed by provider
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        reviewer_id = request.get("reviewer_id", "unknown")
+
+        supabase.table("intake_reports") \
+            .update({
+                "status": "reviewed",
+                "reviewed_by": reviewer_id,
+                "reviewed_at": datetime.now().isoformat()
+            }) \
+            .eq("id", intake_id) \
+            .execute()
+
+        logger.info(f"✅ Intake {intake_id} marked as reviewed by {reviewer_id}")
+        return {"success": True}
+
+    except Exception as e:
+        logger.error(f"Error marking intake as reviewed: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/intake/{intake_id}/assign-room")
+async def assign_intake_to_room(intake_id: str, request: dict):
+    """
+    Assign patient from intake to an examination room
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        room_id = request.get("room_id")
+        if not room_id:
+            return {"error": "room_id is required"}, 400
+
+        # Get intake report
+        intake_result = supabase.table("intake_reports") \
+            .select("*") \
+            .eq("id", intake_id) \
+            .single() \
+            .execute()
+
+        if not intake_result.data:
+            return {"error": "Intake report not found"}, 404
+
+        patient_id = intake_result.data.get("patient_id")
+
+        # Update intake report
+        supabase.table("intake_reports") \
+            .update({
+                "status": "assigned",
+                "assigned_room": room_id
+            }) \
+            .eq("id", intake_id) \
+            .execute()
+
+        # Assign patient to room (use existing room assignment logic)
+        try:
+            supabase.table("room_assignments") \
+                .insert({
+                    "room_id": room_id,
+                    "patient_id": patient_id,
+                    "assigned_at": datetime.now().isoformat()
+                }) \
+                .execute()
+        except Exception as room_error:
+            logger.warning(f"Room assignment may already exist: {room_error}")
+
+        logger.info(f"🏥 Patient {patient_id} assigned to room {room_id} from intake {intake_id}")
+
+        # Broadcast to dashboard
+        await manager.broadcast_frame({
+            "type": "patient_assigned_from_intake",
+            "patient_id": patient_id,
+            "room_id": room_id,
+            "intake_id": intake_id
+        })
+
+        return {"success": True, "patient_id": patient_id, "room_id": room_id}
+
+    except Exception as e:
+        logger.error(f"Error assigning intake to room: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@app.get("/api/intake/stats")
+async def get_intake_stats():
+    """
+    Get intake system statistics
+    """
+    try:
+        if not supabase:
+            return {"error": "Database not available"}, 503
+
+        # Count by status
+        all_intakes = supabase.table("intake_reports").select("status, urgency_level").execute()
+
+        stats = {
+            "total": len(all_intakes.data) if all_intakes.data else 0,
+            "pending": 0,
+            "reviewed": 0,
+            "assigned": 0,
+            "high_urgency": 0,
+            "medium_urgency": 0,
+            "low_urgency": 0
+        }
+
+        if all_intakes.data:
+            for intake in all_intakes.data:
+                status = intake.get("status", "")
+                urgency = intake.get("urgency_level", "low")
+
+                if status == "pending_review":
+                    stats["pending"] += 1
+                elif status == "reviewed":
+                    stats["reviewed"] += 1
+                elif status == "assigned":
+                    stats["assigned"] += 1
+
+                if urgency == "high":
+                    stats["high_urgency"] += 1
+                elif urgency == "medium":
+                    stats["medium_urgency"] += 1
+                else:
+                    stats["low_urgency"] += 1
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error getting intake stats: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+# ========================================
+# HAVEN VOICE AGENT ENDPOINTS (LiveKit Voice Agent)
+# ========================================
+
+@app.post("/api/haven/start")
+async def start_haven_session(request: dict):
+    """
+    Initialize a Haven voice agent session when "Hey Haven" is detected
+    Returns LiveKit access token for voice conversation
+    """
+    try:
+        from livekit.api import AccessToken, VideoGrants
+        import uuid
+
+        patient_id = request.get("patient_id")
+        if not patient_id:
+            return {"error": "patient_id is required"}, 400
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())[:8]
+        room_name = f"haven-{patient_id}-{session_id}"
+
+        # Create LiveKit access token for patient
+        token = AccessToken(
+            get_secret("LIVEKIT_API_KEY"),
+            get_secret("LIVEKIT_API_SECRET")
+        )
+        token = token.with_identity(f"patient-{patient_id}").with_name(patient_id).with_grants(VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+        ))
+
+        print(f"🛡️ Created Haven agent token for patient {patient_id}, room: {room_name}")
+
+        return {
+            "token": token.to_jwt(),
+            "url": get_secret("LIVEKIT_URL"),
+            "room_name": room_name,
+            "patient_id": patient_id,
+            "session_id": session_id
+        }
+
+    except Exception as e:
+        print(f"❌ Error starting Haven session: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/haven/conversation")
+async def save_haven_conversation(request: dict):
+    """
+    Save Haven conversation summary and create alert
+    Called when Haven agent completes conversation
+    """
+    try:
+        patient_id = request.get("patient_id")
+        session_id = request.get("session_id")
+        conversation_summary = request.get("conversation_summary")
+
+        if not all([patient_id, conversation_summary]):
+            return {"error": "patient_id and conversation_summary are required"}, 400
+
+        # Get patient's room assignment
+        room_id = None
+        if supabase:
+            try:
+                room_result = supabase.table("patients_room") \
+                    .select("room_id") \
+                    .eq("patient_id", patient_id) \
+                    .single() \
+                    .execute()
+
+                if room_result.data:
+                    room_id = room_result.data.get("room_id")
+            except Exception as e:
+                print(f"⚠️ Could not get room for patient {patient_id}: {e}")
+
+        # Use Claude to analyze conversation and determine severity
+        alert_data = await _analyze_haven_conversation(
+            patient_id=patient_id,
+            conversation_summary=conversation_summary,
+            room_id=room_id
+        )
+
+        # Create alert in database
+        if supabase:
+            alert_result = supabase.table("alerts").insert({
+                "alert_type": "patient_concern",
+                "severity": alert_data["severity"],
+                "title": alert_data["title"],
+                "description": alert_data["description"],
+                "patient_id": patient_id,
+                "room_id": room_id,
+                "triggered_by": "haven_agent",
+                "status": "active",
+                "metadata": json.dumps({
+                    "session_id": session_id,
+                    "transcript": conversation_summary.get("full_transcript_text", ""),
+                    "extracted_info": conversation_summary.get("extracted_info", {}),
+                    "ai_analysis": alert_data.get("reasoning", "")
+                })
+            }).execute()
+
+            alert_id = alert_result.data[0]["id"] if alert_result.data else None
+            print(f"✅ Created alert {alert_id} from Haven conversation for patient {patient_id}")
+
+            # Broadcast alert to dashboard via WebSocket
+            await manager.broadcast_frame({
+                "type": "haven_alert",
+                "patient_id": patient_id,
+                "room_id": room_id,
+                "alert_id": alert_id,
+                "severity": alert_data["severity"],
+                "title": alert_data["title"],
+                "description": alert_data["description"],
+                "timestamp": datetime.now().isoformat()
+            })
+
+            return {
+                "success": True,
+                "alert_id": alert_id,
+                "severity": alert_data["severity"]
+            }
+        else:
+            print("⚠️ Supabase not available, alert not saved")
+            return {"error": "Database not available"}, 503
+
+    except Exception as e:
+        print(f"❌ Error saving Haven conversation: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}, 500
+
+
+async def _analyze_haven_conversation(patient_id: str, conversation_summary: dict, room_id: str = None) -> dict:
+    """
+    Use Claude to analyze Haven conversation and determine alert severity
+    """
+    if not anthropic_client:
+        # Fallback to rule-based analysis
+        extracted_info = conversation_summary.get("extracted_info", {})
+        pain_level = extracted_info.get("pain_level")
+
+        if pain_level and pain_level >= 8:
+            severity = "high"
+        elif pain_level and pain_level >= 5:
+            severity = "medium"
+        else:
+            severity = "low"
+
+        return {
+            "severity": severity,
+            "title": f"Patient {patient_id} reported concern",
+            "description": conversation_summary.get("full_transcript_text", "No details available"),
+            "reasoning": "Rule-based analysis (Claude not available)"
+        }
+
+    try:
+        # Build Claude prompt
+        extracted_info = conversation_summary.get("extracted_info", {})
+        transcript = conversation_summary.get("full_transcript_text", "")
+
+        prompt = f"""You are a clinical triage AI. Analyze this patient conversation and determine the urgency level.
+
+**Patient ID:** {patient_id}
+**Room:** {room_id or "Unknown"}
+
+**Conversation Transcript:**
+{transcript}
+
+**Extracted Information:**
+- Symptom: {extracted_info.get('symptom_description', 'Not specified')}
+- Location: {extracted_info.get('body_location', 'Not specified')}
+- Pain Level: {extracted_info.get('pain_level', 'Not rated')} / 10
+- Duration: {extracted_info.get('duration', 'Unknown')}
+
+**Your Task:**
+Determine the urgency level and create an alert summary.
+
+**Response Format (JSON):**
+{{
+  "severity": "critical" | "high" | "medium" | "low",
+  "title": "Brief alert title (max 80 chars)",
+  "description": "Detailed description of concern (2-3 sentences)",
+  "reasoning": "Clinical reasoning for severity level"
+}}
+
+**Severity Guidelines:**
+- **critical**: Life-threatening (chest pain, severe bleeding, difficulty breathing, altered consciousness)
+- **high**: Urgent but not immediately life-threatening (severe pain 8-10, significant symptoms)
+- **medium**: Moderate concern (moderate pain 5-7, uncomfortable symptoms)
+- **low**: Minor concern (mild pain 1-4, general questions)
+
+Provide your analysis:"""
+
+        message = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{
+                "role": "user",
+                "content": prompt
+            }]
+        )
+
+        # Parse Claude's response
+        response_text = message.content[0].text
+
+        # Extract JSON
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            result = json.loads(json_match.group())
+            return result
+        else:
+            raise ValueError("Could not parse Claude response")
+
+    except Exception as e:
+        print(f"⚠️ Claude analysis failed: {e}, using fallback")
+        # Fallback
+        extracted_info = conversation_summary.get("extracted_info", {})
+        pain_level = extracted_info.get("pain_level")
+
+        if pain_level and pain_level >= 8:
+            severity = "high"
+        elif pain_level and pain_level >= 5:
+            severity = "medium"
+        else:
+            severity = "low"
+
+        return {
+            "severity": severity,
+            "title": f"Patient {patient_id} reported concern",
+            "description": conversation_summary.get("full_transcript_text", "No details available")[:200],
+            "reasoning": "Fallback analysis"
+        }
+
+
+@app.get("/api/haven/active")
+async def get_active_haven_sessions():
+    """
+    Get list of active Haven voice sessions
+    """
+    # This would integrate with LiveKit to get active rooms
+    # For now, return placeholder
+    return {
+        "active_sessions": [],
+        "count": 0
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

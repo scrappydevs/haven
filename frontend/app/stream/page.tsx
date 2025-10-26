@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import AnalysisModeSelector, { AnalysisMode } from '@/components/AnalysisModeSelector';
 import { getApiUrl, getWsUrl } from '@/lib/api';
+import { LiveKitRoom, useVoiceAssistant, BarVisualizer, RoomAudioRenderer } from '@livekit/components-react';
+import '@livekit/components-styles';
 
 interface Patient {
   id: string;
@@ -34,6 +36,15 @@ export default function StreamPage() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [fps, setFps] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  // Haven voice agent state
+  const [isListeningForWakeWord, setIsListeningForWakeWord] = useState(false);
+  const [havenActive, setHavenActive] = useState(false);
+  const [havenTranscript, setHavenTranscript] = useState<string>('');
+  const [havenRoomData, setHavenRoomData] = useState<{token: string, url: string, room_name: string, session_id: string} | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const isStartingRecognitionRef = useRef<boolean>(false);
+  const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     return () => {
@@ -106,17 +117,108 @@ export default function StreamPage() {
         wsRef.current = null;
       }
 
-      // Request webcam access
-      console.log('📹 Requesting webcam access...');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 }
+      // Check current permissions status
+      console.log('🔍 Checking current media permissions...');
+      try {
+        const videoPermission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        const audioPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        console.log('📊 Permission status:', {
+          camera: videoPermission.state,
+          microphone: audioPermission.state
+        });
+
+        // If microphone is denied, show clear error
+        if (audioPermission.state === 'denied') {
+          throw new Error('Microphone permission is DENIED in browser settings. Please enable microphone access in your browser settings and refresh the page.');
         }
+      } catch (e: any) {
+        if (e.message?.includes('DENIED')) {
+          throw e; // Re-throw if it's our custom error
+        }
+        console.log('⚠️ Could not query permissions (may not be supported):', e);
+      }
+
+      // List available devices
+      console.log('🔍 Checking available media devices...');
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        const audioDevices = devices.filter(d => d.kind === 'audioinput');
+        console.log('📊 Available devices:', {
+          cameras: videoDevices.length,
+          microphones: audioDevices.length,
+          videoDevices: videoDevices.map(d => ({ label: d.label || 'Unknown', id: d.deviceId })),
+          audioDevices: audioDevices.map(d => ({ label: d.label || 'Unknown', id: d.deviceId }))
+        });
+
+        if (audioDevices.length === 0) {
+          throw new Error('No microphone detected on this device. Please connect a microphone and refresh the page.');
+        }
+      } catch (e) {
+        console.error('❌ Device enumeration error:', e);
+        throw e;
+      }
+
+      // Request video first
+      console.log('📹 Step 1: Requesting webcam access...');
+      let videoStream: MediaStream;
+      try {
+        videoStream = await Promise.race([
+          navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30 }
+            }
+          }),
+          new Promise<MediaStream>((_, reject) =>
+            setTimeout(() => reject(new Error('Video request timed out after 10 seconds')), 10000)
+          )
+        ]);
+        console.log('✅ Webcam access granted');
+      } catch (error: any) {
+        console.error('❌ Video request failed:', error);
+        throw new Error(`Failed to access camera: ${error.message}`);
+      }
+
+      // Request audio separately
+      console.log('🎤 Step 2: Requesting microphone access...');
+      let audioStream: MediaStream;
+      try {
+        audioStream = await Promise.race([
+          navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          }),
+          new Promise<MediaStream>((_, reject) =>
+            setTimeout(() => reject(new Error('Audio request timed out after 10 seconds')), 10000)
+          )
+        ]);
+        console.log('✅ Microphone access granted');
+      } catch (error: any) {
+        console.error('❌ Audio request failed:', error);
+        // Clean up video stream
+        videoStream.getTracks().forEach(track => track.stop());
+        throw new Error(`Failed to access microphone: ${error.message}`);
+      }
+
+      // Combine both streams
+      console.log('🔗 Combining video and audio streams...');
+      const combinedStream = new MediaStream([
+        ...videoStream.getVideoTracks(),
+        ...audioStream.getAudioTracks()
+      ]);
+
+      streamRef.current = combinedStream;
+      console.log('✅ Combined stream ready', {
+        videoTracks: combinedStream.getVideoTracks().length,
+        audioTracks: combinedStream.getAudioTracks().length,
+        videoSettings: combinedStream.getVideoTracks()[0]?.getSettings(),
+        audioSettings: combinedStream.getAudioTracks()[0]?.getSettings()
       });
-      streamRef.current = stream;
-      console.log('✅ Webcam access granted');
 
       // Set video source and wait for it to be ready
       const video = videoRef.current;
@@ -124,7 +226,7 @@ export default function StreamPage() {
         throw new Error('Video element not found');
       }
 
-      video.srcObject = stream;
+      video.srcObject = combinedStream;
 
       // Wait for video metadata to load before playing
       await new Promise<void>((resolve, reject) => {
@@ -406,6 +508,296 @@ export default function StreamPage() {
     console.log('✅ Stream stopped');
   };
 
+  // Wake word detection and Haven voice agent functions
+  const startWakeWordListening = () => {
+    console.log('🔍 startWakeWordListening called', {
+      hasPatient: !!selectedPatient,
+      isStreaming,
+      havenActive,
+      isStarting: isStartingRecognitionRef.current,
+      hasRecognition: !!recognitionRef.current
+    });
+
+    if (!selectedPatient) {
+      console.warn('⚠️ Cannot start wake word listening without selected patient');
+      return;
+    }
+
+    // Prevent starting if already starting or already running
+    if (isStartingRecognitionRef.current || recognitionRef.current) {
+      console.log('⚠️ Wake word listening already active, skipping start');
+      return;
+    }
+
+    isStartingRecognitionRef.current = true;
+    console.log('✅ Starting wake word recognition...');
+
+    // Check for Web Speech API support
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.error('❌ Speech Recognition not supported in this browser');
+      setError('Wake word detection not supported in your browser. Please use Chrome or Edge.');
+      isStartingRecognitionRef.current = false;
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      console.log('🎤 Wake word listening started');
+      console.log('🎙️ Microphone should now be active - try speaking');
+      setIsListeningForWakeWord(true);
+      isStartingRecognitionRef.current = false;
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('')
+        .toLowerCase();
+
+      const isFinal = event.results[event.results.length - 1].isFinal;
+      console.log(`🎤 Heard (${isFinal ? 'FINAL' : 'interim'}):`, transcript);
+
+      // Check for wake word "hey haven"
+      if (transcript.includes('hey haven') || transcript.includes('hey heaven')) {
+        console.log('🛡️ Wake word detected! Stopping recognition and starting Haven session...');
+        recognition.stop();
+        startHavenSession();
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('❌ Speech recognition error:', event.error);
+      isStartingRecognitionRef.current = false;
+
+      if (event.error === 'not-allowed') {
+        setError('Microphone permission denied. Please allow microphone access for wake word detection.');
+        setIsListeningForWakeWord(false);
+      } else if (event.error === 'no-speech') {
+        // No speech detected is normal, just restart
+        console.log('ℹ️ No speech detected, will restart');
+      } else {
+        console.warn('⚠️ Recognition error, will attempt restart');
+      }
+    };
+
+    recognition.onend = () => {
+      console.log('🛑 Wake word recognition ended');
+      isStartingRecognitionRef.current = false;
+
+      // Clear any pending restart
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+      }
+
+      // Restart listening if not in Haven session and streaming is active
+      if (!havenActive && isStreaming && selectedPatient) {
+        console.log('🔄 Scheduling wake word restart in 1 second...');
+        restartTimeoutRef.current = setTimeout(() => {
+          startWakeWordListening();
+        }, 1000); // Wait 1 second before restarting to prevent rapid loops
+      } else {
+        console.log('🛑 Wake word listening stopped (conditions not met for restart)');
+        setIsListeningForWakeWord(false);
+      }
+    };
+
+    try {
+      recognition.start();
+      recognitionRef.current = recognition;
+    } catch (err) {
+      console.error('❌ Failed to start wake word listening:', err);
+      setError('Failed to start microphone for wake word detection');
+      isStartingRecognitionRef.current = false;
+    }
+  };
+
+  const stopWakeWordListening = () => {
+    console.log('🛑 Stopping wake word listening');
+
+    // Clear any pending restart
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current);
+      restartTimeoutRef.current = null;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.warn('Error stopping recognition:', err);
+      }
+      recognitionRef.current = null;
+    }
+
+    isStartingRecognitionRef.current = false;
+    setIsListeningForWakeWord(false);
+  };
+
+  const startHavenSession = async () => {
+    if (!selectedPatient) return;
+
+    try {
+      console.log('🛡️ Starting Haven voice session...');
+      setHavenActive(true);
+      setHavenTranscript('Connecting to Haven AI...');
+
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/haven/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_id: selectedPatient.patient_id })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      console.log('✅ Haven session created:', data.room_name);
+
+      // Store room data for LiveKit connection
+      setHavenRoomData({
+        token: data.token,
+        url: data.url,
+        room_name: data.room_name,
+        session_id: data.session_id
+      });
+
+      // Initial transcript - will be updated by voice assistant component
+      setHavenTranscript('Initializing voice connection...');
+
+    } catch (err: any) {
+      console.error('❌ Failed to start Haven session:', err);
+      setError('Failed to start voice assistant: ' + err.message);
+      setHavenActive(false);
+      setHavenTranscript('');
+      // Restart wake word listening
+      startWakeWordListening();
+    }
+  };
+
+  const endHavenSession = async () => {
+    console.log('🛡️ Ending Haven session');
+
+    // TODO: Get conversation summary from LiveKit agent
+    // For now, create a mock summary
+    if (havenRoomData && selectedPatient) {
+      try {
+        const apiUrl = getApiUrl();
+
+        // Mock conversation summary (in production, this would come from the agent)
+        const mockSummary = {
+          patient_id: selectedPatient.patient_id,
+          session_id: havenRoomData.session_id,
+          conversation_summary: {
+            full_transcript_text: havenTranscript,
+            extracted_info: {
+              symptom_description: "Patient reported concern",
+              body_location: null,
+              pain_level: null,
+              duration: null
+            }
+          }
+        };
+
+        console.log('💾 Saving Haven conversation summary...');
+        const response = await fetch(`${apiUrl}/api/haven/conversation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mockSummary)
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          console.log('✅ Haven conversation saved, alert created:', result.alert_id);
+        } else {
+          console.warn('⚠️ Failed to save conversation:', result.error);
+        }
+      } catch (err) {
+        console.error('❌ Error saving Haven conversation:', err);
+      }
+    }
+
+    setHavenActive(false);
+    setHavenTranscript('');
+    setHavenRoomData(null);
+
+    // Restart wake word listening
+    if (isStreaming && selectedPatient) {
+      startWakeWordListening();
+    }
+  };
+
+  // Wake word listening effect
+  useEffect(() => {
+    if (isStreaming && selectedPatient && !havenActive) {
+      // Start wake word listening when streaming starts
+      startWakeWordListening();
+    } else if (!isStreaming || !selectedPatient) {
+      // Stop wake word listening when streaming stops
+      stopWakeWordListening();
+    }
+
+    return () => {
+      // Cleanup: stop listening and clear timeouts
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = null;
+      }
+      stopWakeWordListening();
+    };
+  }, [isStreaming, selectedPatient, havenActive]);
+
+  // Haven Voice Assistant Component
+  function HavenVoiceAssistant() {
+    const { state, audioTrack } = useVoiceAssistant();
+    const lastStateRef = useRef<string>('');
+
+    useEffect(() => {
+      // Only update if state actually changed and add debouncing
+      if (state !== lastStateRef.current) {
+        lastStateRef.current = state;
+
+        console.log('🎤 Haven voice assistant state:', state);
+
+        // Update transcript based on voice assistant state with slight delay to avoid flicker
+        const timer = setTimeout(() => {
+          if (state === 'connecting') {
+            setHavenTranscript('Connecting to Haven AI...');
+          } else if (state === 'listening') {
+            setHavenTranscript('🎤 Haven AI is listening. Speak naturally.');
+          } else if (state === 'thinking') {
+            setHavenTranscript('🤔 Haven AI is processing your response...');
+          } else if (state === 'speaking') {
+            setHavenTranscript('🗣️ Haven AI is speaking...');
+          } else if (state === 'idle') {
+            setHavenTranscript('Haven AI connected. You can start speaking.');
+          }
+        }, 100);
+
+        return () => clearTimeout(timer);
+      }
+    }, [state]);
+
+    return (
+      <>
+        <RoomAudioRenderer />
+        {audioTrack && (
+          <div className="flex justify-center mb-4">
+            <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="w-full" />
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Header with Navigation */}
@@ -558,6 +950,66 @@ export default function StreamPage() {
                 <span className="label-uppercase text-primary-400">
                   {fps} FPS
                 </span>
+              </div>
+            )}
+
+            {/* Wake Word Listening Indicator */}
+            {isListeningForWakeWord && !havenActive && (
+              <div className="absolute bottom-4 left-4 px-4 py-2 bg-neutral-950/90 border border-primary-700">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-primary-400 rounded-full animate-pulse" />
+                  <span className="label-uppercase text-primary-400 text-xs">
+                    Listening for "Hey Haven"
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Haven Voice Agent Conversation Overlay */}
+            {havenActive && havenRoomData && (
+              <div className="absolute inset-0 bg-primary-900/95 flex flex-col items-center justify-center p-8">
+                <LiveKitRoom
+                  token={havenRoomData.token}
+                  serverUrl={havenRoomData.url}
+                  connect={true}
+                  audio={true}
+                  video={false}
+                  className="max-w-md w-full"
+                >
+                  <div className="max-w-md w-full bg-white/10 backdrop-blur-sm border-2 border-primary-400 p-8 rounded-lg">
+                    <div className="flex items-center justify-center gap-3 mb-6">
+                      <div className="w-4 h-4 bg-primary-400 rounded-full animate-pulse" />
+                      <h3 className="heading-section text-white">Haven AI Active</h3>
+                    </div>
+
+                    {/* Voice Assistant Audio and Visualizer */}
+                    <HavenVoiceAssistant />
+
+                    <div className="mb-6">
+                      <div className="bg-white/5 border border-white/20 p-4 rounded-lg min-h-[100px]">
+                        <p className="body-default text-white/90">
+                          {havenTranscript || 'Listening...'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2 text-white/60 text-xs">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                        </svg>
+                        <span className="label-uppercase">Speak naturally about your concern</span>
+                      </div>
+
+                      <button
+                        onClick={endHavenSession}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white label-uppercase text-xs transition-colors"
+                      >
+                        End Conversation
+                      </button>
+                    </div>
+                  </div>
+                </LiveKitRoom>
               </div>
             )}
           </div>
