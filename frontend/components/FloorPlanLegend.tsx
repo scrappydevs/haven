@@ -64,10 +64,14 @@ export default function FloorPlanLegend({ totalRooms, occupiedRooms, totalNurses
       {/* Other Indicators */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider">Room Status</p>
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-neutral-200 rounded-sm"></div>
             <span className="text-[11px] font-light text-neutral-600">Empty</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-cyan-300 rounded-sm"></div>
+            <span className="text-[11px] font-light text-neutral-600">Stable</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-blue-500 rounded-sm"></div>

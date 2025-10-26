@@ -277,8 +277,8 @@ export default function FloorPlanPage() {
           if (alertSeverity === 'low') return '#10b981';      // Green
           if (alertSeverity === 'info') return '#3b82f6';     // Blue
           
-          // Occupied but no alerts - green (stable patient)
-          return '#10b981';
+          // Occupied but no alerts - light cyan (stable, healthy patient)
+          return '#67e8f9'; // Cyan-300 - clearly occupied and healthy
         },
         onClick: (data: any) => {
           const room = data.room as Room;
@@ -366,8 +366,8 @@ export default function FloorPlanPage() {
           if (alertSeverity === 'medium') return '#eab308';   // Yellow
           if (alertSeverity === 'low') return '#10b981';       // Green
           
-          // Occupied, no alerts - green
-          return '#10b981';
+          // Occupied, no alerts - cyan (healthy, stable)
+          return '#67e8f9';
         },
         onClick: (data: any) => {
           const room = data.room as Room;
@@ -1271,17 +1271,17 @@ export default function FloorPlanPage() {
       <link href="https://app.smplrspace.com/lib/smplr.css" rel="stylesheet" />
       
       {/* Main Content */}
-      <div className="grid grid-cols-12 gap-6 p-6 h-[calc(100vh-4rem)]">
+      <div className="grid grid-cols-12 gap-4 p-4 h-[calc(100vh-5rem)]">
         {/* Floor Plan Viewer (Left - 8 columns) */}
         <div className="col-span-8 flex flex-col">
           <div className="bg-surface border border-neutral-200 flex-1 flex flex-col">
-            <div className="px-5 py-4 border-b border-neutral-200">
+            <div className="px-4 py-3 border-b border-neutral-200">
               <p className="text-sm font-light text-neutral-600">
                 Hospital View
               </p>
             </div>
 
-            <div className="p-6 flex-1 flex flex-col">
+            <div className="p-4 flex-1 flex flex-col">
 
             {/* Error Message */}
             {viewerError && (
@@ -1367,7 +1367,11 @@ export default function FloorPlanPage() {
                   setSelectedRoom(null);
                 }
               }}
-              availablePatients={filteredPatients}
+              availablePatients={filteredPatients.filter(p => {
+                // Only show patients who are NOT already assigned to any room
+                const isAssigned = rooms.some(r => r.assignedPatient?.patient_id === p.patient_id);
+                return !isAssigned;
+              })}
               onAssignPatient={(patient) => assignPatientToRoom(patient, selectedRoom.id)}
             />
           ) : (
