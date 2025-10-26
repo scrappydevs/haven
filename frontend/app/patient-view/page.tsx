@@ -62,7 +62,18 @@ function HavenVoiceAssistant({
 
   useEffect(() => {
     if (state !== lastStateRef.current) {
-      console.log(`🔊 Haven voice agent state changed: ${lastStateRef.current} → ${state}`);
+      const previousState = lastStateRef.current;
+      console.log(`🔊 Haven voice agent state changed: ${previousState} → ${state}`);
+      
+      // Check for auto-end BEFORE updating lastStateRef
+      if (previousState === 'speaking' && state === 'listening' && hasClosingPhraseRef.current) {
+        console.log('✅ Agent finished speaking closing phrase - auto-ending session');
+        // Wait a moment to let the audio finish playing
+        setTimeout(() => {
+          onDisconnect();
+        }, 1500);
+      }
+      
       lastStateRef.current = state;
 
       // Mark as connected once we reach a successful state
@@ -143,17 +154,6 @@ function HavenVoiceAssistant({
       room.off('transcriptionReceived', handleTranscription);
     };
   }, [room]);
-
-  // Auto-end session when agent finishes speaking after closing phrase
-  useEffect(() => {
-    if (lastStateRef.current === 'speaking' && state === 'listening' && hasClosingPhraseRef.current) {
-      console.log('✅ Agent finished speaking closing phrase - auto-ending session');
-      // Wait a moment to let the audio finish playing
-      setTimeout(() => {
-        onDisconnect();
-      }, 1000);
-    }
-  }, [state, onDisconnect]);
 
   return (
     <>
