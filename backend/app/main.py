@@ -297,6 +297,47 @@ async def trigger_sms_alert(request: SMSAlertRequest):
         }
 
 
+@app.post("/alerts/test-call")
+async def test_emergency_call():
+    """
+    Quick test endpoint for emergency calling
+    Tests the full calling pipeline
+    """
+    try:
+        from app.voice_call import voice_service
+        
+        print("🧪 Testing emergency call system...")
+        
+        # Make test call
+        result = voice_service.make_emergency_call(
+            patient_id="P-TEST-001",
+            event_type="fall",
+            details="Test call from dashboard"
+        )
+        
+        if result:
+            return {
+                "status": "success",
+                "message": "Test call placed successfully",
+                "call_uuid": result.get("uuid"),
+                "to": result.get("to")
+            }
+        else:
+            return {
+                "status": "demo_mode",
+                "message": "Test call simulated (Vonage not configured)",
+                "note": "Check backend logs for details"
+            }
+    
+    except Exception as e:
+        print(f"❌ Test call failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 @app.post("/alerts/call")
 async def trigger_voice_alert(request: SMSAlertRequest):
     """
@@ -961,6 +1002,7 @@ async def create_alert(
 ):
     """
     Create a new alert in the database
+    SIMPLIFIED: Calls nurse directly for critical alerts (no database trigger needed)
     """
     if not supabase:
         # Fallback to in-memory
@@ -978,6 +1020,7 @@ async def create_alert(
         return alert
 
     try:
+        # Insert alert into database
         result = supabase.table("alerts").insert({
             "alert_type": alert_type,
             "severity": severity,
@@ -989,7 +1032,43 @@ async def create_alert(
             "status": "active"
         }).execute()
 
-        return result.data[0] if result.data else {}
+        alert_data = result.data[0] if result.data else {}
+        alert_id = alert_data.get("id")
+        
+        # IMMEDIATE CALL for critical alerts (don't wait for database trigger)
+        if severity == "critical" and alert_id:
+            print(f"🚨 CRITICAL ALERT {alert_id} - Calling nurse immediately...")
+            
+            # Import voice service
+            from app.voice_call import voice_service
+            
+            # Make emergency call
+            try:
+                call_result = voice_service.make_emergency_call(
+                    patient_id=patient_id or "Unknown",
+                    event_type="critical_alert",
+                    details=f"{title}: {description or ''}"
+                )
+                
+                if call_result:
+                    print(f"✅ Emergency call placed for alert {alert_id}")
+                    # Update alert metadata with call info
+                    try:
+                        supabase.table("alerts").update({
+                            "metadata": {
+                                "call": {
+                                    "call_uuid": call_result.get("uuid"),
+                                    "to": call_result.get("to"),
+                                    "initiated_at": datetime.now().isoformat()
+                                }
+                            }
+                        }).eq("id", alert_id).execute()
+                    except:
+                        pass  # Don't fail if metadata update fails
+            except Exception as call_error:
+                print(f"⚠️ Failed to make emergency call: {call_error}")
+        
+        return alert_data
     except Exception as e:
         print(f"❌ Error creating alert: {e}")
         return {"error": str(e)}
