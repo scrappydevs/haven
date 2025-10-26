@@ -4,11 +4,12 @@ FastAPI application serving pre-computed CV results and trial data
 """
 
 import logging
+import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from datetime import datetime
 import json
 from pathlib import Path
@@ -23,6 +24,16 @@ from app.monitoring_control import monitoring_manager, MonitoringLevel
 # from app.agent_system import agent_system
 # from app.health_agent import health_agent  # Old non-Fetch.ai agent
 from app.fetch_health_agent import fetch_health_agent
+
+# Try to import Fetch.ai handoff agent (requires uagents)
+try:
+    from app.fetch_handoff_agent import fetch_handoff_agent
+    FETCH_HANDOFF_AVAILABLE = True
+except ImportError:
+    fetch_handoff_agent = None
+    FETCH_HANDOFF_AVAILABLE = False
+    print("⚠️  Fetch.ai handoff agent not available - install uagents if needed")
+
 from app.rooms import (
     get_all_floors,
     get_all_rooms_with_patients,
@@ -92,6 +103,9 @@ app.add_middleware(
         "http://localhost:3000",          # Local development
         "http://localhost:3001",          # Alternative local port
         "http://localhost:3002",          # Alternative local port
+        "http://127.0.0.1:3000",          # Local development (127.0.0.1)
+        "http://127.0.0.1:3001",          # Alternative local port (127.0.0.1)
+        "http://127.0.0.1:3002",          # Alternative local port (127.0.0.1)
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -655,8 +669,19 @@ async def get_smplrspace_config():
 
 @app.get("/patients")
 async def get_patients():
-    """Get list of all patients (first 47) - LEGACY"""
-    return patients[:47]
+    """Get list of all patients from database"""
+    if not supabase:
+        # Fallback to legacy data if Supabase not configured
+        return patients[:47]
+    
+    try:
+        # Fetch all active patients from Supabase with all fields including photo_url
+        response = supabase.table("patients").select("*").eq("enrollment_status", "active").execute()
+        return response.data or []
+    except Exception as e:
+        print(f"❌ Error fetching patients: {e}")
+        # Fallback to legacy data on error
+        return patients[:47]
 
 
 @app.get("/patient/{patient_id}")
@@ -842,7 +867,7 @@ async def get_cv_data(patient_id: int, timestamp: str):
 @app.get("/alerts")
 async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
     """
-    Get alerts from database
+    Get alerts from database with enriched patient and room information
     Optionally filter by status and/or severity
     """
     if not supabase:
@@ -860,11 +885,68 @@ async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
         response = query.order(
             "triggered_at", desc=True).limit(limit).execute()
 
-        return response.data or []
+        alerts_data = response.data or []
+        
+        # Enrich alerts with patient and room names
+        for alert in alerts_data:
+            # Add patient name and room info
+            if alert.get('patient_id'):
+                try:
+                    # Get patient name
+                    patient = supabase.table("patients").select("name").eq("patient_id", alert['patient_id']).execute()
+                    if patient.data and len(patient.data) > 0:
+                        alert['patient_name'] = patient.data[0]['name']
+                    
+                    # Get room assignment for this patient
+                    room_assignment = supabase.table("patients_room").select("room_id").eq("patient_id", alert['patient_id']).execute()
+                    if room_assignment.data and len(room_assignment.data) > 0:
+                        assigned_room_id = room_assignment.data[0]['room_id']
+                        # If alert doesn't have room_id, use patient's current room
+                        if not alert.get('room_id'):
+                            alert['room_id'] = assigned_room_id
+                        
+                        # Get room name
+                        room = supabase.table("rooms").select("room_name").eq("room_id", assigned_room_id).execute()
+                        if room.data and len(room.data) > 0:
+                            alert['room_name'] = room.data[0]['room_name']
+                except Exception as e:
+                    print(f"Error enriching alert with patient/room data: {e}")
+            
+            # If alert has room_id but no room_name yet
+            if alert.get('room_id') and not alert.get('room_name'):
+                try:
+                    room = supabase.table("rooms").select("room_name").eq("room_id", alert['room_id']).execute()
+                    if room.data and len(room.data) > 0:
+                        alert['room_name'] = room.data[0]['room_name']
+                except Exception as e:
+                    print(f"Error fetching room name: {e}")
+        
+        print(f"✅ Enriched {len(alerts_data)} alerts with patient/room data")
+        return alerts_data
     except Exception as e:
         print(f"⚠️ Error fetching alerts from database: {e}")
         # Fallback to in-memory
         return alerts
+
+
+@app.get("/alerts/{alert_id}")
+async def get_alert_by_id(alert_id: str):
+    """
+    Get a single alert by ID
+    """
+    if not supabase:
+        return {"error": "Database not configured"}
+
+    try:
+        response = supabase.table("alerts").select("*").eq("id", alert_id).single().execute()
+
+        if not response.data:
+            return {"error": "Alert not found"}
+
+        return response.data
+    except Exception as e:
+        print(f"❌ Error fetching alert {alert_id}: {e}")
+        return {"error": str(e)}
 
 
 @app.post("/alerts")
@@ -1151,7 +1233,6 @@ Only recommend protocols that are clearly relevant based on the patient's condit
         "reasoning": f"Keyword matching detected relevant terms in patient condition: {request.condition}",
         "method": "keyword"
     }
-
 
 @app.get("/floors")
 async def get_floors():
@@ -1679,11 +1760,17 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""
     print(f"\n{'='*60}")
     print(f"🎯 WEBSOCKET HANDLER CALLED for patient: {patient_id}")
+
+    # Accept connection IMMEDIATELY (before checking anything)
+    # This prevents uvicorn from rejecting at protocol level
+    await websocket.accept()
+    print(f"✅ WebSocket connection accepted IMMEDIATELY for patient {patient_id}")
+
     print(f"   Client: {websocket.client}")
     print(f"   Headers: {dict(websocket.headers)}")
     print(f"   URL: {websocket.url}")
 
-    # Check Origin header for CORS
+    # Check Origin header for CORS (after accept)
     origin = websocket.headers.get("origin", "")
     print(f"   Origin: {origin}")
 
@@ -1693,23 +1780,23 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         "http://localhost:3000",
         "http://localhost:3001",
         "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
     ]
 
-    if origin and origin not in allowed_origins:
-        print(f"❌ WebSocket rejected: Origin {origin} not in allowed list")
-        print(f"{'='*60}\n")
-        await websocket.close(code=403, reason="Origin not allowed")
-        return
+    # Temporarily allow all origins for debugging
+    # if origin and origin not in allowed_origins:
+    #     print(f"❌ WebSocket rejected: Origin {origin} not in allowed list")
+    #     print(f"{'='*60}\n")
+    #     await websocket.close(code=403, reason="Origin not allowed")
+    #     return
 
     print(f"✅ Origin check passed")
     print(f"{'='*60}\n")
 
     supabase_warning = None
     print(f"🎯 Incoming WebSocket connection for patient {patient_id}")
-
-    # Accept connection immediately so client receives deterministic feedback
-    await websocket.accept()
-    print(f"✅ WebSocket connection accepted for patient {patient_id}")
 
     # Verify patient exists in Supabase (non-blocking for client)
     if supabase:
@@ -1785,33 +1872,52 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         frame_count = 0
 
         while True:
-            data = await websocket.receive_json()
-            frame_count += 1
+            try:
+                data = await websocket.receive_json()
+                frame_count += 1
 
-            if data.get("type") == "frame":
-                raw_frame = data.get("frame")
+                if data.get("type") == "frame":
+                    raw_frame = data.get("frame")
 
-                # Step 1: IMMEDIATE PASSTHROUGH - Send raw frame to viewers instantly (30 FPS, no lag)
-                await manager.broadcast_frame({
-                    "type": "live_frame",
-                    "patient_id": patient_id,
-                    "data": {
-                        "frame": raw_frame
-                    }
-                })
+                    # Step 1: IMMEDIATE PASSTHROUGH - Send raw frame to viewers instantly (30 FPS, no lag)
+                    try:
+                        await manager.broadcast_frame({
+                            "type": "live_frame",
+                            "patient_id": patient_id,
+                            "data": {
+                                "frame": raw_frame
+                            }
+                        })
+                    except Exception as broadcast_err:
+                        print(f"⚠️ Broadcast error for {patient_id}: {broadcast_err}")
+                        # Don't break on broadcast errors, continue receiving
 
-                # Step 2: QUEUE FOR PROCESSING - Worker thread will handle CV processing
-                # Queue every 3rd frame (10 FPS) for better performance on limited CPU
-                if frame_count % 3 == 0:
-                    manager.queue_frame_for_processing(
-                        patient_id, raw_frame, frame_count)
+                    # Step 2: QUEUE FOR PROCESSING - Worker thread will handle CV processing
+                    # Queue every 3rd frame (10 FPS) for better performance on limited CPU
+                    if frame_count % 3 == 0:
+                        try:
+                            manager.queue_frame_for_processing(
+                                patient_id, raw_frame, frame_count)
+                        except Exception as queue_err:
+                            print(f"⚠️ Queue error for {patient_id}: {queue_err}")
+                            # Don't break on queue errors, continue receiving
+            except WebSocketDisconnect:
+                print(f"❌ Patient {patient_id} stream disconnected")
+                break
+            except Exception as frame_err:
+                print(f"⚠️ Frame processing error for {patient_id}: {frame_err}")
+                # Continue to next frame instead of breaking entire stream
+                continue
 
     except WebSocketDisconnect:
-        print(f"❌ Patient {patient_id} stream disconnected")
+        print(f"❌ Patient {patient_id} stream disconnected (outer)")
     except Exception as e:
         print(f"❌ Stream error for patient {patient_id}: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         manager.unregister_streamer(patient_id)
+        print(f"🧹 Stream cleanup complete for {patient_id}")
 
 
 @app.websocket("/ws/view")
@@ -1823,14 +1929,30 @@ async def websocket_view(websocket: WebSocket):
 
     try:
         import asyncio
+        last_ping = time.time()
         while True:
-            await asyncio.sleep(1)
+            # Send ping every 45 seconds to keep connection alive (reduced frequency)
+            if time.time() - last_ping > 45:
+                try:
+                    # Check if socket is still connected before sending
+                    if websocket.client_state.value == 1:  # WebSocketState.CONNECTED
+                        await websocket.send_json({"type": "ping", "timestamp": time.time()})
+                        last_ping = time.time()
+                    else:
+                        print(f"⚠️ Viewer socket not connected (state={websocket.client_state.value})")
+                        break
+                except Exception as e:
+                    print(f"❌ Ping failed: {e}")
+                    break  # Connection died
+            
+            await asyncio.sleep(5)  # Check less frequently (5s instead of 1s)
     except WebSocketDisconnect:
         print("Viewer disconnected")
+    except Exception as e:
+        print(f"❌ Viewer connection error: {e}")
     finally:
         manager.disconnect(websocket)
-
-
+        print(f"🧹 Viewer cleanup complete. Remaining: {len(manager.viewers)}")
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -2078,8 +2200,7 @@ Only use information from tool results. Never use conversation memory."""
         for tool_result in all_tool_results:
             if isinstance(tool_result, dict) and tool_result.get("success"):
                 invalidate_cache = True
-                cache_keys.update(
-                    ["rooms", "patients", "patients_room", "assignments"])
+                cache_keys.update(["rooms", "patients", "patients_room", "assignments", "alerts"])
                 print(f"   ✅ Success detected - will invalidate cache")
 
         cache_keys_list = list(cache_keys) if cache_keys else []
@@ -2610,10 +2731,11 @@ async def process_haven_conversation(patient_id: str, session_id: str | None, co
         return {"success": True, "skipped": True}
 
     existing_alert_id = None
+    existing_alert_severity = None
     if session_id and supabase:
         try:
             existing_response = supabase.table("alerts") \
-                .select("id") \
+                .select("id,severity") \
                 .filter("metadata->>session_id", "eq", session_id) \
                 .filter("triggered_by", "eq", "haven_agent") \
                 .limit(1) \
@@ -2621,6 +2743,7 @@ async def process_haven_conversation(patient_id: str, session_id: str | None, co
 
             if existing_response.data:
                 existing_alert_id = existing_response.data[0]["id"]
+                existing_alert_severity = existing_response.data[0].get("severity")
         except Exception as e:
             print(f"⚠️ Could not check for existing Haven alert for session {session_id}: {e}")
 
@@ -2637,6 +2760,11 @@ async def process_haven_conversation(patient_id: str, session_id: str | None, co
     metadata_payload = json.dumps({
         "session_id": session_id,
         "transcript": conversation_summary.get("full_transcript_text", ""),
+        "transcript_entries": conversation_summary.get("transcript", []),
+        "assistant_turns": conversation_summary.get("assistant_turns"),
+        "assistant_question_count": conversation_summary.get("assistant_question_count"),
+        "total_turns": conversation_summary.get("total_turns"),
+        "summary_source": conversation_summary.get("source"),
         "extracted_info": conversation_summary.get("extracted_info", {}),
         "ai_analysis": alert_data.get("reasoning", ""),
         "concern_type": "patient_initiated"
@@ -2874,6 +3002,395 @@ async def get_active_haven_sessions():
         "active_sessions": [],
         "count": 0
     }
+
+
+# ========================================
+# HANDOFF FORM GENERATION ENDPOINTS (Fetch.ai Agent)
+# ========================================
+
+@app.get("/handoff-agent/status")
+async def get_handoff_agent_status():
+    """Get Fetch.ai handoff agent status"""
+    if not FETCH_HANDOFF_AVAILABLE:
+        return {
+            "enabled": False,
+            "error": "Fetch.ai handoff agent not available - install uagents package"
+        }
+    
+    return {
+        "enabled": True,
+        "agent_address": fetch_handoff_agent.agent.address,
+        "processed_alerts": len(fetch_handoff_agent.processed_alerts),
+        "generated_forms": len(fetch_handoff_agent.generated_forms),
+        "nurse_emails": fetch_handoff_agent.nurse_emails,
+        "check_interval_seconds": fetch_handoff_agent.check_interval
+    }
+
+
+class GenerateHandoffRequest(BaseModel):
+    alert_ids: Optional[List[str]] = None
+    patient_id: Optional[str] = None
+    recipient_emails: Optional[List[str]] = None
+
+@app.post("/handoff-agent/generate")
+async def generate_handoff_form_manual(request: GenerateHandoffRequest):
+    """
+    Manually trigger handoff form generation
+
+    Args:
+        alert_ids: List of specific alert IDs to include
+        patient_id: Generate for all alerts of this patient
+        recipient_emails: Email addresses to send form (defaults to configured nurse emails)
+
+    Returns:
+        Form generation result with PDF path and email status
+    """
+    if not FETCH_HANDOFF_AVAILABLE:
+        return {
+            "success": False,
+            "message": "Fetch.ai handoff agent not available - install uagents package"
+        }
+    
+    try:
+        # Use configured nurse emails if not provided
+        recipient_emails = request.recipient_emails
+        if not recipient_emails:
+            recipient_emails = fetch_handoff_agent.nurse_emails
+
+        # Generate form (synchronous version for API)
+        from app.services.alerts_service import alerts_service
+        from app.services.pdf_generator import pdf_generator
+        from app.services.email_service import email_service
+        from app.models.handoff_forms import PatientInfo, HandoffFormContent
+        from datetime import datetime
+
+        # Fetch alerts
+        if request.alert_ids:
+            alerts = alerts_service.get_alerts_by_ids(request.alert_ids)
+        elif request.patient_id:
+            alerts = alerts_service.get_alerts_by_patient(request.patient_id, include_resolved=False)
+        else:
+            return {
+                "success": False,
+                "message": "Must provide either alert_ids or patient_id"
+            }
+
+        if not alerts:
+            return {
+                "success": False,
+                "message": "No alerts found"
+            }
+
+        # Get patient info
+        patient_id = alerts[0].patient_id
+        patient_data = alerts_service.get_patient_info(patient_id)
+        patient_info = PatientInfo(
+            patient_id=patient_id,
+            name=patient_data.get("name") if patient_data else None,
+            age=patient_data.get("age") if patient_data else None,
+            room_number=patient_data.get("room_number") if patient_data else None,
+            diagnosis=patient_data.get("diagnosis") if patient_data else None,
+            treatment_status=patient_data.get("treatment_status") if patient_data else None,
+            allergies=patient_data.get("allergies") if patient_data else None,
+            current_medications=patient_data.get("current_medications") if patient_data else None
+        )
+
+        # Generate basic summary (use Claude if available)
+        max_severity = max(alerts, key=lambda a: ["info", "low", "medium", "high", "critical"].index(a.severity.value))
+        alert_summary = f"Patient has {len(alerts)} active alert(s) requiring attention."
+        primary_concern = alerts[0].title
+        recommended_actions = [
+            "Review all active alerts immediately",
+            "Assess patient condition and vital signs",
+            "Document all interventions in patient record"
+        ]
+
+        # Build form content
+        form_content = HandoffFormContent(
+            patient_info=patient_info,
+            alert_summary=alert_summary,
+            primary_concern=primary_concern,
+            severity_level=max_severity.severity,
+            recent_vitals=None,
+            relevant_history=None,
+            current_treatments=patient_info.current_medications,
+            recommended_actions=recommended_actions,
+            urgency_notes=None,
+            protocols_to_follow=None,
+            related_alerts=alerts,
+            timeline=[],
+            generated_at=datetime.utcnow(),
+            generated_by="FETCH_AI_HANDOFF_AGENT",
+            intended_recipient="Nurse/Doctor",
+            special_instructions=None,
+            contact_information={"Emergency": "x5555"}
+        )
+
+        # Generate form number using database function
+        try:
+            form_num_result = supabase.rpc("generate_form_number").execute()
+            form_number = form_num_result.data if form_num_result.data else f"HO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        except:
+            # Fallback if function doesn't exist
+            form_number = f"HO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+        # Generate PDF
+        pdf_path = pdf_generator.generate_handoff_pdf(
+            form_content=form_content,
+            form_number=form_number
+        )
+
+        # Save to database
+        from app.supabase_client import supabase
+        import json
+        data = {
+            "form_number": form_number,
+            "patient_id": patient_id,
+            "alert_ids": [alert.id for alert in alerts],
+            "content": json.loads(form_content.json()),  # Use json() to handle datetime serialization
+            "pdf_path": pdf_path,
+            "status": "generated",
+            "created_by": "FETCH_AI_HANDOFF_AGENT"
+        }
+
+        result = supabase.table("handoff_forms").insert(data).execute()
+        form_id = result.data[0]["id"] if result.data else None
+
+        # Update alerts table to reference this form
+        if form_id:
+            supabase.table("alerts").update({
+                "form_id": form_id,
+                "pdf_path": pdf_path
+            }).in_("id", [alert.id for alert in alerts]).execute()
+
+        # Send email
+        email_result = None
+        if recipient_emails and recipient_emails[0]:
+            email_result = email_service.send_handoff_form(
+                recipient_emails=recipient_emails,
+                form_number=form_number,
+                patient_id=patient_id,
+                patient_name=patient_info.name,
+                severity=form_content.severity_level.value,
+                alert_summary=alert_summary,
+                pdf_path=pdf_path
+            )
+
+            if email_result["success"]:
+                # Update database with email info
+                supabase.table("handoff_forms").update({
+                    "emailed_to": recipient_emails,
+                    "email_sent_at": datetime.utcnow().isoformat(),
+                    "email_delivery_status": "sent",
+                    "status": "sent"
+                }).eq("id", form_id).execute()
+
+        return {
+            "success": True,
+            "form_id": form_id,
+            "form_number": form_number,
+            "pdf_path": pdf_path,
+            "alerts_processed": len(alerts),
+            "email_sent": email_result["success"] if email_result else False,
+            "message": f"Successfully generated handoff form {form_number}"
+        }
+
+    except Exception as e:
+        print(f"❌ Error generating handoff form: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+
+@app.get("/handoff-agent/forms")
+async def get_handoff_forms(patient_id: Optional[str] = None, limit: int = 50):
+    """
+    Get generated handoff forms (only for active alerts)
+
+    Args:
+        patient_id: Filter by patient ID
+        limit: Maximum number of forms to return
+
+    Returns:
+        List of handoff forms with active alerts only
+    """
+    try:
+        # First get all forms
+        query = supabase.table("handoff_forms").select("*")
+
+        if patient_id:
+            query = query.eq("patient_id", patient_id)
+
+        response = query.order("created_at", desc=True).limit(limit * 2).execute()  # Get more to filter
+
+        if not response.data:
+            return {"forms": [], "count": 0}
+
+        # Filter forms to only include those with at least one active alert
+        filtered_forms = []
+        for form in response.data:
+            alert_ids = form.get("alert_ids", [])
+            if alert_ids:
+                # Check if any of the alerts are still active
+                alerts_response = supabase.table("alerts").select("status").in_("id", alert_ids).execute()
+                if alerts_response.data:
+                    # Include form if any alert is 'active'
+                    has_active = any(alert.get("status") == "active" for alert in alerts_response.data)
+                    if has_active:
+                        filtered_forms.append(form)
+                        if len(filtered_forms) >= limit:
+                            break
+
+        return {
+            "forms": filtered_forms,
+            "count": len(filtered_forms)
+        }
+    except Exception as e:
+        print(f"❌ Error fetching handoff forms: {e}")
+        return {
+            "forms": [],
+            "count": 0,
+            "error": str(e)
+        }
+
+
+@app.get("/handoff-agent/forms/{form_id}")
+async def get_handoff_form(form_id: str):
+    """Get specific handoff form by ID"""
+    try:
+        response = supabase.table("handoff_forms").select("*").eq("id", form_id).single().execute()
+
+        if response.data:
+            return response.data
+        else:
+            return {"error": "Form not found"}
+    except Exception as e:
+        print(f"❌ Error fetching form: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/handoff-agent/forms/{form_id}/pdf")
+async def download_handoff_form_pdf(form_id: str):
+    """Download PDF for a specific handoff form"""
+    try:
+        # Get form from database
+        response = supabase.table("handoff_forms").select("pdf_path").eq("id", form_id).single().execute()
+
+        if not response.data:
+            return {"error": "Form not found"}
+
+        pdf_path = response.data.get("pdf_path")
+
+        if not pdf_path or not os.path.exists(pdf_path):
+            return {"error": "PDF file not found"}
+
+        # Read PDF file
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        # Return PDF response
+        from pathlib import Path
+        filename = Path(pdf_path).name
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+    except Exception as e:
+        print(f"❌ Error downloading PDF: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/handoff-agent/forms/{form_id}/acknowledge")
+async def acknowledge_handoff_form(form_id: str):
+    """
+    Acknowledge a handoff form by updating all related alerts to 'acknowledged' status
+
+    Args:
+        form_id: ID of the handoff form to acknowledge
+
+    Returns:
+        Success status and number of alerts updated
+    """
+    try:
+        # Get the form to find alert IDs
+        form_response = supabase.table("handoff_forms").select("alert_ids").eq("id", form_id).single().execute()
+
+        if not form_response.data:
+            return {"success": False, "message": "Form not found"}
+
+        alert_ids = form_response.data.get("alert_ids", [])
+
+        if not alert_ids:
+            return {"success": False, "message": "No alerts associated with this form"}
+
+        # Update all alerts to acknowledged status
+        update_response = supabase.table("alerts").update({
+            "status": "acknowledged",
+            "acknowledged_at": datetime.utcnow().isoformat(),
+            "acknowledged_by": "nurse"  # You can make this dynamic later
+        }).in_("id", alert_ids).execute()
+
+        # Update form status to acknowledged
+        supabase.table("handoff_forms").update({
+            "status": "acknowledged"
+        }).eq("id", form_id).execute()
+
+        return {
+            "success": True,
+            "message": f"Acknowledged {len(alert_ids)} alert(s)",
+            "alerts_updated": len(alert_ids)
+        }
+
+    except Exception as e:
+        print(f"❌ Error acknowledging form: {e}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+
+@app.post("/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(alert_id: str):
+    """
+    Acknowledge a single alert by updating its status to 'acknowledged'.
+    This endpoint is called from the HandoffFormModal when the user clicks Acknowledge.
+    """
+    try:
+        from app.supabase_client import supabase
+        from datetime import datetime
+
+        # Update the alert status
+        update_response = supabase.table("alerts").update({
+            "status": "acknowledged",
+            "acknowledged_at": datetime.utcnow().isoformat(),
+            "acknowledged_by": "nurse"  # TODO: Get actual user from auth context
+        }).eq("id", alert_id).execute()
+
+        if not update_response.data:
+            return {
+                "success": False,
+                "message": "Alert not found"
+            }
+
+        return {
+            "success": True,
+            "message": f"Alert {alert_id} acknowledged successfully",
+            "alert_id": alert_id
+        }
+
+    except Exception as e:
+        print(f"❌ Error acknowledging alert: {e}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
 
 
 if __name__ == "__main__":

@@ -130,7 +130,7 @@ function HavenVoiceAssistant({
       if (!participant) return;
 
       const identity: string = participant.identity || '';
-      const isPatient = identity.includes('patient');
+      const isPatient = identity.toLowerCase().includes('patient');
       const role: ConversationSegment['role'] = isPatient ? 'patient' : 'assistant';
 
       segments.forEach((segment) => {
@@ -314,6 +314,7 @@ export default function PatientViewPage() {
     const patientStatements = entries
       .filter(entry => entry.role === 'patient')
       .map(entry => entry.text);
+    const limitedStatements = patientStatements.slice(0, 5);
 
     const assistantQuestions = entries
       .filter(entry => entry.role === 'assistant' && entry.text.includes('?'))
@@ -328,7 +329,7 @@ export default function PatientViewPage() {
     let bodyLocation: string | null = null;
     let painLevel: number | null = null;
 
-    for (const statement of patientStatements) {
+    for (const statement of limitedStatements) {
       if (!symptomDescription && statement.length > 10) {
         symptomDescription = statement;
       }
@@ -360,7 +361,7 @@ export default function PatientViewPage() {
       body_location: bodyLocation,
       pain_level: painLevel,
       duration,
-      patient_statements: patientStatements
+      patient_statements: limitedStatements
     };
 
     return {
@@ -524,7 +525,7 @@ export default function PatientViewPage() {
           if (selectedPatient && data.patient_id === selectedPatient.patient_id && havenActive) {
             console.log('✅ Received haven_closing signal - auto-ending session');
             setTimeout(() => {
-              endHavenSession(true);
+              void endHavenSession(true);
             }, 2000); // Wait 2 seconds to ensure audio has finished
           }
         }
@@ -850,6 +851,11 @@ export default function PatientViewPage() {
       return true;
     }
 
+    if (reason === 'auto' && conversationLogRef.current.length === 0) {
+      console.log('⚠️ Skipping auto summary submission - no conversation captured yet.');
+      return true;
+    }
+
     conversationSubmittedRef.current = true;
 
     try {
@@ -869,6 +875,7 @@ export default function PatientViewPage() {
           question_count: assistantQuestions,
           total_turns: transcriptEntries.length,
           patient_statements: extractedInfo.patient_statements,
+          source: reason,
           extracted_info: {
             symptom_description: extractedInfo.symptom_description || 'Patient reported concern',
             body_location: extractedInfo.body_location,
@@ -903,7 +910,7 @@ export default function PatientViewPage() {
       console.error('❌ Error saving Haven conversation:', err);
       return false;
     }
-  }, []);
+  }, [buildConversationSummary, conversationLogRef]);
 
   const endHavenSession = useCallback(async (isAutoEnd = false) => {
     if (!havenActiveRef.current) {
@@ -912,7 +919,7 @@ export default function PatientViewPage() {
 
     console.log(`🛡️ Ending Haven voice session (${isAutoEnd ? 'auto' : 'manual'})`);
 
-    await submitConversationSummary(isAutoEnd ? 'auto' : 'manual');
+    const submissionSucceeded = await submitConversationSummary(isAutoEnd ? 'auto' : 'manual');
 
     stopListenerAgent();
     setHavenActive(false);
@@ -921,6 +928,9 @@ export default function PatientViewPage() {
     setShowAIAnimation(false);
     listenerTriggeredRef.current = false;
     havenActiveRef.current = false;
+    if (submissionSucceeded) {
+      conversationLogRef.current = [];
+    }
   }, [submitConversationSummary, stopListenerAgent]);
 
   useEffect(() => {
@@ -1462,7 +1472,7 @@ export default function PatientViewPage() {
                               onTranscriptUpdate={handleTranscriptUpdate}
                               onError={handleVoiceError}
                               onDisconnect={handleVoiceDisconnect}
-                              onAutoEnd={() => endHavenSession(true)}
+                              onAutoEnd={() => { void endHavenSession(true); }}
                               onConversationSegment={recordConversationSegment}
                             />
 
@@ -1496,7 +1506,7 @@ export default function PatientViewPage() {
                             </div>
 
                             <button
-                              onClick={() => endHavenSession(false)}
+                              onClick={() => { void endHavenSession(false); }}
                               className="px-4 py-2 bg-neutral-900 hover:bg-neutral-700 border border-neutral-900 text-white label-uppercase text-xs transition-colors rounded"
                             >
                               End Conversation

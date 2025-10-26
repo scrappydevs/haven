@@ -11,8 +11,7 @@ import GlobalActivityFeed from '@/components/GlobalActivityFeed';
 import ManualAlertsPanel from '@/components/ManualAlertsPanel';
 import PatientManagement from '@/components/PatientNurseLookup';
 import { getApiUrl } from '@/lib/api';
-import AgentAlertToast from '@/components/AgentAlertToast';
-import AlertsModal from '@/components/AlertsModal';
+import HandoffFormsList from '@/components/HandoffFormsList';
 
 interface Patient {
   id: number;
@@ -113,12 +112,8 @@ export default function DashboardPage() {
     escalationsToday: number;
   }>>({});
 
-  // Agent alerts (for toast notifications)
-  const [agentAlerts, setAgentAlerts] = useState<any[]>([]);
-  
   // Manual alerts modal state
   const [showManualAlerts, setShowManualAlerts] = useState(false);
-  const [showAlertsModal, setShowAlertsModal] = useState(false);
 
   // Patient selection modal (one-step flow)
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -132,9 +127,17 @@ export default function DashboardPage() {
     // Fetch active streams
     try {
       const apiUrl = getApiUrl();
+      console.log('📡 Dashboard fetching active streams from:', `${apiUrl}/streams/active`);
       const res = await fetch(`${apiUrl}/streams/active`);
       const data = await res.json();
+      console.log('📡 Dashboard received active streams:', data);
       setActiveStreams(data.active_streams || []);
+      
+      // Also log current box assignments
+      const currentAssignments = boxAssignments
+        .filter((p): p is SupabasePatient => p !== null)
+        .map(p => p.patient_id);
+      console.log('📡 Dashboard current assignments:', currentAssignments);
     } catch (error) {
       console.error('Error fetching active streams:', error);
     }
@@ -335,14 +338,6 @@ export default function DashboardPage() {
     }
 
     if (message.type === 'agent_alert') {
-      // Add to agent alerts for toast display
-      setAgentAlerts(prev => [...prev, {
-        id: Date.now(),
-        ...message,
-        boxIndex,
-        patientName: boxAssignments[boxIndex]?.name || 'Unknown'
-      }]);
-
       // Update last decision with full details
       setBoxLastDecision(prev => ({
         ...prev,
@@ -376,11 +371,6 @@ export default function DashboardPage() {
           details: message.reasoning
         });
       }
-
-      // Auto-dismiss alert after 10 seconds
-      setTimeout(() => {
-        setAgentAlerts(prev => prev.filter(a => a.id !== message.id));
-      }, 10000);
     }
 
     if (message.type === 'terminal_log') {
@@ -620,15 +610,51 @@ export default function DashboardPage() {
       })
       .catch(err => console.error('Error fetching patients:', err));
 
-    // Fetch initial alerts
+    // Fetch initial alerts and populate activity feed
     const fetchAlerts = () => {
-      fetch(`${apiUrl}/alerts?status=active&limit=10`)
+      fetch(`${apiUrl}/alerts?status=active&limit=20`)
         .then(res => res.json())
         .then(data => {
           // Handle both array response and object with alerts property
           const alertsArray = Array.isArray(data) ? data : (data.alerts || []);
           setAlerts(alertsArray);
           setIsLoadingAlerts(false);
+          
+          // Convert alerts to activity feed events
+          const alertEvents: GlobalEvent[] = alertsArray.map((alert: any) => {
+            // Determine event type and severity
+            const eventType = alert.alert_type === 'vital_sign' ? 'vital' : 
+                             alert.severity === 'critical' ? 'alert' :
+                             alert.severity === 'high' ? 'warning' : 'monitoring';
+            
+            // Format message
+            const message = alert.title || 'Alert triggered';
+            
+            // Get patient info
+            const patientName = alert.patient_name || 
+                               (alert.patient_id ? `Patient ${alert.patient_id}` : 'Unknown Patient');
+            const patientId = alert.patient_id ? parseInt(alert.patient_id.replace(/\D/g, '')) || 0 : 0;
+            
+            // Format details
+            const room = alert.room_name || (alert.room_id ? `Room ${alert.room_id}` : '');
+            const status = alert.status === 'acknowledged' ? '✓ Acknowledged' : 'Active';
+            const details = [room, status, alert.severity?.toUpperCase()].filter(Boolean).join(' • ');
+            
+            return {
+              timestamp: alert.triggered_at || alert.created_at || new Date().toISOString(),
+              patientId,
+              patientName,
+              type: eventType,
+              severity: alert.severity || 'info',
+              message,
+              details: details || alert.description || ''
+            };
+          });
+          
+          // Update activity feed with recent alerts (most recent first)
+          setGlobalEventFeed(alertEvents.sort((a, b) => 
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          ));
         })
         .catch(err => {
           console.error('Error fetching alerts:', err);
@@ -648,6 +674,20 @@ export default function DashboardPage() {
       .catch(err => console.error('Error fetching stats:', err));
 
     return () => clearInterval(alertInterval);
+  }, []);
+
+  // Cleanup WebSocket connections when dashboard tab is closed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log('🧹 Dashboard tab closing - WebSocket cleanup will be handled by VideoPlayer components');
+      // Note: VideoPlayer components already handle their own WebSocket cleanup
+      // This is just for logging and any future global cleanup needs
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
   }, []);
 
   // Update stats when alerts change
@@ -683,7 +723,7 @@ export default function DashboardPage() {
                 href="/dashboard/floorplan"
                 className="px-6 py-2 label-uppercase text-xs text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors"
               >
-                Floor Plan
+                Hospital Map
               </a>
               <a
                 href="/patient-view"
@@ -703,20 +743,6 @@ export default function DashboardPage() {
                 Send Alert
               </button>
 
-              {/* Notifications */}
-              <button
-                onClick={() => setShowAlertsModal(true)}
-                className="relative p-2 text-neutral-500 hover:text-neutral-950 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                </svg>
-                {activeAlertsCount > 0 && (
-                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                    {activeAlertsCount}
-                  </span>
-                )}
-              </button>
             </div>
           </div>
         </div>
@@ -733,14 +759,14 @@ export default function DashboardPage() {
           // OVERVIEW MODE: Stacked monitoring and management + activity feed
           <div className="grid grid-cols-12 gap-6">
             {/* Left Panel - Patient Monitoring & Management (8 columns) */}
-            <div className="col-span-8 space-y-6">
+            <div className="col-span-8">
               {/* Patient Monitoring - Top */}
               <div>
                 <div className="mb-4">
                   <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-950 border-b-2 border-neutral-950 pb-2 inline-block">Patient Monitoring</h2>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 gap-4 mb-6">
                   {boxAssignments.map((patient, boxIndex) => {
                 // Empty box - show + button (only show if it's the last empty box)
                 if (!patient) {
@@ -806,12 +832,20 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Right Column - Activity Feed (4 columns) */}
+            {/* Right Column - Handoff Forms & Activity Feed (4 columns) */}
             <div className="col-span-4">
-              <GlobalActivityFeed
-                events={globalEventFeed}
-                onPatientClick={onPatientClicked}
-              />
+              {/* Handoff Forms - Compact List */}
+              <div className="mb-6 h-[307px]">
+                <HandoffFormsList limit={10} refreshInterval={5000} />
+              </div>
+
+              {/* Live Activity Feed - Below Handoff Forms */}
+              <div className="h-[330px]">
+                <GlobalActivityFeed
+                  events={globalEventFeed}
+                  onPatientClick={onPatientClicked}
+                />
+              </div>
             </div>
           </div>
         ) : (
@@ -892,14 +926,6 @@ export default function DashboardPage() {
         onClose={() => setShowManualAlerts(false)}
       />
 
-      {/* Active Alerts Modal */}
-      <AlertsModal
-        isOpen={showAlertsModal}
-        onClose={() => setShowAlertsModal(false)}
-        alerts={alerts}
-        onAlertResolve={handleAlertResolve}
-      />
-
       {/* Patient Search Modal */}
       <PatientSearchModal
         isOpen={showPatientModal}
@@ -912,13 +938,6 @@ export default function DashboardPage() {
         mode="assign-stream"
       />
 
-      {/* Agent Alert Toasts - Only show in overview mode */}
-      {viewMode === 'overview' && (
-        <AgentAlertToast
-          alerts={agentAlerts}
-          onDismiss={(id) => setAgentAlerts(prev => prev.filter(a => a.id !== id))}
-        />
-      )}
     </div>
   );
 }

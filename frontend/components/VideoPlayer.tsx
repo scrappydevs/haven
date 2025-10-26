@@ -210,6 +210,15 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
   useEffect(() => {
     if (!isLive) return;
 
+    // Prevent reconnection if already connected or connecting
+    if (wsRef.current) {
+      const state = wsRef.current.readyState;
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
+        console.log('⏸️  Skipping reconnect - WebSocket already active');
+        return;
+      }
+    }
+
     const wsUrl = getWsUrl('/ws/view');
     console.log('🔌 Viewer connecting to:', wsUrl);
     const ws = new WebSocket(wsUrl);
@@ -235,6 +244,16 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
         data = JSON.parse(event.data);
       } catch (e) {
         // Silently skip corrupted frames - don't spam console
+        return;
+      }
+
+      // Handle ping/pong to keep connection alive
+      if (data.type === 'ping') {
+        try {
+          ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        } catch (e) {
+          console.warn('Failed to send pong:', e);
+        }
         return;
       }
 
