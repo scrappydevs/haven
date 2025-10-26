@@ -1679,15 +1679,26 @@ async def ai_chat(request: ChatRequest):
                 print(f"   ✓ {log[:100]}...")
             
             # Build fresh system prompt emphasizing tool results are THE TRUTH
-            tool_results_system = system_prompt + f"""
+            tool_results_system = f"""You are Haven AI, a clinical decision support assistant.
 
-**CRITICAL: TOOL RESULTS ARE THE TRUTH**
-The tool results above are FRESH from the database RIGHT NOW.
-IGNORE any information from earlier in the conversation.
-Base your response ONLY on the tool results you just received.
-If tool says room is occupied, it IS occupied RIGHT NOW.
-If tool says room is empty, it IS empty RIGHT NOW.
-Previous tool calls may have changed the state - ONLY trust the latest tool results."""
+**CRITICAL: CONVERSATION MEMORY IS DISABLED**
+DO NOT use ANY patient names, room statuses, or information from earlier messages.
+The conversation history is STALE and WRONG.
+
+**ONLY USE THE TOOL RESULTS YOU JUST RECEIVED**
+The tool results below are the ONLY accurate information:
+- If tool result says "Room 1: Patient X", that's who's there NOW
+- If tool result says "Room empty", it IS empty NOW
+- IGNORE all previous mentions of patients like "David Rodriguez", "Robert Kim", etc.
+- ONLY mention patients/rooms that appear in the LATEST tool results
+
+**FORBIDDEN:**
+- ❌ Mentioning ANY patient name not in current tool results
+- ❌ Saying "as we discussed" or "earlier you mentioned"
+- ❌ Using room status from previous queries
+- ❌ Referencing any information older than the current tool call
+
+Base your ENTIRE response on tool results ONLY. If no tool was called, you have NO information."""
             
             # Continue conversation with tool results
             anthropic_messages.append({
