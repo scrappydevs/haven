@@ -170,21 +170,35 @@ class FetchHealthAgent:
         
         print(f"📤 Sending to Agentverse agent: {self.agentverse_address[:20]}...")
         
-        # Query the agent with longer timeout for Claude processing
+        # Query the agent with reduced timeout to prevent long hangs
         try:
             response = await query(
                 destination=self.agentverse_address,
                 message=patient_update,
-                timeout=30.0  # 30 second timeout for Claude
+                timeout=10.0  # 10 second timeout (reduced from 30s)
             )
             print(f"📥 ✅ Response from Agentverse agent")
         except Exception as e:
-            print(f"📥 ❌ Agentverse timeout: {str(e)[:50]}")
-            raise
+            error_msg = str(e)[:100]
+            print(f"📥 ❌ Agentverse error: {error_msg}")
+            raise Exception(f"Agentverse timeout or error: {error_msg}")
         
         # Parse response (MovementAnalysis from Agentverse)
-        if response and hasattr(response, 'decode_payload'):
+        if not response:
+            raise Exception("No response from Agentverse agent (empty response)")
+        
+        if not hasattr(response, 'decode_payload'):
+            raise Exception(f"Invalid response type from Agentverse agent: {type(response)}")
+        
+        try:
             result = response.decode_payload()
+            
+            # Validate result has required fields
+            if not isinstance(result, dict):
+                raise Exception(f"Agentverse returned non-dict payload: {type(result)}")
+            
+            if "severity" not in result:
+                raise Exception(f"Agentverse response missing 'severity' field: {list(result.keys())}")
             
             # Convert action list to string
             actions = result.get("recommended_action", [])
@@ -200,8 +214,8 @@ class FetchHealthAgent:
                 "reasoning": result.get("reasoning", "Analysis from Agentverse agent"),
                 "confidence": result.get("confidence", 0.8)
             }
-        else:
-            raise Exception("Invalid response from Agentverse agent")
+        except Exception as e:
+            raise Exception(f"Failed to parse Agentverse response: {str(e)[:100]}")
     
     def _fallback_analysis(self, vitals: Dict, cv_metrics: Dict) -> Dict:
         """

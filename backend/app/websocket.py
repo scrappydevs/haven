@@ -258,20 +258,34 @@ class ConnectionManager:
                 # Check analysis mode
                 if analysis_mode == "normal":
                     # NORMAL MODE: No AI/CV processing, just send empty overlay
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(self.broadcast_frame({
-                        "type": "overlay_data",
-                        "patient_id": patient_id,
-                        "frame_num": frame_num,
-                        "data": {
-                            "landmarks": [],
-                            "connections": [],
-                            "head_pose_axes": None,
-                            "metrics": None
-                        }
-                    }))
-                    loop.close()
+                    try:
+                        loop = asyncio.get_running_loop()
+                        asyncio.create_task(self.broadcast_frame({
+                            "type": "overlay_data",
+                            "patient_id": patient_id,
+                            "frame_num": frame_num,
+                            "data": {
+                                "landmarks": [],
+                                "connections": [],
+                                "head_pose_axes": None,
+                                "metrics": None
+                            }
+                        }))
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(self.broadcast_frame({
+                            "type": "overlay_data",
+                            "patient_id": patient_id,
+                            "frame_num": frame_num,
+                            "data": {
+                                "landmarks": [],
+                                "connections": [],
+                                "head_pose_axes": None,
+                                "metrics": None
+                            }
+                        }))
+                        loop.close()
                     continue
 
                 # ENHANCED MODE: Full AI/CV analysis
@@ -303,15 +317,27 @@ class ConnectionManager:
                     "metrics": slow_result["metrics"] if slow_result else None
                 }
 
-                # Broadcast overlay data (async operation, need event loop)
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self.broadcast_frame({
-                    "type": "overlay_data",
-                    "patient_id": patient_id,
-                    "frame_num": frame_num,
-                    "data": overlay_data
-                }))
+                # Broadcast overlay data (async operation, run in existing event loop)
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Already in async context, create task
+                    asyncio.create_task(self.broadcast_frame({
+                        "type": "overlay_data",
+                        "patient_id": patient_id,
+                        "frame_num": frame_num,
+                        "data": overlay_data
+                    }))
+                except RuntimeError:
+                    # No running loop, create one
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.broadcast_frame({
+                        "type": "overlay_data",
+                        "patient_id": patient_id,
+                        "frame_num": frame_num,
+                        "data": overlay_data
+                    }))
+                    loop.close()
 
                 # Agent analysis: if we just calculated metrics, analyze them
                 if slow_result and slow_result.get("metrics"):

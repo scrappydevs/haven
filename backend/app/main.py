@@ -2098,33 +2098,52 @@ async def websocket_stream(websocket: WebSocket, patient_id: str):
         frame_count = 0
 
         while True:
-            data = await websocket.receive_json()
-            frame_count += 1
+            try:
+                data = await websocket.receive_json()
+                frame_count += 1
 
-            if data.get("type") == "frame":
-                raw_frame = data.get("frame")
+                if data.get("type") == "frame":
+                    raw_frame = data.get("frame")
 
-                # Step 1: IMMEDIATE PASSTHROUGH - Send raw frame to viewers instantly (30 FPS, no lag)
-                await manager.broadcast_frame({
-                    "type": "live_frame",
-                    "patient_id": patient_id,
-                    "data": {
-                        "frame": raw_frame
-                    }
-                })
+                    # Step 1: IMMEDIATE PASSTHROUGH - Send raw frame to viewers instantly (30 FPS, no lag)
+                    try:
+                        await manager.broadcast_frame({
+                            "type": "live_frame",
+                            "patient_id": patient_id,
+                            "data": {
+                                "frame": raw_frame
+                            }
+                        })
+                    except Exception as broadcast_err:
+                        print(f"⚠️ Broadcast error for {patient_id}: {broadcast_err}")
+                        # Don't break on broadcast errors, continue receiving
 
-                # Step 2: QUEUE FOR PROCESSING - Worker thread will handle CV processing
-                # Queue every 3rd frame (10 FPS) for better performance on limited CPU
-                if frame_count % 3 == 0:
-                    manager.queue_frame_for_processing(
-                        patient_id, raw_frame, frame_count)
+                    # Step 2: QUEUE FOR PROCESSING - Worker thread will handle CV processing
+                    # Queue every 3rd frame (10 FPS) for better performance on limited CPU
+                    if frame_count % 3 == 0:
+                        try:
+                            manager.queue_frame_for_processing(
+                                patient_id, raw_frame, frame_count)
+                        except Exception as queue_err:
+                            print(f"⚠️ Queue error for {patient_id}: {queue_err}")
+                            # Don't break on queue errors, continue receiving
+            except WebSocketDisconnect:
+                print(f"❌ Patient {patient_id} stream disconnected")
+                break
+            except Exception as frame_err:
+                print(f"⚠️ Frame processing error for {patient_id}: {frame_err}")
+                # Continue to next frame instead of breaking entire stream
+                continue
 
     except WebSocketDisconnect:
-        print(f"❌ Patient {patient_id} stream disconnected")
+        print(f"❌ Patient {patient_id} stream disconnected (outer)")
     except Exception as e:
         print(f"❌ Stream error for patient {patient_id}: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         manager.unregister_streamer(patient_id)
+        print(f"🧹 Stream cleanup complete for {patient_id}")
 
 
 @app.websocket("/ws/view")
@@ -2138,19 +2157,28 @@ async def websocket_view(websocket: WebSocket):
         import asyncio
         last_ping = time.time()
         while True:
-            # Send ping every 30 seconds to keep connection alive
-            if time.time() - last_ping > 30:
+            # Send ping every 45 seconds to keep connection alive (reduced frequency)
+            if time.time() - last_ping > 45:
                 try:
-                    await websocket.send_json({"type": "ping", "timestamp": time.time()})
-                    last_ping = time.time()
-                except:
+                    # Check if socket is still connected before sending
+                    if websocket.client_state.value == 1:  # WebSocketState.CONNECTED
+                        await websocket.send_json({"type": "ping", "timestamp": time.time()})
+                        last_ping = time.time()
+                    else:
+                        print(f"⚠️ Viewer socket not connected (state={websocket.client_state.value})")
+                        break
+                except Exception as e:
+                    print(f"❌ Ping failed: {e}")
                     break  # Connection died
             
-            await asyncio.sleep(1)
+            await asyncio.sleep(5)  # Check less frequently (5s instead of 1s)
     except WebSocketDisconnect:
         print("Viewer disconnected")
+    except Exception as e:
+        print(f"❌ Viewer connection error: {e}")
     finally:
         manager.disconnect(websocket)
+        print(f"🧹 Viewer cleanup complete. Remaining: {len(manager.viewers)}")
 
 
 @app.websocket("/ws/wearable/{device_id}")
