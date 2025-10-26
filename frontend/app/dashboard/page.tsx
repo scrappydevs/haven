@@ -613,11 +613,11 @@ export default function DashboardPage() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Left: Logo */}
-            <div>
-              <h1 className="text-lg font-light text-neutral-950 uppercase tracking-wider">
+            <a href="/" className="cursor-pointer">
+              <h1 className="text-lg font-light text-neutral-950 uppercase tracking-wider hover:text-primary-700 transition-colors">
                 Haven
               </h1>
-            </div>
+            </a>
 
             {/* Center: Navigation */}
             <nav className="flex items-center gap-1">
