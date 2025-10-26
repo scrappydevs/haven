@@ -16,6 +16,7 @@ interface Patient {
 export default function PatientManagement() {
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
   const [patientsInRooms, setPatientsInRooms] = useState<Set<string>>(new Set());
+  const [activeStreams, setActiveStreams] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'monitoring'>('all');
@@ -24,6 +25,7 @@ export default function PatientManagement() {
   useEffect(() => {
     fetchPatients();
     fetchRoomAssignments();
+    fetchActiveStreams();
     
     // Listen for cache invalidation from AI chat
     const handleCacheInvalidation = (e: CustomEvent) => {
@@ -34,6 +36,7 @@ export default function PatientManagement() {
         console.log('♻️ Refreshing patient and room data...');
         fetchPatients();
         fetchRoomAssignments();
+        fetchActiveStreams();
       }
     };
     
@@ -96,10 +99,27 @@ export default function PatientManagement() {
     }
   };
 
+  const fetchActiveStreams = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/streams/active`);
+      const data = await response.json();
+      console.log('📹 Fetched active streams response:', data);
+      
+      // Extract patient IDs that have active streams
+      const streamIds = new Set<string>(data.active_streams || []);
+      
+      console.log(`✅ Found ${streamIds.size} active streams:`, Array.from(streamIds));
+      setActiveStreams(streamIds);
+    } catch (error) {
+      console.error('❌ Error fetching active streams:', error);
+    }
+  };
+
   // Filter patients based on current filter
   const getFilteredPatients = () => {
     if (filterStatus === 'active') {
-      return allPatients.filter((p: Patient) => p.enrollment_status === 'active');
+      // Show only patients with active streams
+      return allPatients.filter((p: Patient) => activeStreams.has(p.patient_id));
     } else if (filterStatus === 'monitoring') {
       // Show only patients currently assigned to rooms
       return allPatients.filter((p: Patient) => patientsInRooms.has(p.patient_id));
@@ -138,7 +158,7 @@ export default function PatientManagement() {
               : 'text-neutral-500 hover:text-neutral-950'
           }`}
         >
-          Active
+          Active ({activeStreams.size})
         </button>
         <button
           onClick={() => setFilterStatus('monitoring')}
@@ -148,7 +168,7 @@ export default function PatientManagement() {
               : 'text-neutral-500 hover:text-neutral-950'
           }`}
         >
-          In Rooms
+          In Rooms ({patientsInRooms.size})
         </button>
       </div>
 

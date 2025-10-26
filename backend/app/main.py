@@ -550,15 +550,15 @@ async def handle_critical_alert_webhook(request: dict):
         severity = request.get('severity')
         title = request.get('title')
         description = request.get('description')
-        
+
         print(f"\n🚨 CRITICAL ALERT WEBHOOK: {alert_id}")
         print(f"   Patient: {patient_id}")
         print(f"   Room: {room_id}")
         print(f"   Title: {title}")
-        
+
         # Import alert monitor logic
         from app.alert_monitor import handle_critical_alert
-        
+
         # Process the alert (make phone call)
         await handle_critical_alert({
             'id': alert_id,
@@ -567,13 +567,13 @@ async def handle_critical_alert_webhook(request: dict):
             'severity': severity,
             'message': title or description or 'Critical alert'
         })
-        
+
         return {
             "status": "success",
             "message": "Alert processed and call initiated",
             "alert_id": alert_id
         }
-    
+
     except Exception as e:
         print(f"❌ Error handling alert webhook: {e}")
         import traceback
@@ -594,13 +594,13 @@ async def handle_alert_call_response(request: dict):
         dtmf = request.get('dtmf')
         call_uuid = request.get('uuid')
         conversation_uuid = request.get('conversation_uuid')
-        
+
         print(f"📞 Call response received: DTMF={dtmf}, Call={call_uuid}")
-        
+
         if dtmf == '1':
             # Nurse acknowledged the alert
             print(f"✅ Alert acknowledged by nurse")
-            
+
             # Find and update alert with this call_id in metadata
             if supabase:
                 try:
@@ -609,30 +609,32 @@ async def handle_alert_call_response(request: dict):
                         .select("id, metadata") \
                         .eq("status", "active") \
                         .execute()
-                    
+
                     for alert in (alerts.data or []):
                         metadata = alert.get('metadata', {})
                         call_info = metadata.get('call', {})
-                        
+
                         if call_info.get('call_id') == call_uuid:
                             # Update call status and acknowledge alert
                             call_info['call_status'] = 'answered'
-                            call_info['answered_at'] = datetime.now().isoformat()
+                            call_info['answered_at'] = datetime.now(
+                            ).isoformat()
                             metadata['call'] = call_info
-                            
+
                             supabase.table("alerts").update({
                                 "status": "acknowledged",
                                 "acknowledged_at": datetime.now().isoformat(),
                                 "acknowledged_by": "nurse_phone",
                                 "metadata": metadata
                             }).eq("id", alert['id']).execute()
-                            
-                            print(f"✅ Alert {alert['id']} acknowledged and updated")
+
+                            print(
+                                f"✅ Alert {alert['id']} acknowledged and updated")
                             break
-                    
+
                 except Exception as e:
                     print(f"⚠️  Failed to update alert: {e}")
-            
+
             # Return NCCO to confirm acknowledgement
             return [{
                 "action": "talk",
@@ -646,7 +648,7 @@ async def handle_alert_call_response(request: dict):
                 "text": "No response received. Please check the alert immediately.",
                 "voiceName": "Amy"
             }]
-    
+
     except Exception as e:
         print(f"❌ Error handling call response: {e}")
         return {"status": "error"}
@@ -1629,6 +1631,7 @@ class AnalyzePatientRequest(BaseModel):
     vitals: Dict
     cv_metrics: Dict
 
+
 @app.post("/health-agent/analyze")
 async def analyze_patient_direct(request: AnalyzePatientRequest):
     """Test direct analysis via Fetch.ai agent"""
@@ -1656,23 +1659,24 @@ class TestCallRequest(BaseModel):
     event_type: str = "seizure"
     phone_number: Optional[str] = None
 
+
 @app.post("/health-agent/test-call")
 async def test_voice_call(request: TestCallRequest):
     """Test voice calling system"""
     from app.voice_call import voice_service
-    
+
     # Override phone number if provided
     original_number = voice_service.emergency_number
     if request.phone_number:
         voice_service.emergency_number = request.phone_number
-    
+
     try:
         result = voice_service.make_emergency_call(
             patient_id=request.patient_id,
             event_type=request.event_type,
             details="Test call from Haven system"
         )
-        
+
         return {
             "success": True,
             "enabled": voice_service.enabled,
@@ -1926,22 +1930,32 @@ async def websocket_view(websocket: WebSocket):
     try:
         import asyncio
         last_ping = time.time()
+        last_overlay_broadcast = time.time()
+        
         while True:
-            # Send ping every 45 seconds to keep connection alive (reduced frequency)
+            # Send ping every 45 seconds to keep connection alive
             if time.time() - last_ping > 45:
                 try:
-                    # Check if socket is still connected before sending
                     if websocket.client_state.value == 1:  # WebSocketState.CONNECTED
                         await websocket.send_json({"type": "ping", "timestamp": time.time()})
                         last_ping = time.time()
                     else:
-                        print(f"⚠️ Viewer socket not connected (state={websocket.client_state.value})")
                         break
                 except Exception as e:
                     print(f"❌ Ping failed: {e}")
-                    break  # Connection died
+                    break
             
-            await asyncio.sleep(5)  # Check less frequently (5s instead of 1s)
+            # Broadcast latest overlays every 0.1 seconds (10 Hz)
+            if time.time() - last_overlay_broadcast > 0.1:
+                if hasattr(manager, 'latest_overlay'):
+                    for patient_id, overlay in manager.latest_overlay.items():
+                        try:
+                            await manager.broadcast_frame(overlay)
+                        except:
+                            pass
+                last_overlay_broadcast = time.time()
+            
+            await asyncio.sleep(0.05)  # 20 Hz check rate
     except WebSocketDisconnect:
         print("Viewer disconnected")
     except Exception as e:
@@ -2664,6 +2678,152 @@ async def start_haven_session(request: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_haven_conversation(patient_id: str, session_id: str | None, conversation_summary: dict) -> dict:
+    """
+    Shared workflow for Haven conversations.
+    Validates question counts, analyzes severity, persists alert, and broadcasts updates.
+    """
+    # Get patient's room assignment
+    room_id = None
+    if supabase:
+        try:
+            room_result = supabase.table("patients_room") \
+                .select("room_id") \
+                .eq("patient_id", patient_id) \
+                .single() \
+                .execute()
+
+            if room_result.data:
+                room_id = room_result.data.get("room_id")
+        except Exception as e:
+            print(f"⚠️ Could not get room for patient {patient_id}: {e}")
+
+    assistant_questions = conversation_summary.get(
+        "assistant_question_count")
+    total_questions = conversation_summary.get("question_count")
+
+    transcript_entries = conversation_summary.get("transcript") or []
+    if assistant_questions is None and transcript_entries:
+        assistant_questions = sum(
+            1 for entry in transcript_entries
+            if entry.get("role") == "assistant" and "?" in (entry.get("content") or "")
+        )
+
+    transcript_text = conversation_summary.get("full_transcript_text") or ""
+    if assistant_questions is None and transcript_text:
+        question_marks = transcript_text.count("?")
+        assistant_questions = question_marks if question_marks else 1
+
+    if total_questions is None:
+        assistant_turns = conversation_summary.get("assistant_turns")
+        if assistant_turns is not None:
+            total_questions = assistant_turns
+
+    if total_questions is None and transcript_entries:
+        total_questions = sum(
+            1 for entry in transcript_entries
+            if entry.get("role") == "assistant"
+        )
+
+    if total_questions is None and transcript_text:
+        total_questions = max(assistant_questions or 0, 1)
+
+    min_required_questions = 1
+
+    if assistant_questions is not None and assistant_questions < min_required_questions:
+        print(
+            f"⚠️ Haven conversation skipped (only {assistant_questions} assistant questions)")
+        return {"success": True, "skipped": True}
+
+    if total_questions is not None and total_questions < min_required_questions:
+        print(
+            f"⚠️ Haven conversation skipped (total questions {total_questions} < {min_required_questions})")
+        return {"success": True, "skipped": True}
+
+    existing_alert_id = None
+    existing_alert_severity = None
+    if session_id and supabase:
+        try:
+            existing_response = supabase.table("alerts") \
+                .select("id,severity") \
+                .filter("metadata->>session_id", "eq", session_id) \
+                .filter("triggered_by", "eq", "haven_agent") \
+                .limit(1) \
+                .execute()
+
+            if existing_response.data:
+                existing_alert_id = existing_response.data[0]["id"]
+                existing_alert_severity = existing_response.data[0].get("severity")
+        except Exception as e:
+            print(f"⚠️ Could not check for existing Haven alert for session {session_id}: {e}")
+
+    alert_data = await _analyze_haven_conversation(
+        patient_id=patient_id,
+        conversation_summary=conversation_summary,
+        room_id=room_id
+    )
+
+    if not supabase:
+        print("⚠️ Supabase not available, alert not saved")
+        return {"success": False, "error": "Database not available"}
+
+    metadata_payload = json.dumps({
+        "session_id": session_id,
+        "transcript": conversation_summary.get("full_transcript_text", ""),
+        "transcript_entries": conversation_summary.get("transcript", []),
+        "assistant_turns": conversation_summary.get("assistant_turns"),
+        "assistant_question_count": conversation_summary.get("assistant_question_count"),
+        "total_turns": conversation_summary.get("total_turns"),
+        "summary_source": conversation_summary.get("source"),
+        "extracted_info": conversation_summary.get("extracted_info", {}),
+        "ai_analysis": alert_data.get("reasoning", ""),
+        "concern_type": "patient_initiated"
+    })
+
+    alert_payload = {
+        "alert_type": "other",
+        "severity": alert_data["severity"],
+        "title": alert_data["title"],
+        "description": alert_data["description"],
+        "patient_id": patient_id,
+        "room_id": room_id,
+        "triggered_by": "haven_agent",
+        "status": "active",
+        "metadata": metadata_payload,
+        "triggered_at": datetime.now().isoformat()
+    }
+
+    if existing_alert_id:
+        alert_result = supabase.table("alerts").update(alert_payload).eq(
+            "id", existing_alert_id).execute()
+        alert_id = existing_alert_id
+        print(
+            f"🔁 Updated existing alert {alert_id} from Haven conversation for patient {patient_id}")
+    else:
+        alert_result = supabase.table("alerts").insert(alert_payload).execute()
+        alert_id = alert_result.data[0]["id"] if alert_result.data else None
+        print(
+            f"✅ Created alert {alert_id} from Haven conversation for patient {patient_id}")
+
+    # Broadcast alert to dashboard via WebSocket
+    await manager.broadcast_frame({
+        "type": "haven_alert",
+        "patient_id": patient_id,
+        "room_id": room_id,
+        "alert_id": alert_id,
+        "severity": alert_data["severity"],
+        "title": alert_data["title"],
+        "description": alert_data["description"],
+        "timestamp": datetime.now().isoformat()
+    })
+
+    return {
+        "success": True,
+        "alert_id": alert_id,
+        "severity": alert_data["severity"]
+    }
+
+
 @app.post("/api/haven/conversation")
 async def save_haven_conversation(request: dict):
     """
@@ -2678,95 +2838,11 @@ async def save_haven_conversation(request: dict):
         if not all([patient_id, conversation_summary]):
             return {"error": "patient_id and conversation_summary are required"}, 400
 
-        # Get patient's room assignment
-        room_id = None
-        if supabase:
-            try:
-                room_result = supabase.table("patients_room") \
-                    .select("room_id") \
-                    .eq("patient_id", patient_id) \
-                    .single() \
-                    .execute()
-
-                if room_result.data:
-                    room_id = room_result.data.get("room_id")
-            except Exception as e:
-                print(f"⚠️ Could not get room for patient {patient_id}: {e}")
-
-        assistant_questions = conversation_summary.get(
-            "assistant_question_count")
-        total_questions = conversation_summary.get("question_count")
-
-        if assistant_questions is None:
-            transcript = conversation_summary.get("transcript", [])
-            assistant_questions = sum(
-                1 for entry in transcript
-                if entry.get("role") == "assistant" and "?" in (entry.get("content") or "")
-            )
-        if total_questions is None:
-            total_questions = conversation_summary.get("assistant_turns")
-
-        min_required_questions = 2
-
-        if assistant_questions is not None and assistant_questions < min_required_questions:
-            print(
-                f"⚠️ Haven conversation skipped (only {assistant_questions} assistant questions)")
-            return {"success": True, "skipped": True}
-
-        if total_questions is not None and total_questions < min_required_questions:
-            print(
-                f"⚠️ Haven conversation skipped (total questions {total_questions} < {min_required_questions})")
-            return {"success": True, "skipped": True}
-
-        alert_data = await _analyze_haven_conversation(
+        return await process_haven_conversation(
             patient_id=patient_id,
-            conversation_summary=conversation_summary,
-            room_id=room_id
+            session_id=session_id,
+            conversation_summary=conversation_summary
         )
-
-        if supabase:
-            alert_result = supabase.table("alerts").insert({
-                "alert_type": "other",
-                "severity": alert_data["severity"],
-                "title": alert_data["title"],
-                "description": alert_data["description"],
-                "patient_id": patient_id,
-                "room_id": room_id,
-                "triggered_by": "haven_agent",
-                "status": "active",
-                "metadata": json.dumps({
-                    "session_id": session_id,
-                    "transcript": conversation_summary.get("full_transcript_text", ""),
-                    "extracted_info": conversation_summary.get("extracted_info", {}),
-                    "ai_analysis": alert_data.get("reasoning", ""),
-                    "concern_type": "patient_initiated"
-                })
-            }).execute()
-
-            alert_id = alert_result.data[0]["id"] if alert_result.data else None
-            print(
-                f"✅ Created alert {alert_id} from Haven conversation for patient {patient_id}")
-
-            # Broadcast alert to dashboard via WebSocket
-            await manager.broadcast_frame({
-                "type": "haven_alert",
-                "patient_id": patient_id,
-                "room_id": room_id,
-                "alert_id": alert_id,
-                "severity": alert_data["severity"],
-                "title": alert_data["title"],
-                "description": alert_data["description"],
-                "timestamp": datetime.now().isoformat()
-            })
-
-            return {
-                "success": True,
-                "alert_id": alert_id,
-                "severity": alert_data["severity"]
-            }
-        else:
-            print("⚠️ Supabase not available, alert not saved")
-            return {"error": "Database not available"}, 503
 
     except Exception as e:
         print(f"❌ Error saving Haven conversation: {e}")
@@ -2783,6 +2859,12 @@ async def _analyze_haven_conversation(patient_id: str, conversation_summary: dic
         # Fallback to rule-based analysis
         extracted_info = conversation_summary.get("extracted_info", {})
         pain_level = extracted_info.get("pain_level")
+        symptom_description = extracted_info.get("symptom_description")
+        body_location = extracted_info.get("body_location")
+        duration = extracted_info.get("duration")
+        patient_statements = extracted_info.get("patient_statements", [])
+        if isinstance(patient_statements, str):
+            patient_statements = [patient_statements]
 
         if pain_level and pain_level >= 8:
             severity = "high"
@@ -2791,10 +2873,51 @@ async def _analyze_haven_conversation(patient_id: str, conversation_summary: dic
         else:
             severity = "low"
 
+        transcript_entries = conversation_summary.get("transcript", [])
+        if transcript_entries and not patient_statements:
+            patient_statements = [
+                entry.get("content")
+                for entry in transcript_entries
+                if entry.get("role") == "patient" and entry.get("content")
+            ][:3]
+
+        description_parts: list[str] = []
+
+        if symptom_description:
+            description_parts.append(f"Patient reported {symptom_description.strip()}")
+        elif patient_statements:
+            description_parts.append(f"Patient reported {patient_statements[0].strip()}")
+
+        if body_location:
+            description_parts.append(f"Location: {body_location}")
+
+        if pain_level is not None:
+            description_parts.append(f"Pain level rated {pain_level}/10")
+
+        if duration:
+            description_parts.append(f"Duration noted: {duration.strip()}")
+
+        if len(patient_statements) > 1:
+            secondary = patient_statements[1].strip()
+            if secondary and secondary.lower() != (symptom_description or '').lower():
+                description_parts.append(f"Additional detail: {secondary}")
+
+        if not description_parts:
+            transcript_text = conversation_summary.get("full_transcript_text", "").strip()
+            if transcript_text:
+                description_parts.append(transcript_text[:350])
+            else:
+                description_parts.append("No detailed transcript available.")
+
+        raw_title_detail = symptom_description or (
+            patient_statements[0] if patient_statements else None
+        ) or "concern"
+        title_detail = str(raw_title_detail).strip().replace("\n", " ")
+
         return {
             "severity": severity,
-            "title": f"Patient {patient_id} reported concern",
-            "description": conversation_summary.get("full_transcript_text", "No details available"),
+            "title": f"Patient {patient_id} reported {title_detail[:80]}",
+            "description": " | ".join(description_parts),
             "reasoning": "Rule-based analysis (Claude not available)"
         }
 

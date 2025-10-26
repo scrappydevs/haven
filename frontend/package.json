@@ -15,6 +15,7 @@
     "@react-three/fiber": "^9.4.0",
     "@smplrspace/smplr-loader": "^2.42.0",
     "framer-motion": "^11.0.0",
+    "fuse.js": "^7.1.0",
     "livekit-client": "^2.15.13",
     "livekit-server-sdk": "^2.14.0",
     "lucide-react": "^0.400.0",
