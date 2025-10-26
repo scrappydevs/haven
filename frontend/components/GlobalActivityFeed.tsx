@@ -32,6 +32,25 @@ export default function GlobalActivityFeed({ events, onPatientClick }: GlobalAct
     }
   };
 
+  const getRelativeTime = (timestamp: string) => {
+    if (!timestamp) return '';
+    try {
+      const now = new Date();
+      const eventTime = new Date(timestamp);
+      const diffMs = now.getTime() - eventTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      return `${diffDays}d ago`;
+    } catch (e) {
+      return '';
+    }
+  };
+
   const getLogPrefix = (type: string) => {
     const prefixes: Record<string, string> = {
       alert: '[ALERT]',
@@ -77,7 +96,10 @@ export default function GlobalActivityFeed({ events, onPatientClick }: GlobalAct
                 >
                   {/* First line: time + prefix + patient name */}
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-neutral-400 font-mono text-[10px]">{formatTime(event.timestamp)}</span>
+                    <div className="flex flex-col">
+                      <span className="text-neutral-400 font-mono text-[10px]">{formatTime(event.timestamp)}</span>
+                      <span className="text-neutral-400 font-mono text-[9px]">{getRelativeTime(event.timestamp)}</span>
+                    </div>
                     <span className="text-xs font-light text-neutral-950 font-mono">
                       {getLogPrefix(event.type)}
                     </span>

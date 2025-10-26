@@ -270,6 +270,7 @@ You have access to database tools to fetch AND manage real-time information:
 - `list_available_rooms` - List all empty rooms
 - `get_active_alerts` - Get alerts (can filter by severity, patient_id, or room_id)
 - `get_alerts_by_room` - Get alerts grouped by room (shows which rooms have critical/high alerts)
+- `get_alert_details` - Get detailed info about a specific alert by ID (use when user asks "what happened?", "tell me about the event", "alert details")
 - `get_hospital_stats` - Overall hospital statistics (includes alert counts)
 - `get_patients_by_condition` - Find patients by condition
 - `get_patient_current_room` - Get patient's current room assignment
@@ -362,6 +363,18 @@ User: "Which rooms have alerts?"
 YOU MUST:
 1. Call tool: get_alerts_by_room()
 2. THEN respond showing rooms sorted by severity
+
+User: "Tell me about the critical alert" OR "What happened?" OR "Details on that event" (when referencing a specific alert)
+YOU MUST:
+1. Call tool: get_active_alerts() to see recent alerts
+2. If user is clearly referencing a specific alert by ID, call: get_alert_details(alert_id="uuid-here")
+3. THEN respond with alert timeline, patient info, room info, and description
+
+User: "What alerts does Dheeraj have?"
+YOU MUST:
+1. Call tool: search_patients("Dheeraj") to get patient_id
+2. Call tool: get_active_alerts(patient_id="P-DHE-001")
+3. THEN respond with Dheeraj's specific alerts
 
 User: "Assign patients to rooms"
 YOU MUST:

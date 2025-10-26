@@ -116,6 +116,20 @@ HAVEN_TOOLS = [
         }
     },
     {
+        "name": "get_alert_details",
+        "description": "Get detailed information about a specific alert by ID. Use when user asks about 'the alert', 'that event', or references a specific alert. Returns full alert data including patient, room, description, status, and timeline.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "alert_id": {
+                    "type": "string",
+                    "description": "The alert UUID to fetch details for"
+                }
+            },
+            "required": ["alert_id"]
+        }
+    },
+    {
         "name": "get_hospital_stats",
         "description": "Get overall hospital statistics including total patients, room occupancy, alert counts, and monitoring status.",
         "input_schema": {
@@ -388,6 +402,9 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         
         elif tool_name == "get_alerts_by_room":
             return await get_alerts_by_room()
+        
+        elif tool_name == "get_alert_details":
+            return await get_alert_details(tool_input.get("alert_id", ""))
         
         elif tool_name == "get_hospital_stats":
             return await get_hospital_stats()
@@ -796,6 +813,51 @@ async def get_alerts_by_room() -> Dict[str, Any]:
             "rooms_with_alerts": result,
             "total_rooms_affected": len(result),
             "total_alerts": sum(r['alert_count'] for r in result)
+        }
+    
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_alert_details(alert_id: str) -> Dict[str, Any]:
+    """Get detailed information about a specific alert"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Fetch the alert
+        alert_result = supabase.table("alerts").select("*").eq("id", alert_id).execute()
+        
+        if not alert_result.data or len(alert_result.data) == 0:
+            return {"error": f"Alert with ID {alert_id} not found"}
+        
+        alert = alert_result.data[0]
+        
+        # Enrich with patient information if available
+        patient_info = None
+        if alert.get("patient_id"):
+            patient_result = supabase.table("patients").select("patient_id, name, age, condition").eq("patient_id", alert["patient_id"]).execute()
+            if patient_result.data and len(patient_result.data) > 0:
+                patient_info = patient_result.data[0]
+        
+        # Enrich with room information if available
+        room_info = None
+        if alert.get("room_id"):
+            room_result = supabase.table("rooms").select("room_id, room_name, room_type").eq("room_id", alert["room_id"]).execute()
+            if room_result.data and len(room_result.data) > 0:
+                room_info = room_result.data[0]
+        
+        # Build the response
+        return {
+            "alert": alert,
+            "patient": patient_info,
+            "room": room_info,
+            "metadata": alert.get("metadata", {}),
+            "timeline": {
+                "triggered_at": alert.get("triggered_at"),
+                "acknowledged_at": alert.get("acknowledged_at"),
+                "resolved_at": alert.get("resolved_at")
+            }
         }
     
     except Exception as e:

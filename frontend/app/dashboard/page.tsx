@@ -598,15 +598,51 @@ export default function DashboardPage() {
       })
       .catch(err => console.error('Error fetching patients:', err));
 
-    // Fetch initial alerts
+    // Fetch initial alerts and populate activity feed
     const fetchAlerts = () => {
-      fetch(`${apiUrl}/alerts?status=active&limit=10`)
+      fetch(`${apiUrl}/alerts?status=active&limit=20`)
         .then(res => res.json())
         .then(data => {
           // Handle both array response and object with alerts property
           const alertsArray = Array.isArray(data) ? data : (data.alerts || []);
           setAlerts(alertsArray);
           setIsLoadingAlerts(false);
+          
+          // Convert alerts to activity feed events
+          const alertEvents: GlobalEvent[] = alertsArray.map((alert: any) => {
+            // Determine event type and severity
+            const eventType = alert.alert_type === 'vital_sign' ? 'vital' : 
+                             alert.severity === 'critical' ? 'alert' :
+                             alert.severity === 'high' ? 'warning' : 'monitoring';
+            
+            // Format message
+            const message = alert.title || 'Alert triggered';
+            
+            // Get patient info
+            const patientName = alert.patient_name || 
+                               (alert.patient_id ? `Patient ${alert.patient_id}` : 'Unknown Patient');
+            const patientId = alert.patient_id ? parseInt(alert.patient_id.replace(/\D/g, '')) || 0 : 0;
+            
+            // Format details
+            const room = alert.room_name || (alert.room_id ? `Room ${alert.room_id}` : '');
+            const status = alert.status === 'acknowledged' ? '✓ Acknowledged' : 'Active';
+            const details = [room, status, alert.severity?.toUpperCase()].filter(Boolean).join(' • ');
+            
+            return {
+              timestamp: alert.triggered_at || alert.created_at || new Date().toISOString(),
+              patientId,
+              patientName,
+              type: eventType,
+              severity: alert.severity || 'info',
+              message,
+              details: details || alert.description || ''
+            };
+          });
+          
+          // Update activity feed with recent alerts (most recent first)
+          setGlobalEventFeed(alertEvents.sort((a, b) => 
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          ));
         })
         .catch(err => {
           console.error('Error fetching alerts:', err);

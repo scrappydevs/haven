@@ -795,7 +795,7 @@ async def get_cv_data(patient_id: int, timestamp: str):
 @app.get("/alerts")
 async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
     """
-    Get alerts from database
+    Get alerts from database with enriched patient and room information
     Optionally filter by status and/or severity
     """
     if not supabase:
@@ -813,7 +813,29 @@ async def get_alerts(status: str = None, severity: str = None, limit: int = 50):
         response = query.order(
             "triggered_at", desc=True).limit(limit).execute()
 
-        return response.data or []
+        alerts_data = response.data or []
+        
+        # Enrich alerts with patient and room names
+        for alert in alerts_data:
+            # Add patient name
+            if alert.get('patient_id'):
+                try:
+                    patient = supabase.table("patients").select("name").eq("patient_id", alert['patient_id']).execute()
+                    if patient.data and len(patient.data) > 0:
+                        alert['patient_name'] = patient.data[0]['name']
+                except Exception as e:
+                    print(f"Error fetching patient name: {e}")
+            
+            # Add room name
+            if alert.get('room_id'):
+                try:
+                    room = supabase.table("rooms").select("room_name").eq("room_id", alert['room_id']).execute()
+                    if room.data and len(room.data) > 0:
+                        alert['room_name'] = room.data[0]['room_name']
+                except Exception as e:
+                    print(f"Error fetching room name: {e}")
+        
+        return alerts_data
     except Exception as e:
         print(f"⚠️ Error fetching alerts from database: {e}")
         # Fallback to in-memory
@@ -1993,7 +2015,7 @@ Only use information from tool results. Never use conversation memory."""
         for tool_result in all_tool_results:
             if isinstance(tool_result, dict) and tool_result.get("success"):
                 invalidate_cache = True
-                cache_keys.update(["rooms", "patients", "patients_room", "assignments"])
+                cache_keys.update(["rooms", "patients", "patients_room", "assignments", "alerts"])
                 print(f"   ✅ Success detected - will invalidate cache")
         
         cache_keys_list = list(cache_keys) if cache_keys else []

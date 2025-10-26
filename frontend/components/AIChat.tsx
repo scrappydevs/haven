@@ -894,9 +894,9 @@ export default function AIChat() {
                               p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed whitespace-pre-wrap">{children}</p>,
                               strong: ({ children }) => <strong className="font-bold text-neutral-950">{children}</strong>,
                               em: ({ children }) => <em className="italic text-neutral-700">{children}</em>,
-                              ul: ({ children }) => <ul className="my-3 space-y-2 list-disc list-inside">{children}</ul>,
-                              ol: ({ children }) => <ol className="my-3 space-y-2 list-decimal list-inside">{children}</ol>,
-                              li: ({ children }) => <li className="leading-relaxed text-sm">{children}</li>,
+                              ul: ({ children }) => <ul className="my-4 space-y-2.5 list-disc pl-5">{children}</ul>,
+                              ol: ({ children }) => <ol className="my-4 space-y-2.5 list-decimal pl-5">{children}</ol>,
+                              li: ({ children }) => <li className="leading-relaxed text-sm pl-2 mb-2">{children}</li>,
                               code: ({ children }) => <code className="bg-yellow-100 text-neutral-950 px-1.5 py-0.5 rounded text-xs font-medium">{children}</code>,
                               pre: ({ children }) => (
                                 <div className="relative group my-3">
