@@ -414,7 +414,7 @@ export default function FloorPlanPage() {
           const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
           console.log(`🔤 Creating initials PNG for ${patient?.name}: ${initials}`);
           
-          const size = 300; // Much larger for better visibility
+          const size = 160; // Optimal size for smplr.js rendering
           const canvas = document.createElement('canvas');
           canvas.width = size;
           canvas.height = size;
@@ -423,12 +423,12 @@ export default function FloorPlanPage() {
           // Draw circle background
           ctx.fillStyle = '#e0f2fe';
           ctx.beginPath();
-          ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
+          ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
           ctx.fill();
           
           // Draw border
           ctx.strokeStyle = '#0284c7';
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 2;
           ctx.stroke();
           
           // Draw initials text
@@ -450,7 +450,7 @@ export default function FloorPlanPage() {
           
           img.onload = () => {
             console.log(`✅ Photo loaded: ${patient.name}`, img.width, 'x', img.height);
-            const size = 300; // Much larger for better visibility
+            const size = 160; // Optimal size for smplr.js rendering
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -461,7 +461,7 @@ export default function FloorPlanPage() {
             
             // Create circular clipping path
             ctx.beginPath();
-            ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
+            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
             ctx.closePath();
             ctx.clip();
             
@@ -470,17 +470,23 @@ export default function FloorPlanPage() {
             let drawWidth, drawHeight, drawX, drawY;
             
             if (imgAspect > 1) {
-              // Image is wider - fit to height
+              // Image is wider - fit to height, center horizontally
               drawHeight = size;
               drawWidth = size * imgAspect;
               drawX = (size - drawWidth) / 2;
               drawY = 0;
-            } else {
-              // Image is taller - fit to width
+            } else if (imgAspect < 1) {
+              // Image is taller - fit to width, center vertically
               drawWidth = size;
               drawHeight = size / imgAspect;
               drawX = 0;
               drawY = (size - drawHeight) / 2;
+            } else {
+              // Image is square - perfect fit
+              drawWidth = size;
+              drawHeight = size;
+              drawX = 0;
+              drawY = 0;
             }
             
             // Draw image
@@ -491,9 +497,9 @@ export default function FloorPlanPage() {
             
             // Draw border
             ctx.beginPath();
-            ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
+            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
             ctx.strokeStyle = '#e5e7eb';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 2;
             ctx.stroke();
             
             const dataURL = canvas.toDataURL('image/png');
@@ -507,7 +513,7 @@ export default function FloorPlanPage() {
             const initials = patient?.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
             console.log(`🔤 Using initials fallback: ${initials}`);
             
-            const size = 300; // Match main size
+            const size = 160; // Match main size - optimal for smplr.js
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -515,11 +521,11 @@ export default function FloorPlanPage() {
             
             ctx.fillStyle = '#e0f2fe';
             ctx.beginPath();
-            ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
+            ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
             ctx.fill();
             
             ctx.strokeStyle = '#0284c7';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 2;
             ctx.stroke();
             
             ctx.fillStyle = '#0369a1';
@@ -550,8 +556,8 @@ export default function FloorPlanPage() {
           data: dataWithPhotos,
           icon: (data: any) => ({
             url: data.photoUrl,
-            width: 120,  // World-space units (meters) - 3x room icon size
-            height: 120,
+            width: 180,  // World-space units - 2x room icon size (was working before)
+            height: 180,
           }),
           // No color property = photos keep natural colors (not tinted like rooms)
           onClick: (data: any) => {
