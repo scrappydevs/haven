@@ -975,41 +975,59 @@ export default function StreamPage() {
 
             {/* Haven Voice Agent Conversation Overlay */}
             {havenActive && havenRoomData && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                {/* AI Voice Animation Background */}
-                <div className="absolute inset-0">
+              <div className="absolute inset-0">
+                {/* Background Layer: AI Voice Animation */}
+                <div className="absolute inset-0 z-0">
                   <AIVoiceAnimation isActive={voiceAssistantActive} />
                 </div>
 
-                {/* LiveKit Room (hidden, for state management) */}
-                <div className="hidden">
+                {/* LiveKit Room Layer */}
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-8">
                   <LiveKitRoom
                     token={havenRoomData.token}
                     serverUrl={havenRoomData.url}
                     connect={true}
                     audio={true}
                     video={false}
+                    className="w-full h-full flex items-center justify-center"
                   >
-                    <HavenVoiceAssistant />
+                    <div className="max-w-md w-full bg-white/70 backdrop-blur-md border border-neutral-300 p-8 rounded-lg shadow-xl">
+                      {/* Header */}
+                      <div className="flex items-center justify-center gap-3 mb-6">
+                        <div className="w-4 h-4 bg-neutral-800 rounded-full animate-pulse" />
+                        <h3 className="heading-section text-neutral-900">Haven AI Active</h3>
+                      </div>
+
+                      {/* Voice Assistant Audio and Visualizer */}
+                      <HavenVoiceAssistant />
+
+                      {/* Transcript Display */}
+                      <div className="mb-6">
+                        <div className="bg-neutral-100/80 border border-neutral-300 p-4 rounded-lg min-h-[100px]">
+                          <p className="body-default text-neutral-800">
+                            {havenTranscript || 'Listening...'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Instructions and Controls */}
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2 text-neutral-600 text-xs">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          </svg>
+                          <span className="label-uppercase">Speak naturally about your concern</span>
+                        </div>
+
+                        <button
+                          onClick={endHavenSession}
+                          className="px-4 py-2 bg-neutral-900 hover:bg-neutral-700 border border-neutral-900 text-white label-uppercase text-xs transition-colors rounded"
+                        >
+                          End Conversation
+                        </button>
+                      </div>
+                    </div>
                   </LiveKitRoom>
-                </div>
-
-                {/* Status Text Overlay */}
-                <div className="relative z-10 text-center mb-8">
-                  <h3 className="text-2xl font-light text-neutral-800 mb-2">Haven Voice Agent</h3>
-                  <p className="text-sm text-neutral-600 font-medium">
-                    {havenTranscript || 'Initializing...'}
-                  </p>
-                </div>
-
-                {/* End Conversation Button */}
-                <div className="relative z-10 absolute bottom-8">
-                  <button
-                    onClick={endHavenSession}
-                    className="px-6 py-3 bg-neutral-900 hover:bg-neutral-700 text-white label-uppercase text-sm transition-colors rounded-lg shadow-lg"
-                  >
-                    End Conversation
-                  </button>
                 </div>
               </div>
             )}
