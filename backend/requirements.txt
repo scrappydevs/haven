@@ -16,8 +16,8 @@ anthropic==0.44.0
 # Protobuf - pinned to satisfy mediapipe
 protobuf==4.25.5
 
-# LiveKit for voice AI intake - Python 3.12 compatible versions
-livekit==1.1.2
+# LiveKit for voice AI intake - using latest available versions
+livekit==1.0.17
 livekit-api==1.0.7
 livekit-agents==0.10.6
 livekit-plugins-openai==0.10.3
@@ -43,7 +43,7 @@ gunicorn==23.0.0
 # SMS Alerts
 vonage==3.14.0
 
-# Multi-Agent System (Fetch.ai uAgents) - compatible with Python 3.12
+# Multi-Agent System (Fetch.ai uAgents)
 uagents==0.14.0
 cosmpy==0.9.2
 pydantic==2.10.3
