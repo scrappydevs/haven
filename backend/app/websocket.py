@@ -200,6 +200,21 @@ class ConnectionManager:
         if patient_id not in self.processing_queues:
             return
 
+        # IMMEDIATELY broadcast raw frame to viewers (30 FPS smooth video)
+        # This happens BEFORE CV processing to ensure no lag
+        if self.viewers:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.broadcast_frame({
+                "type": "live_frame",
+                "patient_id": patient_id,
+                "data": {
+                    "frame": frame_data
+                }
+            }))
+            loop.close()
+
         try:
             # Non-blocking put - if queue is full, discard frame (keep video real-time)
             self.processing_queues[patient_id].put_nowait({
