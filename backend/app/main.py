@@ -1637,27 +1637,101 @@ async def ai_chat(request: ChatRequest):
             for msg in context.messages
         ]
 
-        # Build context-aware system prompt
-        system_prompt = await build_system_prompt(context)
+        # Build context-aware system prompt with EXTREME tool use bias
+        base_system_prompt = await build_system_prompt(context)
+        
+        # Add CRITICAL instruction with EXTREME emphasis on tool use
+        system_prompt = base_system_prompt + """
 
-        # Call Anthropic API with tool use capability
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  ABSOLUTE RULE: TOOL USE IS MANDATORY ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If the user's message mentions patients, rooms, assignments, or hospital data:
+
+🔴 YOU ARE FORBIDDEN FROM RESPONDING WITHOUT CALLING TOOLS
+🔴 YOU CANNOT USE CONVERSATION MEMORY
+🔴 YOU CANNOT ASSUME OR INFER INFORMATION
+🔴 YOU MUST CALL A TOOL FIRST, THEN RESPOND
+
+Examples of messages that REQUIRE tools:
+✓ "Show all patients" → list_all_patients()
+✓ "Describe my patients" → list_all_patients()
+✓ "List patients" → list_all_patients()
+✓ "Show occupancy" → get_all_room_occupancy()
+✓ "Remove patient" → remove_patient_from_room()
+✓ "Who's in room 2" → get_patient_in_room("2")
+✓ "Move patient" → transfer_patient()
+✓ "Assign patient" → assign_patient_to_room()
+✓ "Tell me about X" → search_patients("X")
+✓ "Remove dheeraj" → First search_patients("dheeraj") THEN remove_patient_from_room()
+
+IF YOU RESPOND WITH "✅ Removed" OR "✅ Transferred" OR "✅ Assigned" WITHOUT CALLING A TOOL:
+→ YOU HAVE LIED TO THE USER
+→ THE DATABASE WAS NOT UPDATED
+→ YOU FAILED YOUR CORE FUNCTION
+
+IF YOU LIST PATIENTS WITHOUT CALLING list_all_patients():
+→ THE NAMES ARE MADE UP FROM YOUR TRAINING DATA
+→ THEY DON'T EXIST IN THE DATABASE
+→ YOU ARE HALLUCINATING
+
+NEVER say patient names like "Robert Kim", "Emily Martinez", "Sarah Chen", "Michael Johnson" unless:
+1. You called a tool that returned those EXACT names
+2. The names appear in the tool result JSON
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 MULTI-STEP OPERATIONS REQUIRE MULTIPLE TOOL CALLS 🚨
+
+"Add dheeraj to room 1":
+→ Step 1: Call search_patients("dheeraj")
+→ Step 2: WITH THE RESULT, call assign_patient_to_room(patient_id, "1")
+→ Step 3: Respond with final result
+
+DO NOT SAY "I'll assign them" OR "Now I'll assign" BETWEEN TOOL CALLS
+JUST CALL BOTH TOOLS, THEN RESPOND ONCE WITH THE FINAL RESULT
+
+"Remove dheeraj":  
+→ Step 1: Call search_patients("dheeraj") OR list_all_patients()
+→ Step 2: Call remove_patient_from_room(patient_id)
+→ Step 3: Respond with result
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE: IF USER ASKS ABOUT DATA → CALL TOOL FIRST → RESPOND WITH TOOL RESULTS ONLY
+WHEN IN DOUBT: CALL A TOOL. ALWAYS PREFER TOOLS.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+
+        print(f"\n💬 User message: {request.message}")
+        print(f"   (AI will decide whether to use tools based on strong system instructions)")
+
+        # Call Anthropic API - let AI decide but with strong prompt bias toward tools
         message = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=2048,
             system=system_prompt,
-            tools=HAVEN_TOOLS,  # Enable tool calling
+            tools=HAVEN_TOOLS,
             messages=anthropic_messages
         )
 
-        # Handle tool use
+        # Handle tool use with MULTI-ROUND support (like auctor-1)
         assistant_response = ""
-        tool_results = []
+        all_tool_results = []
+        max_rounds = 5  # Prevent infinite loops
+        round_num = 0
+        
+        current_message = message
 
-        # Check if Claude wants to use tools
-        if message.stop_reason == "tool_use":
-            # Execute tool calls
-            tool_call_log = []
-            for content_block in message.content:
+        # LOOP until Claude stops calling tools (multi-step operations)
+        while current_message.stop_reason == "tool_use" and round_num < max_rounds:
+            round_num += 1
+            print(f"\n{'='*60}")
+            print(f"🔄 TOOL ROUND {round_num}")
+            print(f"{'='*60}")
+            
+            tool_results = []
+            
+            # Execute all tools in this round
+            for content_block in current_message.content:
                 if content_block.type == "text":
                     assistant_response += content_block.text
                 elif content_block.type == "tool_use":
@@ -1666,68 +1740,58 @@ async def ai_chat(request: ChatRequest):
                     tool_result = await execute_tool(content_block.name, content_block.input)
                     print(f"   Result: {tool_result}")
                     
-                    tool_call_log.append(f"{content_block.name}: {json.dumps(tool_result)}")
-                    
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": content_block.id,
                         "content": json.dumps(tool_result)
                     })
+                    all_tool_results.append(tool_result)
             
-            print(f"\n📊 Tool execution summary:")
-            for log in tool_call_log:
-                print(f"   ✓ {log[:100]}...")
-            
-            # Build fresh system prompt emphasizing tool results are THE TRUTH
-            tool_results_system = f"""You are Haven AI, a clinical decision support assistant.
-
-**CRITICAL: CONVERSATION MEMORY IS DISABLED**
-DO NOT use ANY patient names, room statuses, or information from earlier messages.
-The conversation history is STALE and WRONG.
-
-**ONLY USE THE TOOL RESULTS YOU JUST RECEIVED**
-The tool results below are the ONLY accurate information:
-- If tool result says "Room 1: Patient X", that's who's there NOW
-- If tool result says "Room empty", it IS empty NOW
-- IGNORE all previous mentions of patients like "David Rodriguez", "Robert Kim", etc.
-- ONLY mention patients/rooms that appear in the LATEST tool results
-
-**FORBIDDEN:**
-- ❌ Mentioning ANY patient name not in current tool results
-- ❌ Saying "as we discussed" or "earlier you mentioned"
-- ❌ Using room status from previous queries
-- ❌ Referencing any information older than the current tool call
-
-Base your ENTIRE response on tool results ONLY. If no tool was called, you have NO information."""
-            
-            # Continue conversation with tool results
+            # Add this round to conversation
             anthropic_messages.append({
                 "role": "assistant",
-                "content": message.content
+                "content": current_message.content
             })
             anthropic_messages.append({
                 "role": "user",
                 "content": tool_results
             })
+            
+            # Build system prompt for next round
+            next_system = f"""You are Haven AI. 
 
-            # Get final response with tool results
-            final_message = anthropic_client.messages.create(
+**CRITICAL: You just received tool results. You can:**
+1. Call MORE tools if you need additional information
+2. Respond with final text if you have enough information
+
+**MULTI-STEP OPERATIONS:**
+If user said "Add dheeraj to room 1":
+- Round 1: You called search_patients("dheeraj") → got patient_id
+- Round 2: NOW call assign_patient_to_room(patient_id, "1") ← DO THIS NOW
+- Round 3: Respond with "✅ Assigned"
+
+DO NOT respond with text until the FULL operation is complete.
+Only use information from tool results. Never use conversation memory."""
+
+            # Call Claude again - it can call MORE tools or respond
+            current_message = anthropic_client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=2048,
-                system=tool_results_system,  # Use modified prompt
+                system=next_system,
                 tools=HAVEN_TOOLS,
                 messages=anthropic_messages
             )
-
-            # Extract final text response
-            for content_block in final_message.content:
+            
+            print(f"\n📊 Round {round_num} complete. Stop reason: {current_message.stop_reason}")
+        
+        # Extract final text response
+        if current_message.stop_reason != "tool_use":
+            for content_block in current_message.content:
                 if content_block.type == "text":
                     assistant_response += content_block.text
-        else:
-            # No tool use, just get text response
-            for content_block in message.content:
-                if content_block.type == "text":
-                    assistant_response = content_block.text
+        
+        print(f"\n✅ Tool execution complete after {round_num} rounds")
+        print(f"   Total tools called: {len(all_tool_results)}")
 
         # Add assistant response to context
         context.messages.append({
@@ -1738,28 +1802,26 @@ Base your ENTIRE response on tool results ONLY. If no tool was called, you have 
         # Save updated context
         await write_context(session_id, context)
         
-        # Check if any write operations were performed
+        # Check if any write operations were performed (check ALL rounds)
         invalidate_cache = False
         cache_keys = set()
         
-        print(f"\n📊 Checking {len(tool_results)} tool results for cache invalidation...")
+        print(f"\n📊 Checking {len(all_tool_results)} total tool results for cache invalidation...")
         
-        for tool_result in tool_results:
-            result_data = json.loads(tool_result.get("content", "{}"))
-            print(f"   Tool result: {result_data.get('success', False)} - {list(result_data.keys())[:3]}")
-            
-            if result_data.get("success"):
+        for tool_result in all_tool_results:
+            if isinstance(tool_result, dict) and tool_result.get("success"):
                 invalidate_cache = True
                 cache_keys.update(["rooms", "patients", "patients_room", "assignments"])
-                print(f"   ✅ Success detected - will invalidate cache: rooms, patients, patients_room")
+                print(f"   ✅ Success detected - will invalidate cache")
         
-        cache_keys_list = list(cache_keys) if cache_keys else ["rooms", "patients"]
+        cache_keys_list = list(cache_keys) if cache_keys else []
         
         print(f"\n{'='*60}")
         print(f"📤 Returning to frontend:")
         print(f"   invalidate_cache: {invalidate_cache}")
         print(f"   cache_keys: {cache_keys_list}")
-        print(f"   tool_calls: {len(tool_results)}")
+        print(f"   tool_calls: {len(all_tool_results)}")
+        print(f"   rounds: {round_num}")
         print(f"{'='*60}\n")
         
         return {
@@ -1767,7 +1829,8 @@ Base your ENTIRE response on tool results ONLY. If no tool was called, you have 
             "model": "claude-haiku-4.5",
             "session_id": session_id,
             "session_title": session_title,
-            "tool_calls": len(tool_results) if tool_results else 0,
+            "tool_calls": len(all_tool_results),
+            "tool_rounds": round_num,
             "invalidate_cache": invalidate_cache,
             "cache_keys": cache_keys_list
         }

@@ -94,7 +94,6 @@ AI: 🔧 [Fetches from database]
 
 ### **8. Session Dropdown Selector** 📂
 - Click chat title to see all conversations
-- Auctor-1 style dropdown
 - Shows date/time for each session
 - Active session highlighted
 - Click outside to close
@@ -357,26 +356,6 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 3. See "Relevant to this page" section
 4. Suggestions: "Show room occupancy", etc.
 ```
-
----
-
-## 📊 **FEATURE COMPARISON**
-
-| Feature | Notion | ChatGPT | Auctor-1 | Haven AI |
-|---------|--------|---------|----------|----------|
-| **Tool Use** | ✅ | ✅ | ✅ | ✅ |
-| **Voice Input** | ❌ | ✅ | ❌ | ✅ |
-| **Follow-ups** | ❌ | ✅ | ❌ | ✅ |
-| **Export Chat** | ❌ | ✅ | ❌ | ✅ |
-| **PDF Reports** | ❌ | ❌ | ✅ | ✅ |
-| **Smart Context** | ✅ | ❌ | ✅ | ✅ |
-| **@ Tagging** | ❌ | ❌ | ✅ | ✅ |
-| **Session History** | ✅ | ✅ | ✅ | ✅ |
-| **Keyboard Shortcuts** | ✅ | ✅ | ✅ | ✅ |
-| **Copy Code** | ✅ | ✅ | ❌ | ✅ |
-
-**Haven AI = Best of all worlds!** 🎯
-
 ---
 
 ## 🎨 **VISUAL FEATURES**
@@ -452,13 +431,6 @@ AI:
 - ✅ @ tagging for context
 - ✅ Location awareness
 - ✅ PDF generation
-
-### **vs Auctor-1:**
-- ✅ Simpler implementation (native Anthropic tools)
-- ✅ Voice input
-- ✅ Medical-themed icon
-- ✅ Follow-up questions
-- ⚖️ Similar PDF generation
 
 ---
 
