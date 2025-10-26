@@ -732,17 +732,17 @@ async def search_patients(q: str = ""):
     # Cache key based on query
     cache_key = f"patients_search:{q}"
     
-    # Try cache first
-    cached = patient_cache.get(cache_key)
-    if cached is not None:
-        return cached
+    # Try cache first (skip cache for now to debug - TODO: re-enable)
+    # cached = patient_cache.get(cache_key)
+    # if cached is not None:
+    #     return cached
 
     try:
         if q:
             # Search by name (case-insensitive)
             print(f"🔍 Searching patients with query: '{q}'")
             response = supabase.table("patients") \
-                .select("patient_id,name,age,room_id,enrollment_status") \
+                .select("id,patient_id,name,age,gender,photo_url,condition,enrollment_status") \
                 .ilike("name", f"%{q}%") \
                 .order("name") \
                 .limit(20) \
@@ -751,7 +751,7 @@ async def search_patients(q: str = ""):
             # Return all patients if no search query
             print("📋 Fetching all patients")
             response = supabase.table("patients") \
-                .select("patient_id,name,age,room_id,enrollment_status") \
+                .select("id,patient_id,name,age,gender,photo_url,condition,enrollment_status") \
                 .order("name") \
                 .limit(20) \
                 .execute()
