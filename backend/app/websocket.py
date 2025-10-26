@@ -378,8 +378,8 @@ class ConnectionManager:
                                 }
                                 
                                 # === EMERGENCY CALL SYSTEM ===
-                                # Log nurse call for CRITICAL/WARNING alerts
-                                if analysis["severity"] in ["CRITICAL", "WARNING"]:
+                                # Check if we should make emergency call (throttled to prevent spam)
+                                if fetch_health_agent.should_make_emergency_call(patient_id, analysis["severity"]):
                                     movement_event = cv_metrics.get("movement_event", "unknown")
                                     if movement_event in ["seizure", "fall"]:
                                         emergency_msg = f"{movement_event.upper()} DETECTED! Medical help needed!"
@@ -391,13 +391,12 @@ class ConnectionManager:
                                     print(f"📞 CALLING AVAILABLE NURSE: {emergency_msg}")
                                     
                                     # === VONAGE VOICE CALL ===
-                                    # Make actual phone call for CRITICAL alerts
-                                    if analysis["severity"] == "CRITICAL":
-                                        voice_service.make_emergency_call(
-                                            patient_id=patient_id,
-                                            event_type=movement_event,
-                                            details=reasoning_short
-                                        )
+                                    # Make actual phone call for CRITICAL alerts (only once per cooldown period)
+                                    voice_service.make_emergency_call(
+                                        patient_id=patient_id,
+                                        event_type=movement_event,
+                                        details=reasoning_short
+                                    )
                                     
                                     # Send call notification FIRST (before other logs)
                                     call_message = {

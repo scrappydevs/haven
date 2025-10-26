@@ -1541,7 +1541,35 @@ async def get_health_agent_history():
     }
 
 
-# === VOICE CALL TEST ENDPOINT ===
+# === FETCH.AI AGENT TEST ENDPOINTS ===
+
+class AnalyzePatientRequest(BaseModel):
+    patient_id: str
+    vitals: Dict
+    cv_metrics: Dict
+
+@app.post("/health-agent/analyze")
+async def analyze_patient_direct(request: AnalyzePatientRequest):
+    """Test direct analysis via Fetch.ai agent"""
+    try:
+        analysis = await fetch_health_agent.analyze_patient(
+            request.patient_id,
+            request.vitals,
+            request.cv_metrics
+        )
+        return {
+            "success": True,
+            "analysis": analysis,
+            "patient_id": request.patient_id
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "patient_id": request.patient_id
+        }
+
+
 class TestCallRequest(BaseModel):
     patient_id: str = "P-TEST-001"
     event_type: str = "seizure"

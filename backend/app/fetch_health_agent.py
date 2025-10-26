@@ -1,6 +1,6 @@
 """
 Fetch.ai Health Agent Integration for Haven Backend
-This integrates the actual Fetch.ai uAgent with the Haven CV processing pipeline
+Sends patient data to Agentverse agent for analysis
 """
 import asyncio
 from datetime import datetime
@@ -10,6 +10,7 @@ import json
 # Import Fetch.ai uAgents framework
 try:
     from uagents import Agent, Context, Model
+    from uagents.query import query
     UAGENTS_AVAILABLE = True
 except ImportError:
     UAGENTS_AVAILABLE = False
@@ -18,17 +19,14 @@ except ImportError:
 # Always import BaseModel from pydantic
 from pydantic import BaseModel
 
-# Import Claude for LLM reasoning
+# Import secrets
 try:
-    import anthropic
     from app.infisical_config import get_secret
-    ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")
-    claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
-    CLAUDE_AVAILABLE = claude_client is not None
+    AGENTVERSE_AGENT_ADDRESS = get_secret("AGENTVERSE_HEALTH_AGENT_ADDRESS") or "agent1q2w5ktcdjujflcq639lp6kj89zupd28yr4dla0z4qampxjf0txwtqjq3ka0"
 except Exception as e:
-    claude_client = None
-    CLAUDE_AVAILABLE = False
-    print(f"⚠️  Claude not available: {e}")
+    # Fallback to your haven_nurse agent address from Agentverse logs
+    AGENTVERSE_AGENT_ADDRESS = "agent1q2w5ktcdjujflcq639lp6kj89zupd28yr4dla0z4qampxjf0txwtqjq3ka0"
+    print(f"⚠️  Using haven_nurse agent address: {e}")
 
 
 # ==================== DATA MODELS ====================
@@ -37,7 +35,7 @@ class PatientUpdate(Model if UAGENTS_AVAILABLE else BaseModel):
     """Patient health update from Haven CV system"""
     patient_id: str
     vitals: dict  # HR, temp, BP, SpO2
-    cv_metrics: dict  # distress, movement, posture
+    cv_metrics: dict  # movement event, respiratory, etc
     timestamp: str
 
 
@@ -55,51 +53,28 @@ class HealthAnalysis(BaseModel):
 class FetchHealthAgent:
     """
     Fetch.ai-based Health Monitoring Agent
-    Uses uAgents framework + Claude for patient safety monitoring
+    Communicates with Agentverse agent for patient analysis
     """
     
     def __init__(self):
-        self.enabled = UAGENTS_AVAILABLE and CLAUDE_AVAILABLE
-        self.agent = None
+        self.enabled = UAGENTS_AVAILABLE
+        self.agentverse_address = AGENTVERSE_AGENT_ADDRESS
         self.patients: Dict[str, Dict] = {}
         self.alerts: List[Dict] = []
+        self.last_agentverse_call: Dict[str, float] = {}  # {patient_id: timestamp}
+        self.last_emergency_call: Dict[str, float] = {}  # {patient_id: timestamp} for voice calls
+        self.agentverse_cooldown = 30.0  # Only call Agentverse every 30 seconds per patient
+        self.emergency_call_cooldown = 60.0  # Only make ONE voice call per minute per patient
         
-        if UAGENTS_AVAILABLE:
-            # Create Fetch.ai uAgent
-            self.agent = Agent(
-                name="haven_health_backend",
-                seed="haven_backend_health_monitor_2024",
-                port=8001,  # Different port from main app
-                endpoint=["http://localhost:8001/submit"]
-            )
-            
-            # Register message handler for patient updates
-            @self.agent.on_message(model=PatientUpdate)
-            async def handle_patient_update(ctx: Context, sender: str, msg: PatientUpdate):
-                """Handle incoming patient updates"""
-                ctx.logger.info(f"📊 Received update for {msg.patient_id}")
-                # Store in agent state
-                self.patients[msg.patient_id] = {
-                    "vitals": msg.vitals,
-                    "cv_metrics": msg.cv_metrics,
-                    "timestamp": msg.timestamp,
-                    "last_sender": sender
-                }
-            
-            print(f"✅ Fetch.ai Health Agent created")
-            print(f"   Address: {self.agent.address}")
-            print(f"   Name: {self.agent.name}")
-        else:
-            print("⚠️  Fetch.ai uAgents not available - using fallback")
-        
-        status = "Enabled" if self.enabled else "Disabled"
-        print(f"🏥 Fetch.ai Health Agent: {status}")
-        print(f"   - uAgents: {'✅' if UAGENTS_AVAILABLE else '❌'}")
-        print(f"   - Claude: {'✅' if CLAUDE_AVAILABLE else '❌'}")
+        print(f"🤖 Fetch.ai Health Agent initialized")
+        print(f"   Agentverse Agent: {self.agentverse_address}")
+        print(f"   Throttle: 1 call per patient every {self.agentverse_cooldown}s")
+        print(f"   Emergency Call: 1 per {self.emergency_call_cooldown:.0f}s per patient")
+        print(f"   Status: {'✅ Ready' if self.enabled else '❌ Disabled'}")
     
     async def analyze_patient(self, patient_id: str, vitals: Dict, cv_metrics: Dict) -> Dict:
         """
-        Analyze patient health using Fetch.ai agent + Claude reasoning
+        Send patient data to Agentverse agent for analysis
         
         Args:
             patient_id: Patient identifier
@@ -109,27 +84,45 @@ class FetchHealthAgent:
         Returns:
             {severity, concerns, recommended_action, reasoning, confidence}
         """
-        # Concise logging for production (NEW FOCUS: Movement Events)
+        # Concise logging for production
         hr = vitals.get('heart_rate')
         movement_event = cv_metrics.get('movement_event', 'normal')
         movement_conf = cv_metrics.get('movement_confidence', 0.0)
         print(f"🏥 Agent analyzing {patient_id}: HR={hr}, Movement={movement_event} ({movement_conf:.0%})")
         
-        # Store patient data in agent state
+        # Store patient data locally
         self.patients[patient_id] = {
             "vitals": vitals,
             "cv_metrics": cv_metrics,
             "timestamp": datetime.utcnow().isoformat()
         }
         
-        # Use Claude for intelligent analysis
-        if CLAUDE_AVAILABLE:
+        # Send to Agentverse agent (with throttling to prevent overwhelming)
+        import time
+        current_time = time.time()
+        last_call = self.last_agentverse_call.get(patient_id, 0)
+        time_since_last = current_time - last_call
+        
+        # Only call Agentverse if enough time has passed (even for emergencies to prevent overwhelming)
+        movement_event = cv_metrics.get('movement_event', 'normal').lower()
+        is_emergency = movement_event in ['seizure', 'fall', 'extreme_agitation']
+        
+        # For emergencies, reduce cooldown to 15 seconds instead of bypassing entirely
+        cooldown = 15.0 if is_emergency else self.agentverse_cooldown
+        should_call_agentverse = time_since_last >= cooldown
+        
+        if self.enabled and should_call_agentverse:
             try:
-                analysis = await self._analyze_with_claude(patient_id, vitals, cv_metrics)
+                self.last_agentverse_call[patient_id] = current_time
+                analysis = await self._query_agentverse_agent(patient_id, vitals, cv_metrics)
             except Exception as e:
-                print(f"⚠️  Claude error: {str(e)[:50]}...")
+                print(f"⚠️  Agentverse query failed: {str(e)[:50]}... Using fallback")
                 analysis = self._fallback_analysis(vitals, cv_metrics)
         else:
+            # Use fast local fallback for routine checks
+            if not should_call_agentverse and self.enabled:
+                cooldown_used = 15.0 if is_emergency else self.agentverse_cooldown
+                print(f"⏱️  Throttled (last call {time_since_last:.1f}s ago, need {cooldown_used:.0f}s) - using fallback")
             analysis = self._fallback_analysis(vitals, cv_metrics)
         
         # Store alert if concerning
@@ -151,165 +144,195 @@ class FetchHealthAgent:
         
         return analysis
     
-    async def _analyze_with_claude(self, patient_id: str, vitals: Dict, cv_metrics: Dict) -> Dict:
-        """Use Claude (LLM reasoning engine) to analyze patient health (UPDATED FOR MOVEMENT EMERGENCIES)"""
+    async def _query_agentverse_agent(self, patient_id: str, vitals: Dict, cv_metrics: Dict) -> Dict:
+        """Query the Agentverse agent for analysis"""
         
-        # Extract movement emergency data
-        movement_event = cv_metrics.get('movement_event', 'normal')
-        movement_conf = cv_metrics.get('movement_confidence', 0.0)
-        movement_details = cv_metrics.get('movement_details', '')
-        calib_status = cv_metrics.get('calibration_status', {})
+        # Prepare message
+        patient_update = PatientUpdate(
+            patient_id=patient_id,
+            vitals=vitals,
+            cv_metrics=cv_metrics,
+            timestamp=datetime.utcnow().isoformat()
+        )
         
-        prompt = f"""You are a clinical AI monitoring CAR-T therapy patients for MOVEMENT EMERGENCIES (falls, seizures, agitation). Analyze this patient:
-
-PATIENT: {patient_id}
-
-VITALS:
-- Heart Rate: {vitals.get('heart_rate', 'N/A')} bpm
-- Temperature: {vitals.get('temperature', 'N/A')}°C  
-- Blood Pressure: {vitals.get('blood_pressure', 'N/A')}
-- SpO2: {vitals.get('spo2', 'N/A')}%
-- Respiratory Rate: {cv_metrics.get('respiratory_rate', 'N/A')}/min
-
-MOVEMENT EMERGENCY DETECTION:
-- Event: {movement_event.upper()}
-- Confidence: {movement_conf:.0%}
-- Details: {movement_details}
-- Baseline Calibration: {"✓ Complete" if calib_status.get('calibrated') else f"⏳ {calib_status.get('progress', 0)}%"}
-
-MONITORING FOCUS:
-- FALLS: Rapid downward movement, loss of upright posture, injury risk
-- SEIZURES: Rhythmic tremor 3-6 Hz, convulsive movements, neurological emergency
-- EXTREME AGITATION: High movement levels, distress, behavioral emergency
-
-Provide:
-1. SEVERITY: NORMAL, WARNING, or CRITICAL
-   - CRITICAL for falls/seizures (immediate response)
-   - WARNING for extreme agitation
-   - NORMAL if movement event is "normal"
-2. CONCERNS: Top 2-3 specific concerns (if any)
-3. ACTION: Array of 3-5 immediate next steps (concise, actionable)
-4. REASONING: Brief clinical reasoning (max 150 chars)
-5. CONFIDENCE: 0.0-1.0
-
-Format as JSON. Keep responses SHORT for real-time UI display."""
-
+        print(f"📤 Sending to Agentverse agent: {self.agentverse_address[:20]}...")
+        
+        # Query the agent with longer timeout for Claude processing
         try:
-            response = await asyncio.to_thread(
-                claude_client.messages.create,
-                model="claude-sonnet-4-20250514",
-                max_tokens=500,
-                temperature=0.3,
-                messages=[{"role": "user", "content": prompt}]
+            response = await query(
+                destination=self.agentverse_address,
+                message=patient_update,
+                timeout=30.0  # 30 second timeout for Claude
             )
+            print(f"📥 ✅ Response from Agentverse agent")
+        except Exception as e:
+            print(f"📥 ❌ Agentverse timeout: {str(e)[:50]}")
+            raise
+        
+        # Parse response (MovementAnalysis from Agentverse)
+        if response and hasattr(response, 'decode_payload'):
+            result = response.decode_payload()
             
-            # Parse Claude's response
-            content = response.content[0].text
-            
-            # Extract JSON from response
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                json_str = content.split("```")[1].split("```")[0].strip()
+            # Convert action list to string
+            actions = result.get("recommended_action", [])
+            if isinstance(actions, list):
+                action_str = "\n".join([f"• {a}" for a in actions[:5]])
             else:
-                json_str = content.strip()
-            
-            result = json.loads(json_str)
+                action_str = str(actions)
             
             return {
-                "severity": result.get("SEVERITY", "NORMAL").upper(),
-                "concerns": result.get("CONCERNS", []),
-                "recommended_action": result.get("ACTION", "Continue monitoring"),
-                "reasoning": result.get("REASONING", "Analysis complete"),
-                "confidence": float(result.get("CONFIDENCE", 0.8))
+                "severity": result.get("severity", "NORMAL"),
+                "concerns": result.get("concerns", []),
+                "recommended_action": action_str,
+                "reasoning": result.get("reasoning", "Analysis from Agentverse agent"),
+                "confidence": result.get("confidence", 0.8)
             }
-            
-        except Exception as e:
-            print(f"⚠️  Claude parsing error: {e}")
-            return self._fallback_analysis(vitals, cv_metrics)
+        else:
+            raise Exception("Invalid response from Agentverse agent")
     
     def _fallback_analysis(self, vitals: Dict, cv_metrics: Dict) -> Dict:
-        """Rule-based fallback when Claude is unavailable (UPDATED FOR MOVEMENT EMERGENCIES)"""
-        hr = vitals.get("heart_rate", 75)
-        temp = vitals.get("temperature", 37.0)
-        spo2 = vitals.get("spo2", 98)
-        
-        # NEW: Movement emergency data (PRIMARY)
-        movement_event = cv_metrics.get("movement_event", "normal")
-        movement_conf = cv_metrics.get("movement_confidence", 0.0)
-        movement_details = cv_metrics.get("movement_details", "")
-        
-        severity = "NORMAL"
+        """
+        Fallback rule-based analysis (when Agentverse agent unavailable)
+        FOCUS: Movement emergencies (falls, seizures, agitation)
+        """
         concerns = []
+        severity = "NORMAL"
+        actions = []
+        reasoning = ""
+        confidence = 0.7
         
-        # PRIORITY 1: Movement Emergencies (most critical)
-        if movement_event == "fall" and movement_conf > 0.6:
+        # PRIMARY: Movement emergency detection
+        movement_event = cv_metrics.get('movement_event', 'normal').lower()
+        movement_conf = cv_metrics.get('movement_confidence', 0.0)
+        
+        if movement_event == 'fall' and movement_conf > 0.5:
             severity = "CRITICAL"
-            concerns.append("fall_detected")
-            action = ["Immediate bedside check", "Assess for injury", "Vital signs", "Call physician if injured"]
-            reasoning = f"FALL: {movement_details[:100]}"
-        
-        elif movement_event == "seizure" and movement_conf > 0.6:
+            concerns.append("FALL DETECTED - Injury risk")
+            actions.extend([
+                "Dispatch medical staff immediately",
+                "Assess for head injury or fractures",
+                "Monitor consciousness and vitals",
+                "Document fall circumstances"
+            ])
+            reasoning = f"Fall detected with {movement_conf:.0%} confidence - immediate response required"
+            confidence = movement_conf
+            
+        elif movement_event == 'seizure' and movement_conf > 0.5:
             severity = "CRITICAL"
-            concerns.append("seizure_detected")
-            action = ["Protect patient", "Clear area", "Time seizure", "Call neurology", "Emergency protocol"]
-            reasoning = f"SEIZURE: {movement_details[:100]}"
-        
-        elif movement_event == "extreme_agitation" and movement_conf > 0.6:
+            concerns.append("SEIZURE DETECTED - Neurological emergency")
+            concerns.append(f"High-confidence detection ({movement_conf:.0%})")
+            actions.extend([
+                "🚨 CALL MEDICAL STAFF IMMEDIATELY",
+                "Activate emergency response protocol",
+                "Ensure patient safety (turn to side, clear area)",
+                "Time seizure duration",
+                "Prepare emergency medication if prolonged"
+            ])
+            reasoning = f"⚡ SEIZURE: {movement_conf:.0%} confidence - EMERGENCY"
+            confidence = movement_conf
+            
+        elif movement_event == 'extreme_agitation' and movement_conf > 0.5:
             severity = "WARNING"
-            concerns.append("extreme_agitation")
-            action = ["Bedside assessment", "Check comfort", "PRN medication if needed", "Monitor closely"]
-            reasoning = f"AGITATION: {movement_details[:100]}"
+            concerns.append("EXTREME AGITATION - Behavioral emergency")
+            actions.extend([
+                "Assess patient for distress or pain",
+                "Consider anxiolytic medication",
+                "Increase monitoring frequency",
+                "Ensure environmental safety"
+            ])
+            reasoning = f"Extreme agitation detected with {movement_conf:.0%} confidence - assess for underlying cause"
+            confidence = movement_conf
         
-        else:
-            # PRIORITY 2: Vital signs (if no movement emergency)
-            if hr > 120 or hr < 50:
+        # SECONDARY: Vital sign checks (only if no movement emergency)
+        if severity == "NORMAL":
+            hr = vitals.get('heart_rate', 75)
+            rr = cv_metrics.get('respiratory_rate', 14)
+            
+            if hr > 120:
                 severity = "WARNING"
-                concerns.append("abnormal_heart_rate")
-            
-            if temp > 38.5:
+                concerns.append(f"Tachycardia (HR: {hr})")
+                actions.append("Check for fever, pain, or anxiety")
+                reasoning = f"Elevated heart rate ({hr} bpm) requires assessment"
+            elif hr < 50:
                 severity = "WARNING"
-                concerns.append("fever")
+                concerns.append(f"Bradycardia (HR: {hr})")
+                actions.append("Assess for medication effects or cardiac issues")
+                reasoning = f"Low heart rate ({hr} bpm) requires evaluation"
             
-            if spo2 < 90:
-                severity = "CRITICAL"
-                concerns.append("hypoxia")
-            
-            action = ["Call physician immediately", "Activate emergency protocol"] if severity == "CRITICAL" else \
-                    ["Bedside assessment", "Increase monitoring"] if severity == "WARNING" else \
-                    ["Continue routine monitoring"]
-            
-            reasoning = f"HR: {hr}bpm, SpO2: {spo2}%, Movement: {movement_event}"
-            if concerns:
-                reasoning += f". {', '.join(concerns[:2])}"
+            if rr > 24:
+                if severity == "NORMAL":
+                    severity = "WARNING"
+                concerns.append(f"Tachypnea (RR: {rr})")
+                actions.append("Assess oxygen saturation and lung sounds")
+                reasoning += f" | Elevated respiratory rate ({rr}/min)"
         
-        # Truncate reasoning if too long
-        if len(reasoning) > 150:
-            reasoning = reasoning[:147] + "..."
+        # Default actions if none set
+        if not actions:
+            actions = ["Continue routine monitoring", "Document baseline metrics", "No intervention needed"]
+            reasoning = "All metrics within normal parameters"
         
         return {
             "severity": severity,
             "concerns": concerns,
-            "recommended_action": action,
-            "reasoning": reasoning,
-            "confidence": 0.75 if movement_event != "normal" else 0.7
+            "recommended_action": "\n".join([f"• {a}" for a in actions[:5]]),
+            "reasoning": reasoning[:150],  # Truncate for UI
+            "confidence": confidence
         }
+    
+    # ==================== EMERGENCY CALL MANAGEMENT ====================
+    
+    def should_make_emergency_call(self, patient_id: str, severity: str) -> bool:
+        """Check if we should make an emergency voice call (prevents spam)"""
+        import time
+        
+        # Only call for CRITICAL events
+        if severity != "CRITICAL":
+            return False
+        
+        # Check cooldown
+        current_time = time.time()
+        last_call = self.last_emergency_call.get(patient_id, 0)
+        time_since_last = current_time - last_call
+        
+        if time_since_last >= self.emergency_call_cooldown:
+            self.last_emergency_call[patient_id] = current_time
+            return True
+        else:
+            print(f"📞 Emergency call suppressed (last call {time_since_last:.0f}s ago, need {self.emergency_call_cooldown:.0f}s)")
+            return False
+    
+    # ==================== STATUS METHODS ====================
     
     def get_status(self) -> Dict:
         """Get agent status"""
         return {
             "enabled": self.enabled,
-            "type": "FETCH_AI_HEALTH_AGENT",
-            "uagents_available": UAGENTS_AVAILABLE,
-            "claude_available": CLAUDE_AVAILABLE,
+            "agentverse_address": self.agentverse_address,
             "patients_monitored": len(self.patients),
-            "active_alerts": len([a for a in self.alerts if a.get("severity") in ["CRITICAL", "WARNING"]]),
-            "agent_address": self.agent.address if self.agent else None
+            "active_alerts": len([a for a in self.alerts if a.get("severity") in ["CRITICAL", "WARNING"]])
         }
+    
+    def get_all_patients(self) -> List[Dict]:
+        """Get all monitored patients"""
+        return [
+            {"patient_id": pid, **data}
+            for pid, data in self.patients.items()
+        ]
+    
+    def get_patient_status(self, patient_id: str) -> Optional[Dict]:
+        """Get specific patient status"""
+        return self.patients.get(patient_id)
+    
+    def get_active_alerts(self) -> List[Dict]:
+        """Get active alerts"""
+        return [a for a in self.alerts if a.get("severity") in ["CRITICAL", "WARNING"]]
+    
+    def get_alert_history(self, limit: int = 10) -> List[Dict]:
+        """Get recent alert history"""
+        return self.alerts[-limit:]
 
 
-# ==================== GLOBAL INSTANCE ====================
+# ==================== SINGLETON INSTANCE ====================
 
-# Create singleton instance
+# Create global instance for backend integration
 fetch_health_agent = FetchHealthAgent()
-
