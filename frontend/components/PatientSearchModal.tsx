@@ -87,7 +87,10 @@ export default function PatientSearchModal({ isOpen, onClose, onSelect, activeSt
   const availablePatients = patients.filter(p => {
     if (mode === 'assign-stream') {
       // Dashboard mode: Show only patients who ARE streaming but NOT yet assigned to a box
-      return activeStreams.includes(p.patient_id) && !assignedPatients.includes(p.patient_id);
+      const isStreaming = activeStreams.includes(p.patient_id);
+      const isAssigned = assignedPatients.includes(p.patient_id);
+      console.log(`🔍 Patient ${p.patient_id}: streaming=${isStreaming}, assigned=${isAssigned}, activeStreams=`, activeStreams);
+      return isStreaming && !isAssigned;
     } else {
       // Stream page mode: Show only patients who are NOT currently streaming
       return !activeStreams.includes(p.patient_id);
