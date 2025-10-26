@@ -786,7 +786,7 @@ export default function DashboardPage() {
             {/* Right Column - Handoff Forms & Activity Feed (4 columns) */}
             <div className="col-span-4">
               {/* Handoff Forms - Compact List */}
-              <div className="mb-6 h-[600px]">
+              <div className="mb-6 h-[350px]">
                 <HandoffFormsList limit={10} refreshInterval={30000} />
               </div>
 

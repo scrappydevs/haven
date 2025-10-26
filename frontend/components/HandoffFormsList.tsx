@@ -103,83 +103,70 @@ export default function HandoffFormsList({ limit = 10, refreshInterval = 30000 }
 
   return (
     <>
-      <div className="bg-white border-2 border-neutral-950 h-full flex flex-col">
+      <div className="bg-surface border border-neutral-200 h-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b-2 border-neutral-950 bg-neutral-50">
-          <h2 className="text-lg font-medium uppercase tracking-wider text-neutral-950">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-950">
             Handoff Forms
           </h2>
-          <div className="px-3 py-1 bg-neutral-950 text-white text-xs font-bold">
-            {forms.length}
+          <div className="px-2 py-0.5 bg-accent-terra/10 border border-accent-terra">
+            <span className="text-accent-terra text-[10px] font-medium">{forms.length}</span>
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto px-4 py-3">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin h-6 w-6 border-2 border-neutral-950 border-t-transparent rounded-full"></div>
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin h-4 w-4 border-2 border-neutral-300 border-t-neutral-950 rounded-full"></div>
             </div>
           ) : forms.length === 0 ? (
-            <div className="text-center py-12 border-2 border-dashed border-neutral-300">
-              <p className="text-neutral-500 text-sm font-light">No handoff forms yet</p>
-              <p className="text-neutral-400 text-xs mt-1">Forms will appear here when alerts are generated</p>
+            <div className="text-center py-8 border border-neutral-200 bg-neutral-50">
+              <p className="text-neutral-500 text-xs font-light">No handoff forms yet</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <AnimatePresence>
                 {forms.map((form, idx) => (
                   <motion.button
                     key={form.id}
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ delay: idx * 0.03 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ delay: idx * 0.02 }}
                     onClick={() => handleFormClick(form.id)}
                     className={`w-full text-left border-l-4 ${getSeverityColor(
                       form.content.severity_level
-                    )} border border-neutral-200 p-4 hover:shadow-md transition-all group`}
+                    )} border border-neutral-200 p-3 hover:border-neutral-950 transition-all`}
                   >
-                    {/* Top Row: Form Number + Time */}
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-mono text-neutral-600 font-medium">
+                    {/* Single Row: Form Number + Time */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-mono text-neutral-500 tracking-tight">
                         {form.form_number}
                       </span>
-                      <span className="text-xs text-neutral-500">
+                      <span className="text-[10px] text-neutral-400">
                         {getTimeAgo(form.content.generated_at)}
                       </span>
                     </div>
 
-                    {/* Patient Name */}
-                    <p className="text-sm font-medium text-neutral-950 mb-1">
-                      {form.content.patient_info.name || form.content.patient_info.patient_id}
-                    </p>
-
-                    {/* Primary Concern - Truncated */}
-                    <p className="text-xs text-neutral-700 mb-2 line-clamp-2">
-                      {form.content.primary_concern}
-                    </p>
-
-                    {/* Bottom Row: Severity Badge + Alerts Count */}
-                    <div className="flex items-center justify-between">
+                    {/* Patient Name + Severity Badge */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-xs font-medium text-neutral-950 truncate flex-1">
+                        {form.content.patient_info.name || form.content.patient_info.patient_id}
+                      </p>
                       <span
-                        className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getSeverityBadge(
+                        className={`px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ml-2 ${getSeverityBadge(
                           form.content.severity_level
                         )}`}
                       >
                         {form.content.severity_level}
                       </span>
-                      <span className="text-xs text-neutral-500">
-                        {form.alert_ids.length} alert{form.alert_ids.length !== 1 ? 's' : ''}
-                      </span>
                     </div>
 
-                    {/* Hover indicator */}
-                    <div className="mt-2 pt-2 border-t border-neutral-200 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="text-xs text-neutral-600 font-medium">
-                        Click to view details →
-                      </span>
-                    </div>
+                    {/* Primary Concern - Single Line */}
+                    <p className="text-[11px] text-neutral-600 font-light truncate">
+                      {form.content.primary_concern}
+                    </p>
                   </motion.button>
                 ))}
               </AnimatePresence>
