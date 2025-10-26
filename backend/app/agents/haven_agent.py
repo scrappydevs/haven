@@ -90,6 +90,8 @@ RULES:
             if self._should_end_conversation():
                 logger.info(f"Haven conversation complete for patient {self.patient_id}")
                 self.conversation_complete = True
+                # Save alert to database asynchronously
+                asyncio.create_task(self._save_alert())
 
     def _extract_info_from_response(self, patient_response: str):
         """
@@ -150,6 +152,67 @@ RULES:
                 for msg in self.conversation_transcript
             ])
         }
+
+    async def _save_alert(self):
+        """
+        Save alert to database and notify dashboard when conversation completes.
+        """
+        try:
+            # Import here to avoid circular imports
+            import sys
+            import os
+            sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+            from supabase_client import supabase
+
+            summary = self.get_conversation_summary()
+
+            # Determine urgency level
+            urgency = "medium"  # Default
+            if self.extracted_info.get("pain_level") and self.extracted_info["pain_level"] >= 7:
+                urgency = "high"
+
+            # Create alert record
+            alert_data = {
+                "patient_id": self.patient_id,
+                "type": "patient_concern",
+                "title": f"Patient reported: {self.extracted_info.get('symptom_description', 'concern')}",
+                "description": f"{self.patient_name or 'Patient'} reported {self.extracted_info.get('symptom_description', 'a concern')}",
+                "urgency": urgency,
+                "status": "active",
+                "metadata": {
+                    "source": "haven_ai",
+                    "session_id": self.session_id,
+                    "conversation_summary": summary,
+                    "extracted_info": self.extracted_info,
+                    "transcript": self.conversation_transcript
+                },
+                "created_at": datetime.now().isoformat()
+            }
+
+            if supabase:
+                result = supabase.table("alerts").insert(alert_data).execute()
+                alert_id = result.data[0]["id"] if result.data else None
+                logger.info(f"✅ Alert saved: {alert_id} for patient {self.patient_id}")
+
+                # Notify dashboard via WebSocket
+                try:
+                    from websocket import manager as websocket_manager
+                    await websocket_manager.broadcast_frame({
+                        "type": "new_alert",
+                        "patient_id": self.patient_id,
+                        "alert_id": alert_id,
+                        "urgency": urgency,
+                        "title": alert_data["title"],
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    logger.info(f"📢 Dashboard notified of new alert for patient {self.patient_id}")
+                except Exception as e:
+                    logger.error(f"Error notifying dashboard: {e}")
+            else:
+                logger.warning("Supabase not available, alert not saved")
+
+        except Exception as e:
+            logger.error(f"Error saving alert: {e}", exc_info=True)
 
 
 # LiveKit Agent Entry Point
