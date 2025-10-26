@@ -160,18 +160,25 @@ def _analyze_patient(patient_data: Dict) -> Dict:
         if severity == "NORMAL":
             severity = "WARNING"
     
-    # Recommended actions based on severity
+    # Recommended actions based on severity (CONCISE)
     if severity == "CRITICAL":
-        action = "🚨 IMMEDIATE: Call physician, activate emergency protocol, prepare intervention"
+        action = ["Call physician immediately", "Activate emergency protocol", "Prepare intervention"]
     elif severity == "WARNING":
-        action = "⚠️ URGENT: Assess patient in person, increase monitoring frequency, prepare for escalation"
+        action = ["Bedside patient assessment", "Increase monitoring frequency", "Check lab values"]
     else:
-        action = "✅ ROUTINE: Continue standard monitoring protocol"
+        action = ["Continue standard monitoring"]
     
-    # Build reasoning
-    reasoning = f"HR: {hr} bpm, Temp: {temp}°C, BP: {bp}, SpO2: {spo2}%, Distress: {distress}/10"
+    # Build reasoning (CONCISE - limit to 150 chars for UI)
+    reasoning = f"HR: {hr}bpm, Temp: {temp}°C, SpO2: {spo2}%, Distress: {distress}/10"
     if concerns:
-        reasoning += f". Concerns: {', '.join(concerns)}"
+        concern_str = ", ".join(concerns[:3])  # Max 3 concerns
+        reasoning += f". {concern_str}"
+        if len(concerns) > 3:
+            reasoning += f" +{len(concerns)-3} more"
+    
+    # Truncate reasoning if too long
+    if len(reasoning) > 150:
+        reasoning = reasoning[:147] + "..."
     
     confidence = 0.85 if concerns else 0.95
     

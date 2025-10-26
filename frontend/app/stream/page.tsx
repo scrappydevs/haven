@@ -777,8 +777,11 @@ export default function StreamPage() {
             setHavenTranscript('🤔 Haven AI is processing your response...');
           } else if (state === 'speaking') {
             setHavenTranscript('🗣️ Haven AI is speaking...');
-          } else if (state === 'idle') {
-            setHavenTranscript('Haven AI connected. You can start speaking.');
+          } else if (state === 'initializing') {
+            setHavenTranscript('Haven AI is initializing...');
+          } else {
+            // Handle any other states (disconnected, etc)
+            setHavenTranscript('Haven AI connected.');
           }
         }, 100);
 

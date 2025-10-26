@@ -222,11 +222,20 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
     ws.onmessage = (event) => {
       let data;
       try {
+        // Handle binary data (skip it)
+        if (typeof event.data !== 'string') {
+          return;
+        }
+        
+        // Handle malformed JSON (skip corrupted frames)
+        if (!event.data.startsWith('{') && !event.data.startsWith('[')) {
+          return;
+        }
+        
         data = JSON.parse(event.data);
       } catch (e) {
-        console.error('❌ JSON parse error:', e);
-        console.error('📦 Raw data (first 200 chars):', typeof event.data === 'string' ? event.data.substring(0, 200) : event.data);
-        return; // Skip this message
+        // Silently skip corrupted frames - don't spam console
+        return;
       }
 
       // Filter by patient_id if provided, otherwise accept all messages
@@ -303,15 +312,28 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
             onAgentMessage(patient.id, data);
           }
         }
+
+        // Handle terminal logs from Fetch.ai Health Agent
+        if (data.type === 'terminal_log') {
+          console.log(`🤖 Fetch.ai Health Agent log for ${data.patient_id}:`, data.message);
+          if (onAgentMessage) {
+            onAgentMessage(patient.id, data);
+          }
+        }
       }
     };
 
     ws.onerror = (error) => {
-      console.error('❌ WebSocket error:', error);
+      // WebSocket errors are usually network issues - log minimally
+      console.warn('⚠️  WebSocket connection issue (will reconnect)');
     };
 
-    ws.onclose = () => {
-      console.log('❌ Disconnected from live stream');
+    ws.onclose = (event) => {
+      if (event.wasClean) {
+        console.log('✅ Stream closed cleanly');
+      } else {
+        console.warn('⚠️  Stream disconnected (code:', event.code, ')');
+      }
     };
 
     return () => {

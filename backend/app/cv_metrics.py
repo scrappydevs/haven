@@ -283,8 +283,7 @@ class RespiratoryRateMonitor:
             # Convert to breaths/min
             respiratory_rate = int(peak_freq * 60)
 
-            # Diagnostic logging
-            print(f"🫁 RR Debug: nose_y={nose_y:.4f}, signal_std={signal_std:.6f}, peak_freq={peak_freq:.3f}Hz, raw_rr={respiratory_rate}, peak_mag={peak_magnitude:.2f}")
+            # Removed debug logging for production
 
             # Require minimum signal strength to avoid noise-based detection
             # Lower threshold since we're sampling slowly (3 sec intervals)

@@ -74,7 +74,8 @@ if __name__ == "__main__":
     backend_dir = Path(__file__).parent
     import sys
     sys.path.insert(0, str(backend_dir))
-    
+
     # Use reload=False to avoid multiprocessing issues with mediapipe
     # For auto-reload during development, use: uvicorn app.main:app --reload
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
+    # Use ws="websockets" to fix WebSocket handshake issues with browsers
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False, ws="websockets")
