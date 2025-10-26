@@ -1482,6 +1482,32 @@ async def trigger_agent_analysis(patient_id: str):
 @app.websocket("/ws/stream/{patient_id}")
 async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""
+    print(f"\n{'='*60}")
+    print(f"🎯 WEBSOCKET HANDLER CALLED for patient: {patient_id}")
+    print(f"   Client: {websocket.client}")
+    print(f"   Headers: {dict(websocket.headers)}")
+    print(f"   URL: {websocket.url}")
+
+    # Check Origin header for CORS
+    origin = websocket.headers.get("origin", "")
+    print(f"   Origin: {origin}")
+
+    # List of allowed origins (same as CORS middleware)
+    allowed_origins = [
+        "https://use-haven.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+    ]
+
+    if origin and origin not in allowed_origins:
+        print(f"❌ WebSocket rejected: Origin {origin} not in allowed list")
+        print(f"{'='*60}\n")
+        await websocket.close(code=403, reason="Origin not allowed")
+        return
+
+    print(f"✅ Origin check passed")
+    print(f"{'='*60}\n")
 
     supabase_warning = None
     print(f"🎯 Incoming WebSocket connection for patient {patient_id}")
