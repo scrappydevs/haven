@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import PatientSearchModal from '@/components/PatientSearchModal';
 import AnalysisModeSelector, { AnalysisMode } from '@/components/AnalysisModeSelector';
 import { getApiUrl, getWsUrl } from '@/lib/api';
@@ -36,6 +37,7 @@ export default function PatientViewPage() {
   const [fps, setFps] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isMicActive, setIsMicActive] = useState(false);
+  const [showAIAnimation, setShowAIAnimation] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -498,145 +500,193 @@ export default function PatientViewPage() {
             </div>
           </div>
 
-          {/* Main Content - Split Layout */}
-          <div className="flex-1 flex overflow-hidden">
-            {/* Left Half - Video Display */}
-            <div className="w-1/2 relative bg-neutral-950 border-r-2 border-neutral-950">
-              <video
-                ref={videoRef}
-                className="w-full h-full object-cover"
-                style={{ transform: 'scaleX(-1)' }}
-                autoPlay
-                muted
-                playsInline
-              />
+          {/* Main Content - Full Screen Video/Animation */}
+          <div className="flex-1 relative overflow-hidden p-6">
+            {/* Video Display */}
+            {!showAIAnimation && (
+              <div className="absolute inset-6 bg-neutral-950 rounded-lg overflow-hidden">
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  style={{ transform: 'scaleX(-1)' }}
+                  autoPlay
+                  muted
+                  playsInline
+                />
 
-              {/* Status Overlay */}
-              <div className="absolute top-4 right-4 px-4 py-2 bg-neutral-950/90">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 ${
-                    isStreaming ? 'bg-accent-terra animate-pulse' : 'bg-neutral-500'
-                  }`} />
-                  <span className="label-uppercase text-white">
-                    {isStreaming ? 'LIVE' : isConnecting ? 'CONNECTING' : 'OFFLINE'}
-                  </span>
-                </div>
-              </div>
-
-              {/* FPS Counter */}
-              {isStreaming && (
-                <div className="absolute top-4 left-4 px-3 py-2 bg-neutral-950/90 border border-primary-700">
-                  <span className="label-uppercase text-primary-400">
-                    {fps} FPS
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Right Half - Reports Panel */}
-            <div className="w-1/2 bg-neutral-50 p-6 flex flex-col gap-6 overflow-y-auto">
-              {/* Reports Card - Combined */}
-              <div className="bg-white border border-neutral-200 rounded-lg p-6">
-                {/* Generate Report Button */}
-                <button
-                  className="w-full px-6 py-3 bg-primary-700 hover:bg-primary-900 text-white label-uppercase transition-colors hover-lift rounded-lg mb-6"
-                  onClick={() => {
-                    // TODO: Implement report generation
-                    console.log('Generate report for patient:', selectedPatient.patient_id);
-                  }}
-                >
-                  Generate Report
-                </button>
-
-                {/* Past Reports Section */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="heading-section text-neutral-950">Past Reports</h3>
-                    <span className="label-uppercase bg-neutral-100 text-neutral-700 px-2 py-1 text-xs">
-                      0 Reports
-                    </span>
-                  </div>
-
-                  {/* Empty State */}
-                  <div className="text-center py-12 border-2 border-dashed border-neutral-200 rounded-lg">
-                    <svg className="w-12 h-12 mx-auto text-neutral-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-                    </svg>
-                    <p className="text-sm text-neutral-500 mb-2">No reports generated yet</p>
-                    <p className="text-xs text-neutral-400">
-                      Generate your first report to see it here
-                    </p>
-                  </div>
-
-                  {/* Future: List of past reports will go here */}
-                </div>
-              </div>
-
-              {/* Voice Notes Card */}
-              <div className="bg-white border border-neutral-200 rounded-lg p-4">
-                {/* Microphone Controls */}
-                <div className="flex items-center justify-center gap-4">
-                  {/* Mic Status Text */}
-                  <div className="flex-1 text-right">
-                    <span className={`text-sm font-medium ${isMicActive ? 'text-accent-terra' : 'text-neutral-500'}`}>
-                      {isMicActive ? 'Recording...' : 'Ready'}
-                    </span>
-                  </div>
-
-                  {/* Microphone Button */}
-                  <button
-                    onClick={() => {
-                      setIsMicActive(!isMicActive);
-                      // TODO: Implement voice recording
-                      console.log('Microphone toggled:', !isMicActive);
-                    }}
-                    className={`relative w-14 h-14 rounded-full transition-all duration-200 ${
-                      isMicActive 
-                        ? 'bg-accent-terra hover:bg-accent-terra/90 scale-110 shadow-lg' 
-                        : 'bg-primary-700 hover:bg-primary-900 shadow-md hover:scale-105'
-                    }`}
-                  >
-                    {isMicActive ? (
-                      // Recording - Stop icon
-                      <svg className="w-6 h-6 text-white mx-auto" fill="currentColor" viewBox="0 0 24 24">
-                        <rect x="6" y="6" width="12" height="12" rx="2" />
-                      </svg>
-                    ) : (
-                      // Not recording - Microphone icon
-                      <svg className="w-6 h-6 text-white mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                      </svg>
-                    )}
-                    
-                    {/* Pulse animation when active */}
-                    {isMicActive && (
-                      <span className="absolute inset-0 rounded-full bg-accent-terra animate-ping opacity-75" />
-                    )}
-                  </button>
-
-                  {/* Hint Text */}
-                  <div className="flex-1">
-                    <span className="text-sm text-neutral-500">
-                      {isMicActive ? 'Tap to stop' : 'Tap to record'}
+                {/* Status Overlay */}
+                <div className="absolute top-4 right-4 px-4 py-2 bg-neutral-950/90 rounded">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${
+                      isStreaming ? 'bg-accent-terra animate-pulse' : 'bg-neutral-500'
+                    }`} />
+                    <span className="label-uppercase text-white text-xs">
+                      {isStreaming ? 'LIVE' : isConnecting ? 'CONNECTING' : 'OFFLINE'}
                     </span>
                   </div>
                 </div>
 
-                {/* Recording indicator */}
-                {isMicActive && (
-                  <div className="mt-3">
-                    <div className="flex items-center gap-3 px-4 py-2 bg-accent-terra/10 border border-accent-terra/30 rounded-lg">
-                      <div className="flex gap-1">
-                        <div className="w-1 h-3 bg-accent-terra rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-                        <div className="w-1 h-3 bg-accent-terra rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                        <div className="w-1 h-3 bg-accent-terra rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
-                      </div>
-                      <span className="text-xs font-medium text-accent-terra">Recording audio note</span>
-                      <div className="ml-auto text-xs font-mono text-accent-terra">00:00</div>
-                    </div>
+                {/* FPS Counter */}
+                {isStreaming && (
+                  <div className="absolute top-4 left-4 px-3 py-2 bg-neutral-950/90 border border-neutral-700 rounded">
+                    <span className="label-uppercase text-neutral-400 text-xs">
+                      {fps} FPS
+                    </span>
                   </div>
                 )}
               </div>
+            )}
+
+            {/* AI Animation View */}
+            {showAIAnimation && (
+              <div className="absolute inset-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg overflow-hidden flex items-center justify-center">
+                <div className="text-center">
+                  {/* Central Orb with Pulse */}
+                  <motion.div
+                    className="relative mx-auto mb-8"
+                    style={{ width: 200, height: 200 }}
+                  >
+                    {/* Outer pulse rings */}
+                    <motion.div
+                      className="absolute inset-0 rounded-full border-2 border-neutral-400"
+                      animate={{
+                        scale: [1, 1.5, 1],
+                        opacity: [0.5, 0, 0.5]
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                    />
+                    <motion.div
+                      className="absolute inset-0 rounded-full border-2 border-neutral-400"
+                      animate={{
+                        scale: [1, 1.5, 1],
+                        opacity: [0.5, 0, 0.5]
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                        delay: 0.5
+                      }}
+                    />
+
+                    {/* Central circle */}
+                    <motion.div
+                      className="absolute inset-0 rounded-full bg-white border-4 border-neutral-300 flex items-center justify-center shadow-xl"
+                      animate={{
+                        scale: [1, 1.05, 1]
+                      }}
+                      transition={{
+                        duration: 1.5,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                    >
+                      <svg className="w-20 h-20 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                      </svg>
+                    </motion.div>
+                  </motion.div>
+
+                  {/* Sound Wave Bars */}
+                  <div className="flex items-center justify-center gap-1.5 mb-6">
+                    {[...Array(12)].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        className="w-1.5 bg-neutral-600 rounded-full"
+                        animate={{
+                          height: [20, 60, 20]
+                        }}
+                        transition={{
+                          duration: 0.8,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                          delay: i * 0.1
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Status Text */}
+                  <motion.p
+                    className="text-xl font-light text-neutral-700"
+                    animate={{
+                      opacity: [1, 0.6, 1]
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "easeInOut"
+                    }}
+                  >
+                    {isMicActive ? 'Listening...' : 'AI Voice Agent Ready'}
+                  </motion.p>
+                </div>
+              </div>
+            )}
+
+            {/* Bottom AI Voice Agent Card */}
+            <div className="absolute bottom-6 left-6 right-6 z-10">
+              <motion.div
+                onClick={() => setShowAIAnimation(!showAIAnimation)}
+                className="bg-white border border-neutral-300 rounded-lg shadow-lg cursor-pointer hover:shadow-xl transition-shadow"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+              >
+                <div className="px-6 py-3 flex items-center justify-between">
+                  {/* Left: Agent Info */}
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-neutral-950">AI Voice Agent</p>
+                      <p className="text-xs text-neutral-500">
+                        {showAIAnimation ? 'Click to return to video' : 'Click to activate voice mode'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Center: Status Indicator */}
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      isMicActive ? 'bg-accent-terra animate-pulse' : 'bg-neutral-400'
+                    }`} />
+                    <span className="text-xs text-neutral-600">
+                      {isMicActive ? 'Active' : 'Ready'}
+                    </span>
+                  </div>
+
+                  {/* Right: Microphone Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent card click when clicking mic
+                      setIsMicActive(!isMicActive);
+                      console.log('Microphone toggled:', !isMicActive);
+                    }}
+                    className={`w-12 h-12 rounded-full transition-all duration-200 flex items-center justify-center ${
+                      isMicActive
+                        ? 'bg-accent-terra hover:bg-accent-terra/90 shadow-lg'
+                        : 'bg-neutral-200 hover:bg-neutral-300'
+                    }`}
+                  >
+                    {isMicActive ? (
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
             </div>
           </div>
 

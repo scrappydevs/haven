@@ -153,7 +153,7 @@ Respond in JSON:
 
         try:
             response = anthropic_client.messages.create(
-                model="claude-3-5-sonnet-20241022",  # Latest Claude 3.5 Sonnet v2
+                model="claude-haiku-4-5-20251001",
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}]
             )
