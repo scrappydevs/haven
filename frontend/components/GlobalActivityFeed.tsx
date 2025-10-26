@@ -95,15 +95,17 @@ export default function GlobalActivityFeed({ events, onPatientClick }: GlobalAct
                   onClick={() => onPatientClick && onPatientClick(event.patientId)}
                 >
                   {/* First line: time + prefix + patient name */}
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-start gap-2 mb-1">
                     <div className="flex flex-col">
                       <span className="text-neutral-400 font-mono text-[10px]">{formatTime(event.timestamp)}</span>
                       <span className="text-neutral-400 font-mono text-[9px]">{getRelativeTime(event.timestamp)}</span>
                     </div>
-                    <span className="text-xs font-light text-neutral-950 font-mono">
-                      {getLogPrefix(event.type)}
-                    </span>
-                    <span className="text-xs font-light text-neutral-950">{event.patientName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-light text-neutral-950 font-mono">
+                        {getLogPrefix(event.type)}
+                      </span>
+                      <span className="text-xs font-light text-neutral-950">{event.patientName}</span>
+                    </div>
                   </div>
 
                   {/* Second line: message */}
