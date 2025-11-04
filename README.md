@@ -1,8 +1,10 @@
 # Haven
 
 <div align="center">
-  <p><em>A multi-agent hospital intelligence platform that coordinates autonomous and contextually aware AI agents for comprehensive patient monitoring and clinical decision support.</em></p>
+  <p><em>A multi-agent hospital intelligence platform that coordinates autonomous and contextually aware AI agents for comprehensive patient monitoring and clinical decision support.</em></p>
+  <h3>🏆 1st in Y Combinator & Fetch.ai Track and Best Startup Idea at CalHacks 2025</h3>
 </div>
+
 
 ---
 
