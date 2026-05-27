@@ -49,7 +49,6 @@ class PDFGenerator:
         self.low_color = HexColor("#059669")  # Green
         self.header_bg = HexColor("#f1f5f9")  # Light gray
 
-        # Setup styles
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()
 
@@ -408,5 +407,4 @@ class PDFGenerator:
         return elements
 
 
-# Create singleton instance
 pdf_generator = PDFGenerator()

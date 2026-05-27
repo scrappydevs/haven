@@ -68,7 +68,7 @@ export default function IntakeReportModal({ intakeId, onClose, onReviewed }: Pro
       await fetch(`${apiUrl}/api/intake/${intakeId}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reviewer_id: 'current_user' }) // TODO: Get actual user ID
+        body: JSON.stringify({ reviewer_id: 'current_user' })
       });
 
       onReviewed();

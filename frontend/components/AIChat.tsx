@@ -107,7 +107,6 @@ export default function AIChat() {
     }
   }, [selectedAutocompleteIndex, showAutocomplete]);
 
-  // Initialize voice recognition
   useEffect(() => {
     if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -284,7 +283,6 @@ export default function AIChat() {
     const savedSessionId = localStorage.getItem('haven_chat_session_id');
     if (savedSessionId) {
       setSessionId(savedSessionId);
-      // TODO: Load message history from session
     }
     // Fetch available sessions
     fetchSessions();
@@ -438,7 +436,7 @@ export default function AIChat() {
       const taggedContext = popTaggedContext();
       const chatState = {
         current_page: pathname || '/',
-        user_name: 'Clinical Staff', // TODO: Get from auth
+        user_name: 'Clinical Staff',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         // Add page-specific context
         ...(pathname?.includes('floorplan') && { context_type: 'floor_plan' }),

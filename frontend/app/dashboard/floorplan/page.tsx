@@ -111,7 +111,6 @@ export default function FloorPlanPage() {
     return () => clearInterval(alertInterval);
   }, []);
 
-  // Initialize Smplrspace viewer
   useEffect(() => {
     if (!containerRef.current || !smplrLoaded || !window.smplr || !smplrConfig) return;
 
@@ -133,7 +132,6 @@ export default function FloorPlanPage() {
           hasToken: !!smplrConfig.clientToken,
         });
 
-        // Initialize space with credentials from backend
         space = new smplr.Space({
           spaceId,
           clientToken,

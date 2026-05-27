@@ -84,7 +84,6 @@ class EmailService:
             if not os.path.exists(pdf_path):
                 return {"success": False, "message": f"PDF file not found: {pdf_path}"}
 
-            # Create email
             msg = MIMEMultipart()
             msg['From'] = f"{self.sender_name} <{self.sender_email}>"
             msg['To'] = ", ".join(recipient_emails)

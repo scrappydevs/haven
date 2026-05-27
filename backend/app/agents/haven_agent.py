@@ -27,7 +27,6 @@ from app.main import process_haven_conversation  # noqa: E402
 # Load environment variables
 load_dotenv()
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

@@ -61,7 +61,6 @@ async def generate_patient_discharge_report(patient_id: str, room_id: str) -> by
     alerts_response = supabase.table("alerts").select("*").eq("patient_id", patient_id).order("triggered_at", desc=True).limit(20).execute()
     alerts = alerts_response.data or []
     
-    # Create PDF
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
                            topMargin=0.75*inch, bottomMargin=0.75*inch,

@@ -196,7 +196,6 @@ export default function VideoPlayer({ patient, isLive = false, isSelected = fals
       animationId = requestAnimationFrame(drawOverlays);
     };
 
-    // Start animation loop
     animationId = requestAnimationFrame(drawOverlays);
 
     return () => {

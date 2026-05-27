@@ -219,9 +219,7 @@ async def health_check():
     }
 
 
-# ============================================================================
 # Twilio SMS Alerts
-# ============================================================================
 
 class SMSAlertRequest(BaseModel):
     phone_number: str
@@ -254,7 +252,6 @@ async def trigger_sms_alert(request: SMSAlertRequest):
                 "to": request.phone_number
             }
 
-        # Import Vonage client (v4+ API)
         from vonage import Auth, Vonage
         from vonage_sms import SmsMessage
 
@@ -449,7 +446,6 @@ async def trigger_messenger_alert(request: MessengerAlertRequest):
                 "channel": request.channel
             }
 
-        # Import Vonage Messages API (v4+ API)
         from vonage import Auth, Vonage
         from vonage_messages import MessagesClient
 
@@ -531,7 +527,6 @@ async def vonage_inbound_messages(request: dict):
     print(
         f"📩 Inbound message from {request.get('from')}: {request.get('message', {}).get('content', {}).get('text')}")
 
-    # TODO: Process inbound replies from nurses
     # - Store in database
     # - Notify dashboard
     # - Update alert status
@@ -548,7 +543,6 @@ async def vonage_message_status(request: dict):
     print(
         f"📊 Message status update: {request.get('status')} for message {request.get('message_uuid')}")
 
-    # TODO: Update alert delivery status in database
     # - delivered
     # - read
     # - failed
@@ -575,7 +569,6 @@ async def handle_critical_alert_webhook(request: dict):
         print(f"   Room: {room_id}")
         print(f"   Title: {title}")
 
-        # Import alert monitor logic
         from app.alert_monitor import handle_critical_alert
 
         # Process the alert (make phone call)
@@ -732,10 +725,8 @@ async def search_patients(q: str = ""):
     # Cache key based on query
     cache_key = f"patients_search:{q}"
     
-    # Try cache first (skip cache for now to debug - TODO: re-enable)
     # cached = patient_cache.get(cache_key)
     # if cached is not None:
-    #     return cached
 
     try:
         if q:
@@ -1057,7 +1048,6 @@ async def create_alert(
             print(
                 f"🚨 CRITICAL ALERT {alert_id} - Calling nurse immediately...")
 
-            # Import voice service
             from app.voice_call import voice_service
 
             # Make emergency call
@@ -1501,9 +1491,7 @@ async def sync_rooms_from_smplrspace(request: SyncRoomsRequest):
         return {"error": str(e)}
 
 
-# ============================================================================
 # MCP-Inspired Agent Monitoring Control Tools
-# ============================================================================
 
 @app.get("/monitoring/config/{patient_id}")
 async def get_monitoring_config(patient_id: str):
@@ -1611,16 +1599,12 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
     return {"status": "success", "config": config.to_dict()}
 
 
-# ============================================================================
 # LEGACY Multi-Agent System Endpoints (DISABLED - using health_agent instead)
-# ============================================================================
 
 # @app.get("/agents/status")
 # async def get_agent_system_status():
 #     """Get multi-agent system status"""
 #     return agent_system.get_system_status()
-#
-#
 # @app.get("/agents/events")
 # async def get_agent_events(limit: int = 50):
 #     """Get recent agent events for GlobalActivityFeed"""
@@ -1628,8 +1612,6 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #         "events": agent_system.get_agent_events(limit),
 #         "total": len(agent_system.agent_events)
 #     }
-#
-#
 # @app.get("/agents/alerts")
 # async def get_agent_alerts():
 #     """Get active agent alerts for AlertPanel"""
@@ -1637,8 +1619,6 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #         "alerts": agent_system.get_agent_alerts(),
 #         "total": len(agent_system.agent_alerts)
 #     }
-#
-#
 # @app.get("/agents/timeline/{patient_id}")
 # async def get_patient_timeline(patient_id: str, limit: int = 100):
 #     """Get timeline events for a specific patient"""
@@ -1647,14 +1627,11 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #             "error": "Agent system not enabled",
 #             "events": []
 #         }
-#
 #     return {
 #         "patient_id": patient_id,
 #         "events": agent_system.get_patient_timeline(patient_id, limit),
 #         "total": len(agent_system.timeline_events.get(patient_id, []))
 #     }
-#
-#
 # @app.post("/agents/analyze/{patient_id}")
 # async def manual_agent_analysis(patient_id: str):
 #     """
@@ -1666,7 +1643,6 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #             "error": "Agent system not enabled",
 #             "message": "Install uagents: pip install uagents>=0.12.0"
 #         }
-#
 #     # Get dummy metrics for testing
 #     test_metrics = {
 #         "heart_rate": 85,
@@ -1675,9 +1651,7 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #         "tremor_detected": True,
 #         "attention_score": 0.85
 #     }
-#
 #     assessment = await agent_system.analyze_patient_metrics(patient_id, test_metrics)
-#
 #     return {
 #         "patient_id": patient_id,
 #         "assessment": assessment,
@@ -1685,9 +1659,7 @@ async def set_monitoring_frequency(patient_id: str, seconds: int):
 #     }
 
 
-# ============================================================================
 # Health Agent Endpoints (NEW - Simple focused agent)
-# ============================================================================
 
 @app.get("/health-agent/status")
 async def get_health_agent_status():
@@ -1803,9 +1775,7 @@ async def test_voice_call(request: TestCallRequest):
         voice_service.emergency_number = original_number
 
 
-# ============================================================================
 # Patient Guardian Agent Endpoints (LEGACY - keeping for compatibility)
-# ============================================================================
 
 class PatientBaseline(BaseModel):
     patient_id: str
@@ -1861,9 +1831,7 @@ async def trigger_agent_analysis(patient_id: str):
     }
 
 
-# ============================================================================
 # WebSocket Endpoints
-# ============================================================================
 @app.websocket("/ws/stream/{patient_id}")
 async def websocket_stream(websocket: WebSocket, patient_id: str):
     """WebSocket endpoint for patient-specific streaming"""
@@ -3136,9 +3104,7 @@ async def get_active_haven_sessions():
     }
 
 
-# ========================================
 # HANDOFF FORM GENERATION ENDPOINTS (Fetch.ai Agent)
-# ========================================
 
 @app.get("/handoff-agent/status")
 async def get_handoff_agent_status():
@@ -3515,7 +3481,7 @@ async def acknowledge_alert(alert_id: str):
         update_response = supabase.table("alerts").update({
             "status": "acknowledged",
             "acknowledged_at": datetime.utcnow().isoformat(),
-            "acknowledged_by": "nurse"  # TODO: Get actual user from auth context
+            "acknowledged_by": "nurse"
         }).eq("id", alert_id).execute()
 
         if not update_response.data:

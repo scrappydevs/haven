@@ -27,7 +27,6 @@ export default function LandingPage() {
         const configRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/smplrspace/config`);
         const config = await configRes.json();
         
-        // Initialize viewer
         const space = new window.smplr.Space({
           spaceId: config.spaceId,
           clientToken: config.clientToken,

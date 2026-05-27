@@ -14,7 +14,6 @@ import multiprocessing as mp
 # Add current directory to path
 sys.path.append(str(Path(__file__).parent))
 
-# Import all agents
 from agents.patient_guardian import create_patient_guardian
 from agents.nurse_coordinator import NurseCoordinatorAgent
 from agents.emergency_response import EmergencyResponseAgent

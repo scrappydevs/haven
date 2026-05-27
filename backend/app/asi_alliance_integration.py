@@ -286,7 +286,6 @@ async def allocate_resource_asi(patient_id: str, resource_type: str, urgency: st
     )
 
 
-# Initialize on module import
 print("🌐 ASI Alliance integration module loaded")
 print(f"   Fetch.ai agents: {len(HAVEN_AGENTS)} registered")
 print(f"   Ocean Protocol: Available")

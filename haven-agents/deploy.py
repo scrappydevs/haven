@@ -134,7 +134,6 @@ print("=" * 80)
 
 print("\n\n🎯 AGENT ADDRESSES (Local Development):\n")
 
-# Import agents to show their addresses
 try:
     from agents.patient_guardian import create_patient_guardian
     from agents.nurse_coordinator import NurseCoordinatorAgent

@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import json
 
-# Import Fetch.ai uAgents framework
 try:
     from uagents import Agent, Context, Model
     from uagents.query import query
@@ -19,7 +18,6 @@ except ImportError:
 # Always import BaseModel from pydantic
 from pydantic import BaseModel
 
-# Import secrets
 try:
     from app.infisical_config import get_secret
     AGENTVERSE_AGENT_ADDRESS = get_secret("AGENTVERSE_HEALTH_AGENT_ADDRESS") or "agent1q2w5ktcdjujflcq639lp6kj89zupd28yr4dla0z4qampxjf0txwtqjq3ka0"

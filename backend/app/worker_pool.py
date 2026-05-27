@@ -12,18 +12,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ============================================================================
 # CONFIGURATION
-# ============================================================================
 
 MAX_CV_WORKERS = 50  # Maximum concurrent CV processing threads
 MAX_AGENT_WORKERS = 20  # Maximum concurrent agent analysis threads
 THREAD_KEEPALIVE_SECONDS = 300  # Thread idle timeout
 
 
-# ============================================================================
 # MANAGED BROADCAST QUEUE
-# ============================================================================
 
 class BroadcastQueue:
     """
@@ -109,9 +105,7 @@ class BroadcastQueue:
                 logger.info("✅ Broadcast worker stopped")
 
 
-# ============================================================================
 # WORKER POOL MANAGER
-# ============================================================================
 
 class WorkerPoolManager:
     """
@@ -149,9 +143,7 @@ class WorkerPoolManager:
         
         logger.info(f"✅ Worker pool initialized: CV={MAX_CV_WORKERS}, Agent={MAX_AGENT_WORKERS}")
     
-    # ========================================================================
     # CV WORKER MANAGEMENT
-    # ========================================================================
     
     def start_cv_worker(self, patient_id: str, worker_func: Callable, *args, **kwargs) -> bool:
         """
@@ -236,9 +228,7 @@ class WorkerPoolManager:
         
         return True
     
-    # ========================================================================
     # AGENT WORKER MANAGEMENT
-    # ========================================================================
     
     def submit_agent_task(self, patient_id: str, task_func: Callable, *args, **kwargs) -> Optional[Future]:
         """
@@ -277,9 +267,7 @@ class WorkerPoolManager:
             self.agent_task_errors += 1
             return None
     
-    # ========================================================================
     # BROADCAST MANAGEMENT
-    # ========================================================================
     
     def schedule_broadcast(self, coro, callback: Optional[Callable] = None):
         """
@@ -291,9 +279,7 @@ class WorkerPoolManager:
         """
         self.broadcast_queue.schedule_broadcast(coro, callback)
     
-    # ========================================================================
     # SHUTDOWN
-    # ========================================================================
     
     def shutdown(self, wait: bool = True, timeout: float = 10.0):
         """
@@ -318,9 +304,7 @@ class WorkerPoolManager:
         
         logger.info("✅ Worker pools shut down")
     
-    # ========================================================================
     # METRICS
-    # ========================================================================
     
     def get_metrics(self) -> dict:
         """Get worker pool metrics"""

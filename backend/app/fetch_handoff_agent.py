@@ -24,14 +24,11 @@ from app.models.handoff_forms import (
     FormGenerationResponse
 )
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
 # Data Models for Fetch.ai Agent Communication
-# ============================================================================
 
 class AlertNotification(Model):
     """Notification of new alerts requiring handoff"""
@@ -59,9 +56,7 @@ class HandoffFormResult(Model):
     alerts_processed: int = 0
 
 
-# ============================================================================
 # Fetch.ai Handoff Agent
-# ============================================================================
 
 class FetchHandoffAgent:
     """
@@ -89,7 +84,6 @@ class FetchHandoffAgent:
         self.agent_seed = seed or os.getenv("HANDOFF_AGENT_SEED", "handoff_agent_secret_seed_123")
         self.agent = Agent(name=name, seed=self.agent_seed, port=8001, endpoint=["http://localhost:8001/submit"])
 
-        # Initialize Claude client
         self.anthropic_api_key = anthropic_api_key or os.getenv("ANTHROPIC_API_KEY")
         if self.anthropic_api_key:
             self.claude_client = anthropic.Anthropic(api_key=self.anthropic_api_key)
@@ -548,10 +542,6 @@ Focus on actionable information that helps the receiving healthcare professional
         logger.info("Starting Fetch.ai Handoff Agent...")
         self.agent.run()
 
-
-# ============================================================================
-# Create singleton instance
-# ============================================================================
 
 fetch_handoff_agent = FetchHandoffAgent(
     name="haven-handoff-agent",

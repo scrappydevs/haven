@@ -117,13 +117,11 @@ class ConnectionManager:
         from app.cache import stream_cache
         stream_cache.invalidate("active_streams")
 
-        # Initialize metric trackers for this patient
         trackers = PatientMetricTrackers()
         trackers.analysis_mode = analysis_mode if analysis_mode in [
             "normal", "enhanced"] else "normal"
         self.patient_trackers[patient_id] = trackers
         
-        # Initialize simple movement detector for this patient
         from app.simple_movement_detector import SimpleMovementDetector
         self.movement_detectors[patient_id] = SimpleMovementDetector()
         print(f"✓ Simple movement detector initialized for {patient_id}")
@@ -147,7 +145,6 @@ class ConnectionManager:
 
     def unregister_streamer(self, patient_id: str):
         """Unregister a streamer for a specific patient"""
-        # Stop worker thread
         if patient_id in self.worker_stop_flags:
             self.worker_stop_flags[patient_id].set()
 
@@ -509,7 +506,6 @@ class ConnectionManager:
                         #     assessment = loop.run_until_complete(
                         #         agent_system.analyze_patient_metrics(patient_id, slow_result["metrics"])
                         #     )
-                        # 
                         # decision = patient_guardian.analyze_metrics(patient_id, slow_result["metrics"])
                         # if decision["action"] != "MAINTAIN":
                         #     loop.run_until_complete(
@@ -728,7 +724,6 @@ def process_frame_metrics(frame_base64: str, patient_id: Optional[str] = None, m
             "shoulder_angle", "posture_score", "upper_body_movement", "lean_forward", "arm_asymmetry"
         ]
 
-        # Initialize default values (only for enabled metrics)
         heart_rate = 75
         respiratory_rate = 14
         crs_score = 0.0

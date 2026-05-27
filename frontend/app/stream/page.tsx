@@ -688,7 +688,6 @@ export default function StreamPage() {
   const endHavenSession = async () => {
     console.log('🛡️ Ending Haven session');
 
-    // TODO: Get conversation summary from LiveKit agent
     // For now, create a mock summary
     if (havenRoomData && selectedPatient) {
       try {

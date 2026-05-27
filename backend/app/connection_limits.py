@@ -12,9 +12,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ============================================================================
 # CONFIGURATION - Adjust based on infrastructure capacity
-# ============================================================================
 
 # Connection Limits
 MAX_CONCURRENT_STREAMERS = 50    # Maximum simultaneous patient streams
@@ -35,9 +33,7 @@ VIEWER_IDLE_TIMEOUT_SECONDS = 300  # Disconnect viewers after 5 min of no activi
 STREAMER_IDLE_TIMEOUT_SECONDS = 60  # Disconnect streamers after 1 min of no frames
 
 
-# ============================================================================
 # DATA STRUCTURES
-# ============================================================================
 
 @dataclass
 class ConnectionMetrics:
@@ -82,9 +78,7 @@ class RateLimitBucket:
         self.last_refill = now
 
 
-# ============================================================================
 # CONNECTION MANAGER
-# ============================================================================
 
 class ProductionConnectionManager:
     """
@@ -134,9 +128,7 @@ class ProductionConnectionManager:
             except Exception as e:
                 logger.error(f"Cleanup task error: {e}")
     
-    # ========================================================================
     # CONNECTION MANAGEMENT
-    # ========================================================================
     
     def can_accept_streamer(self, patient_id: str, client_ip: str) -> tuple[bool, str]:
         """
@@ -197,7 +189,6 @@ class ProductionConnectionManager:
         self.active_streamers[patient_id] = ConnectionMetrics()
         self.connections_by_ip[client_ip].add(patient_id)
         
-        # Initialize rate limiter for this stream
         self.frame_rate_limiters[patient_id] = RateLimitBucket(
             capacity=MAX_FRAMES_PER_SECOND * 2,  # 2 second burst
             refill_rate=MAX_FRAMES_PER_SECOND
@@ -229,9 +220,7 @@ class ProductionConnectionManager:
             del self.active_viewers[viewer_id]
         logger.info(f"Viewer unregistered: {viewer_id}. Total: {len(self.active_viewers)}")
     
-    # ========================================================================
     # VALIDATION
-    # ========================================================================
     
     def validate_frame(self, patient_id: str, frame_data: str) -> tuple[bool, str]:
         """
@@ -265,9 +254,7 @@ class ProductionConnectionManager:
         """Check if broadcast is allowed (global rate limit)"""
         return self.global_broadcast_limiter.consume()
     
-    # ========================================================================
     # RATE LIMITING
-    # ========================================================================
     
     def _check_connection_rate_limit(self, client_ip: str) -> bool:
         """Check if connection attempt is within rate limit"""
@@ -286,9 +273,7 @@ class ProductionConnectionManager:
         attempts.append(now)
         return True
     
-    # ========================================================================
     # IDLE CLEANUP
-    # ========================================================================
     
     async def cleanup_idle_connections(self):
         """Clean up idle connections"""
@@ -311,9 +296,7 @@ class ProductionConnectionManager:
         if idle_viewers:
             logger.warning(f"Found {len(idle_viewers)} idle viewers, cleanup needed")
     
-    # ========================================================================
     # CIRCUIT BREAKER
-    # ========================================================================
     
     def enter_overload_mode(self, duration_seconds: int = 60):
         """Enter overload protection mode"""
@@ -352,9 +335,7 @@ class ProductionConnectionManager:
             "timestamp": datetime.utcnow().isoformat()
         }
     
-    # ========================================================================
     # METRICS
-    # ========================================================================
     
     def get_metrics(self) -> dict:
         """Get detailed metrics for monitoring"""

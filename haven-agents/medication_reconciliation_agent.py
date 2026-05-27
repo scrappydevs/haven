@@ -12,7 +12,6 @@ import os
 AGENT_NAME = "haven_med_reconciliation"
 AGENT_SEED = os.getenv("MED_AGENT_SEED", "haven_medication_reconciliation_seed_phrase_2025")
 
-# Create agent
 agent = Agent(
     name=AGENT_NAME,
     seed=AGENT_SEED,

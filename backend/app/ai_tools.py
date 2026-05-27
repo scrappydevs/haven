@@ -985,7 +985,6 @@ async def assign_patient_to_room_tool(patient_id: str, room_id: str) -> Dict[str
         
         patient_name = patient.data[0]['name']
         
-        # Create assignment
         result = supabase.table("patients_room").insert({
             "room_id": actual_room_id,
             "patient_id": patient_id,
@@ -1006,8 +1005,6 @@ async def assign_patient_to_room_tool(patient_id: str, room_id: str) -> Dict[str
     except Exception as e:
         print(f"  ❌ Error: {e}")
         return {"error": str(e)}
-
-
 
 
 async def remove_patient_from_room_tool(patient_id: Optional[str] = None, room_id: Optional[str] = None, generate_report: bool = True) -> Dict[str, Any]:
@@ -1860,7 +1857,6 @@ async def add_medical_history_entry_tool(
         
         patient_name = patient_check.data[0]['name']
         
-        # Create entry
         entry_data = {
             "patient_id": patient_id,
             "entry_type": entry_type,

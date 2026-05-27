@@ -264,5 +264,4 @@ class AlertsService:
             return []
 
 
-# Create singleton instance
 alerts_service = AlertsService()

@@ -18,7 +18,6 @@ from livekit.plugins import openai, silero, noise_cancellation
 # Load environment variables
 load_dotenv()
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

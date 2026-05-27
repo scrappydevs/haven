@@ -219,7 +219,6 @@ async def handle_patient_update(ctx: Context, sender: str, msg: PatientUpdate):
     # Analyze health data
     analysis = _analyze_patient(patients[msg.patient_id])
     
-    # Create alert
     alert = {
         "alert_id": str(uuid4())[:8],
         "patient_id": msg.patient_id,

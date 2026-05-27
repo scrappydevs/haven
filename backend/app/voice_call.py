@@ -96,7 +96,6 @@ class VoiceCallService:
             
             print(f"📞 CALLING {target_number}: {event_type.upper()} for {patient_id}")
             
-            # Initialize Vonage client once and cache it (JWT signing is slow!)
             if self._client is None:
                 print(f"🔄 Initializing Vonage client (first call)...")
                 from vonage import Auth, Vonage

@@ -12,9 +12,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ============================================================================
 # HEALTH STATUS TYPES
-# ============================================================================
 
 @dataclass
 class SubsystemHealth:
@@ -37,9 +35,7 @@ class SubsystemHealth:
         }
 
 
-# ============================================================================
 # HEALTH CHECK MANAGER
-# ============================================================================
 
 class HealthCheckManager:
     """
@@ -59,9 +55,7 @@ class HealthCheckManager:
         self.start_time = time.time()
         self._lock = threading.Lock()
     
-    # ========================================================================
     # INDIVIDUAL HEALTH CHECKS
-    # ========================================================================
     
     def check_system_resources(self) -> SubsystemHealth:
         """Check CPU, memory, and disk usage"""
@@ -294,9 +288,7 @@ class HealthCheckManager:
                 last_check=time.time()
             )
     
-    # ========================================================================
     # AGGREGATE HEALTH CHECK
-    # ========================================================================
     
     def check_all_subsystems(self, supabase=None, manager=None, fetch_health_agent=None) -> Dict[str, SubsystemHealth]:
         """Run all health checks and return results"""
